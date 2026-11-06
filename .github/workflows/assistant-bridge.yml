@@ -1,0 +1,60 @@
+name: Verify Refit assistant-ui bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/assistant-bridge/**'
+      - '.github/workflows/assistant-bridge.yml'
+      - 'scripts/refit_http.py'
+      - 'scripts/api_service.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typed-ui-and-real-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned assistant-ui and build the reusable React integration
+        working-directory: web/assistant-bridge
+        run: |
+          npm install --no-audit --no-fund --package-lock=false
+          npm run build
+          npm test
+      - name: Exercise typed React adapter against a running Refit HTTP backend
+        run: |
+          set -euo pipefail
+          python -m scripts.refit_http --host 127.0.0.1 --port 8097 --runs-dir /tmp/refit-bridge-ci-runs > /tmp/refit-bridge-backend.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time
+          from urllib.request import urlopen
+          for i in range(40):
+              try:
+                  with urlopen("http://127.0.0.1:8097/api/health", timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  time.sleep(.2)
+          else:
+              raise RuntimeError("Refit backend did not become healthy")
+          PY
+          cd web/assistant-bridge
+          REFIT_PUBLIC_URL=http://127.0.0.1:8097 npm test
+      - name: Upload compiled assistant-ui bridge for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-assistant-ui-bridge
+          path: web/assistant-bridge/dist/
+          retention-days: 7
