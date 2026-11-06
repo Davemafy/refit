@@ -1,7 +1,7 @@
 {
   "run_live": true,
-  "run_id": "live-2026-11-06-e",
-  "purpose": "Second-stage model-generated refinement based on measured Muse prompt-injection failure, with independent validation and holdout",
+  "run_id": "live-2026-11-06-f",
+  "purpose": "Test model-native forced initial lookup as evidence-triggered migration adaptation, then gate on independent validation and holdout",
   "request_budget": 160,
   "source": "deepseek-v4.1-flash-1017",
   "targets": [
