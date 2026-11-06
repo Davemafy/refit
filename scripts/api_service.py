@@ -165,9 +165,10 @@ class RunService:
             "external_agent_import": False,
             "sandbox": {
                 "integrated": False,
-                "business_tools_isolated": (
+                "business_tools_sandbox_configured": (
                     os.getenv("REFIT_USE_TOOL_SANDBOX") == "1"
                 ),
+                "business_tools_isolated": False,
                 "business_tools_isolation_verified_on_vultr_vm": False,
                 "generated_python_diagnostics_enabled": (
                     os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
@@ -380,7 +381,7 @@ class RunService:
                 from .sandbox_tool_gateway import migrate_in_tool_sandboxes
                 result = migrate_in_tool_sandboxes(
                     client, domain, source, target, source, seed,
-                    runtime=os.getenv("REFIT_SANDBOX_RUNTIME", "runc"),
+                    runtime=os.getenv("REFIT_SANDBOX_RUNTIME", "runsc"),
                 )
             else:
                 result = DOMAINS[domain].run_live(
