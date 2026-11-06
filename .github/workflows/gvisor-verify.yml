@@ -65,6 +65,45 @@ jobs:
               print(name, 'verified:', r['runtime'], r['duration_ms'], 'ms')
           PY
 
+      - name: Verify complete agent migration through gVisor-isolated business tools
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.sandbox_tool_gateway import migrate_in_tool_sandboxes
+          from tests.test_refit_deployment import ScriptedResponder
+          result = migrate_in_tool_sandboxes(
+              ScriptedResponder(break_target=True),
+              "deployment", "source", "target", "repair",
+              seed=888, runtime="runsc",
+          )
+          bound = result["execution_boundary"]
+          assert result["status"] == "verified_adaptation", result["status"]
+          assert result["source_training"]["passed"] == 8
+          assert result["target_training"]["passed"] < 8
+          assert result["validation"]["passed"] == 8
+          assert result["repaired_holdout"]["passed"] == 8
+          assert bound["runtime"] == "runsc"
+          assert bound["business_tools_isolated"]
+          assert bound["all_containers_removed"]
+          assert bound["worker_runs"] > 32
+          assert all(c["runtime"] == "runsc" and c["network"] == "none" and c["container_absent"] for c in bound["cases"])
+          artifact = {
+              "kind": "full_migration_in_gvisor",
+              "model_mode": "scripted_offline_provider_not_real_vultr_inference",
+              "status": result["status"],
+              "source_training": result["source_training"],
+              "target_training": result["target_training"],
+              "validation": result["validation"],
+              "repaired_holdout": result["repaired_holdout"],
+              "execution_boundary": bound,
+              "limitation": "The built-in synthetic deployment agent and sandbox-side business verifier ran in gVisor. This is not external-agent support or a separately protected business oracle.",
+          }
+          Path("artifacts/gvisor-full-migration.json").write_text(json.dumps(artifact, indent=2) + "\n")
+          print("Full gVisor agent workflow verified:", bound["worker_runs"], "isolated workers")
+          PY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
