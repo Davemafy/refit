@@ -6,6 +6,9 @@ on:
     paths:
       - 'scripts/sandbox_runner.py'
       - 'tests/test_refit_sandbox.py'
+      - 'scripts/sandbox_tool_gateway.py'
+      - 'scripts/sandbox_tool_worker.py'
+      - 'tests/test_refit_tool_gateway.py'
       - 'deploy/install-gvisor.sh'
       - '.github/workflows/gvisor-verify.yml'
   workflow_dispatch:
