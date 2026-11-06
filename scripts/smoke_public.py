@@ -19,8 +19,60 @@ def validate_url(base: str):
         raise ValueError("Specify the origin URL, e.g. http://IP")
 
 
-def verify(base: str) -> dict:
+def assert_release(health: dict, expected_revision: str) -> dict:
+    if not re.fullmatch(r"[a-f0-9]{40}", expected_revision):
+        raise ValueError("Expected revision must be a full 40-character lowercase Git SHA")
+    actual = health.get("revision")
+    assert isinstance(actual, dict), "Deployed health response omits startup revision"
+    assert actual.get("commit") == expected_revision, (
+        "Deployed application is not the expected commit"
+    )
+    assert actual.get("tracked_files_clean") is True, (
+        "Deployed checkout is dirty or its cleanliness cannot be confirmed"
+    )
+    return {"commit": actual["commit"], "tracked_files_clean": True}
+
+
+def assert_live_rejection(run: dict, artifact_status: int, artifact: dict,
+                          events: dict, expected_revision: str | None) -> dict:
+    assert run.get("mode") == "live", "Run was not executed by the live operator"
+    assert run.get("status") == "repair_rejected_validation", (
+        "Expected the real rejected repair, not a passing or simulated run"
+    )
+    report = run.get("report") or {}
+    assert report.get("status") == run["status"], "Run verdict differs from report"
+    assert run.get("patch") is None, "A rejected migration must not contain an exportable patch"
+    assert artifact_status == 404 and artifact.get("error", {}).get("code") == "artifact_not_found", (
+        "Rejected migration unexpectedly exposes a downloadable patch"
+    )
+    boundary = report.get("execution_boundary") or {}
+    assert boundary.get("runtime") == "runsc", "Live report does not prove gVisor use"
+    assert boundary.get("business_tools_isolated") is True, "Business tools were not isolated"
+    assert boundary.get("all_containers_removed") is True, "Worker cleanup is not confirmed"
+    worker_runs = boundary.get("worker_runs")
+    assert type(worker_runs) is int and worker_runs > 0, "No completed isolated worker runs"
+    assert run.get("execution_isolation") == "docker_tool_sandbox_verified_cleanup", (
+        "Published run is missing its isolation verdict"
+    )
+    if expected_revision is not None:
+        identity = run.get("engine_revision") or {}
+        assert identity.get("commit") == expected_revision, (
+            "Published run came from a different deployed revision"
+        )
+    assert events.get("terminal") is True and len(events.get("events", [])) >= 2, (
+        "Published run has no complete event history"
+    )
+    assert events.get("run_id") == run.get("id"), "Event history refers to a different run"
+    return {"id": run["id"], "status": run["status"], "runtime": "runsc",
+            "worker_runs": worker_runs, "cleanup_verified": True,
+            "patch_withheld": True}
+
+
+def verify(base: str, expected_revision: str | None = None,
+           require_live_rejection: bool = False) -> dict:
     validate_url(base)
+    if expected_revision is not None and not re.fullmatch(r"[a-f0-9]{40}", expected_revision):
+        raise ValueError("Expected revision must be a full 40-character lowercase Git SHA")
     base = base.rstrip("/")
     observations = []
 
@@ -51,6 +103,7 @@ def verify(base: str) -> dict:
     assert 'id="runList"' in html and 'id="diagnoseButton"' in html
     status, health = request("/api/health")
     assert status == 200 and health["status"] == "ok"
+    release = assert_release(health, expected_revision) if expected_revision else None
     status, caps = request("/api/capabilities")
     assert status == 200 and caps["contract_version"] == "v1"
     status, data = request("/api/runs")
@@ -76,10 +129,28 @@ def verify(base: str) -> dict:
     assert intent["target_model"] == "muse-glimmer-30b"
     status, events = request("/api/runs/" + refund_id + "/events")
     assert status == 200 and events["terminal"] is True
+    # Inspect the existing published rejection, never start a new live task.
+    live_rejection = None
+    if require_live_rejection:
+        candidate = next((item for item in data["runs"]
+                          if item.get("mode") == "live" and
+                          item.get("status") == "repair_rejected_validation"), None)
+        assert candidate is not None, "No published rejected live migration found"
+        live_id = candidate["id"]
+        status, detail = request("/api/runs/" + live_id)
+        assert status == 200
+        artifact_status, artifact = request("/api/runs/" + live_id + "/artifact")
+        events_status, live_events = request("/api/runs/" + live_id + "/events")
+        assert events_status == 200
+        live_rejection = assert_live_rejection(
+            detail, artifact_status, artifact, live_events, expected_revision
+        )
     # A public smoke test must NEVER trigger paid inference or code execution.
     return {
         "status": "pass",
         "origin": base,
+        "release": release,
+        "live_rejection": live_rejection,
         "records": {
             "refund": {"id": refund_id, "source_passed": 8,
                        "target_passed": 6, "repaired_holdout_passed": 8},
@@ -94,9 +165,13 @@ def verify(base: str) -> dict:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
+    parser.add_argument("--expected-revision", help="Require exact deployed 40-character Git SHA and clean checkout")
+    parser.add_argument("--require-live-rejection", action="store_true",
+                        help="Require published gVisor rejection, cleanup and withheld patch")
     parser.add_argument("--output")
     args = parser.parse_args()
-    result = verify(args.url)
+    result = verify(args.url, expected_revision=args.expected_revision,
+                    require_live_rejection=args.require_live_rejection)
     content = json.dumps(result, indent=2)
     print(content)
     if args.output:
