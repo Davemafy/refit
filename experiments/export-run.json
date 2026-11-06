@@ -1,5 +1,7 @@
 {
-  "run_export": true,
+  "run_export": false,
   "source_run": 42207396750,
-  "request": "Publish versioned patch generated from independently verified real Vultr migration evidence without new inference requests"
+  "export_run": 42208894380,
+  "status": "export_verified",
+  "reason": "First genuine compatibility JSON exported and validated. Disable repeated runs."
 }
