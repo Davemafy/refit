@@ -1,6 +1,6 @@
 {
   "run_live": true,
-  "run_id": "deployment-incident-05-raon-migration",
-  "purpose": "Compare deepseek source to Raon target on independent deployment stateful workflow and attempt bounded repair if it genuinely regresses",
+  "run_id": "deployment-incident-06-independent-gates",
+  "purpose": "Require unrelated fresh validation and holdout even when target passes training; true cross-domain model compatibility evidence",
   "model_request_cap": 160
 }
