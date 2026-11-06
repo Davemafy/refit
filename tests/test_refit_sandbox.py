@@ -23,6 +23,10 @@ def fake_commands(results):
         if "--cidfile" in command:
             from pathlib import Path
             Path(command[command.index("--cidfile") + 1]).write_text("a" * 64)
+            mount = command[command.index("--mount") + 1]
+            payload = Path(mount.split("src=", 1)[1].split(",", 1)[0])
+            assert payload.stat().st_mode & 0o777 == 0o755
+            assert (payload / "program.py").stat().st_mode & 0o777 == 0o644
         response = next(sequence)
         if isinstance(response, Exception):
             raise response
@@ -51,6 +55,13 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertNotIn("--env-file", flags)
         self.assertNotIn("-e", flags)
         self.assertNotIn("--publish", flags)
+
+    def test_payload_readable_under_private_operator_umask(self):
+        previous = os.umask(0o077)
+        try:
+            self.test_successful_execution_records_cleanup()
+        finally:
+            os.umask(previous)
 
     def test_runtime_and_image_allowlist(self):
         self.assertEqual(DockerSandbox(runtime="runsc").runtime, "runsc")

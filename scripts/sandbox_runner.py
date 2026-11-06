@@ -144,6 +144,8 @@ class DockerSandbox:
         with tempfile.TemporaryDirectory(prefix="refit-sandbox-") as tmp:
             directory = Path(tmp) / "payload"
             directory.mkdir(mode=0o755)
+            # Explicit permissions survive the trusted operator's umask 077.
+            directory.chmod(0o755)
             source = directory / "program.py"
             source.write_bytes(body)
             source.chmod(0o644)

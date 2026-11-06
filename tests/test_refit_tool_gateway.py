@@ -55,6 +55,24 @@ class ToolWorkerProtocolTests(unittest.TestCase):
         self.assertEqual(lines[1]["events"][0]["tool"], name)
         self.assertEqual(lines[2]["closed"], True)
 
+    def test_staged_source_readable_under_private_operator_umask(self):
+        def inspect_launch(command, **kwargs):
+            mount = command[command.index("--mount") + 1]
+            source = Path(mount.split("src=", 1)[1].split(",", 1)[0])
+            self.assertEqual(source.stat().st_mode & 0o777, 0o755)
+            self.assertEqual((source / "scripts").stat().st_mode & 0o777, 0o755)
+            for name in SOURCE_FILES:
+                self.assertEqual((source / "scripts" / name).stat().st_mode & 0o777, 0o644)
+            raise RuntimeError("staging inspected")
+        previous = os.umask(0o077)
+        try:
+            with patch("scripts.sandbox_tool_gateway.shutil.which", return_value="/usr/bin/docker"), \
+                    patch("scripts.sandbox_tool_gateway.subprocess.Popen", side_effect=inspect_launch):
+                with self.assertRaisesRegex(RuntimeError, "staging inspected"):
+                    ToolSandboxEnvironment("refund", "train", 123, 0, [], runtime="runsc")
+        finally:
+            os.umask(previous)
+
     def test_refund_gateway_matches_trusted_oracle(self):
         self.simulate("refund")
 

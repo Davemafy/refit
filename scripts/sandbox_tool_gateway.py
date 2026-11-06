@@ -71,8 +71,10 @@ class ToolSandboxEnvironment:
         self.proc = None
         self.source_dir = Path(self.temp.name) / "source"
         self.source_dir.mkdir(mode=0o755)
+        self.source_dir.chmod(0o755)
         package_dir = self.source_dir / "scripts"
         package_dir.mkdir(mode=0o755)
+        package_dir.chmod(0o755)
         try:
             for file in SOURCE_FILES:
                 original = ROOT / "scripts" / file
