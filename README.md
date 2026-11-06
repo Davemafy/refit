@@ -81,11 +81,12 @@ The exact endpoint shapes, error codes and integration smoke tests are in
 [the authoritative frontend API contract](docs/api-contract.md).
 
 **Boundaries:** natural-language parsing is limited to the two built-in
-agents; external-agent imports and sandboxing the agents' business tools are
-**not** implemented. A separate optional path runs real model-generated
-migration diagnostics inside a disposable restricted Docker/gVisor worker.
-Live calls require explicit server flags and an operator token. The public UI
-must not claim the entire migration agent is sandboxed.
+agents; external-agent imports remain unsupported. Built-in refund and
+deployment tools now have an **opt-in isolated Docker/gVisor execution path**
+using one disposable worker per scenario. A separate path runs real
+Vultr-model-generated migration diagnostic Python in another worker.
+Live calls require explicit server flags and an operator token. Deployment
+on the actual Vultr VM has not yet been verified.
 
 ## Executing generated diagnostics safely
 
@@ -104,9 +105,13 @@ also run with ordinary Docker for comparison. See
 [Vultr-host installation and verification scripts](deploy/).
 
 **Deployment distinction:** GitHub runner containment tests do not establish
-that gVisor is installed on our Vultr VM. The existing refund/deployment
-business tool environments still execute in-process. No arbitrary agent-code
-uploads are exposed through the API.
+that gVisor is installed on our Vultr VM. When
+`REFIT_USE_TOOL_SANDBOX=1`, the shared migration engine routes real tool calls
+to ephemeral, networkless Docker workers. The original in-process mode remains
+for legacy experiments and offline tests. All model requests and compatibility
+patch approvals stay with the host. This bridge is verified by CI on GitHub's
+Docker runner but still needs deployment proof on Vultr. No arbitrary
+agent-code uploads are exposed through the API.
 
 ## Code
 
@@ -178,10 +183,12 @@ the actual returned model matches the requested model.
   Historical probes also tested a first-tool request, but the provider did
   not always honor it; it must not be mistaken for hard enforcement.
   Patches cannot edit the evaluator or protected business invariants.
-- Existing in-process SQLite business tools are **not** isolated.
-  The separate Docker/gVisor worker isolates only generated diagnostics;
-  it is not a comprehensive agent sandbox. Host-specific Vultr proof
-  and full-stack integration remain pending.
+- The historical business tool runs used in-process SQLite simulations.
+  An opt-in migration path now isolates the trusted built-in tool environments
+  in fresh, networkless Docker containers, validated against the original
+  stateful oracle in GitHub CI. Generated diagnostics have a separate isolated
+  execution path. This is not a universal external-agent sandbox. Host-specific
+  Vultr proof and full-stack integration remain pending.
 
 ## Remaining work
 
