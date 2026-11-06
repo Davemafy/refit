@@ -107,9 +107,17 @@ Do not label `compatible_on_sample` as a repaired failure.
 
 Events are **JSON polling**, not Server-Sent Events (SSE).
 While a live run runs, poll every 2–4 seconds with `after=last_seq`.
-The backend only emits verified lifecycle events (`queued`, `started`,
-`complete`, `failed`): it does **not** invent progress percentages or
-per-phase evaluations until the engine reports them.
+The backend emits durable lifecycle events (`queued`, `started`,
+`complete`, `failed`, `interrupted`) and **measured engine events**
+(`phase_started`, `phase_completed`, `repair_started`,
+`repair_generated`). A completed phase includes its actual
+`details.phase`, `details.model`, `details.passed`, `details.total`
+and `details.unsafe_attempts`. No synthetic percentages are sent.
+
+The service stores each live run and its entire event sequence atomically
+before executing paid requests. On restart it restores completed outcomes,
+cursor positions and daily quota. Incomplete runs become
+`execution_interrupted`: no automatic retry, no approved patch.
 When `terminal=true`, refresh `GET /api/runs/{id}`.
 
 `POST /api/runs` requires operator authorization:
@@ -128,6 +136,11 @@ Content-Type: application/json
 ```json
 {"id":"live-<opaque-id>","status":"queued","events_url":"/api/runs/live-<opaque-id>/events"}
 ```
+
+An alternate operator-only SSH workflow can execute a full live
+migration and publish its **terminal evidence** into the existing public
+read-only API, without enabling a privileged browser endpoint. See
+[the Vultr operator runbook](live-operator-run.md).
 
 Public live execution is **disabled by default**. It requires
 `REFIT_ENABLE_LIVE=1` **and** a non-empty `REFIT_RUN_TOKEN` set on the
