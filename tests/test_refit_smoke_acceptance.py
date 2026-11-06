@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 from http.server import ThreadingHTTPServer
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+import json
 from unittest import TestCase
 from unittest.mock import patch
 import copy
 import threading
 
-from scripts.api_service import DEFAULT_RECORDINGS, RunService
+from scripts.api_service import ALLOWED_MODELS, DEFAULT_RECORDINGS, RunService
 from scripts.refit_http import make_handler
-from scripts.smoke_public import assert_live_rejection, assert_release, verify
+from scripts.smoke_public import (
+    assert_live_rejection, assert_public_execution_locked, assert_release, verify,
+)
+from tests.test_refit_durability import HeldExecutor
 
 
 SHA = "e53feebd8f6d1d08595d23d3b0794aa814c60841"
@@ -87,6 +93,60 @@ class PublicAcceptanceTests(TestCase):
                 assert_release(invalid, SHA)
         with self.assertRaises(ValueError):
             assert_release({"revision": {"commit": SHA}}, "e53feebd")
+
+    def test_public_execution_lockdown_requires_explicit_false(self):
+        locked = {
+            "live_runs_enabled": False,
+            "sandbox": {"generated_python_diagnostics_enabled": False},
+        }
+        assert_public_execution_locked(locked)
+        for changed in (
+            {"live_runs_enabled": True},
+            {"live_runs_enabled": None},
+            {"live_runs_enabled": "false"},
+            {"sandbox": {"generated_python_diagnostics_enabled": True}},
+            {"sandbox": {}},
+        ):
+            caps = {"live_runs_enabled": locked["live_runs_enabled"],
+                    "sandbox": dict(locked["sandbox"])}
+            caps.update(changed)
+            with self.subTest(changed=changed), self.assertRaises(AssertionError):
+                assert_public_execution_locked(caps)
+
+    def test_public_smoke_rejects_enabled_service_and_anonymous_execution(self):
+        # Never make this request to production: a broken public auth gate
+        # could accidentally start a real billable migration.
+        executor = HeldExecutor()
+        service = RunService(recordings_dir=DEFAULT_RECORDINGS,
+                             live_enabled=True, run_token="test-private-token",
+                             executor=executor)
+        http = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(service))
+        thread = threading.Thread(target=http.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{http.server.server_address[1]}"
+            payload = json.dumps({
+                "domain": "refund", "source_model": ALLOWED_MODELS[0],
+                "target_model": ALLOWED_MODELS[1],
+            }).encode()
+            request = Request(base + "/api/runs", data=payload,
+                              headers={"Content-Type": "application/json"})
+            with self.assertRaises(HTTPError) as rejection:
+                urlopen(request, timeout=3)
+            self.assertEqual(rejection.exception.code, 401)
+            self.assertEqual(json.load(rejection.exception)["error"]["code"],
+                             "authentication_required")
+            self.assertEqual(executor.tasks, [])
+            self.assertFalse(any(r["mode"] == "live" for r in service.list_runs()))
+            with self.assertRaisesRegex(
+                AssertionError, "must not enable paid inference"
+            ):
+                verify(base)
+            self.assertEqual(executor.tasks, [])
+        finally:
+            http.shutdown()
+            http.server_close()
+            thread.join(timeout=3)
 
     def test_published_rejection_is_verified_from_observable_state(self):
         result = assert_live_rejection(
