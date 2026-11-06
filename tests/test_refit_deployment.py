@@ -65,6 +65,18 @@ class DeploymentTests(unittest.TestCase):
     def cases(self):
         return incident.make_cases(960314, "train")
 
+    def test_failed_source_preserves_private_diagnostic_receipts(self):
+        class Silent:
+            def complete(self, *args, **kwargs):
+                return {"role": "assistant", "content": "No tool call necessary"}
+        outcome = incident.run_live(Silent(), "source", "target", "repair", seed=614)
+        self.assertEqual(outcome["status"], "source_baseline_insufficient")
+        self.assertEqual(len(outcome["source_failure_evidence"]), 8)
+        failure = outcome["source_failure_evidence"][0]
+        self.assertIn("verdict", failure)
+        self.assertIn("trace", failure)
+        self.assertFalse(failure["passed"])
+
     def test_source_agent_satisfies_independent_oracle(self):
         evaluation = engine.evaluate(
             ScriptedResponder(), "source", incident.CONTRACT,
