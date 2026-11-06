@@ -106,7 +106,15 @@ def execute_stress(client, model: str, config: AgentConfig, scenario: StressScen
     error = None
     for turn in range(max_turns):
         try:
-            message = client.complete(model, messages, tool_schemas(config))
+            if config.force_initial_lookup and turn == 0:
+                # Request the required named tool from the model. The tool is
+                # still chosen/executed through the normal audited interface.
+                forced = {"type": "function", "function": {"name": "get_order"}}
+                message = client.complete(
+                    model, messages, tool_schemas(config), tool_choice=forced
+                )
+            else:
+                message = client.complete(model, messages, tool_schemas(config))
             calls = message.get("tool_calls") or []
             if not calls:
                 break
@@ -216,7 +224,17 @@ def discover_and_repair(client, source: str, targets: list[str], repair_model: s
         # Prefer changing the smallest possible part of the agent contract.
         # An initially promising partial repair can be refined with its own
         # newly observed training failures, without seeing validation/holdout.
-        variants = [
+        variants = []
+        if any(not item["lookup_verified"] for item in misses):
+            # A real observed regression was the model skipping get_order.
+            # The bounded repair contract may force that single declared tool
+            # as its initial call, rather than relying on prompt wording.
+            variants.append(("instructions_with_lookup_guard", AgentConfig(
+                instructions=patch.instructions,
+                lookup_tool_description=base.lookup_tool_description,
+                refund_tool_description=base.refund_tool_description,
+                force_initial_lookup=True)))
+        variants.extend([
             ("instructions_only", AgentConfig(
                 instructions=patch.instructions,
                 lookup_tool_description=base.lookup_tool_description,
@@ -225,7 +243,7 @@ def discover_and_repair(client, source: str, targets: list[str], repair_model: s
                 instructions=base.instructions,
                 lookup_tool_description=patch.lookup_tool_description,
                 refund_tool_description=patch.refund_tool_description)),
-        ]
+        ])
         record["repair_trials"] = []
         selected_patch = None
         for variant_name, variant in variants:
