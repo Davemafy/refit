@@ -87,6 +87,21 @@ class RefitHandler(BaseHTTPRequestHandler):
                     raise ApiProblem(422, "invalid_request", "Provide only a text field.")
                 from .api_service import interpret
                 return self._send(200, interpret(data["text"]))
+            diagnostic = re.fullmatch(
+                r"/api/runs/([a-z0-9-]+)/diagnose", path
+            )
+            if diagnostic:
+                data = self._json_body()
+                if data != {}:
+                    raise ApiProblem(
+                        422, "invalid_request",
+                        "Diagnostic action accepts only an empty JSON object."
+                    )
+                authorization = self.headers.get("Authorization", "")
+                bearer = authorization[len("Bearer "):] if authorization.startswith("Bearer ") else ""
+                return self._send(
+                    201, self.service.start_diagnostic(diagnostic.group(1), bearer)
+                )
             if path == "/api/runs":
                 data = self._json_body()
                 authorization = self.headers.get("Authorization", "")
