@@ -6,6 +6,20 @@ Refit finds and repairs tool-use regressions when migrating an AI agent to a
 different language model. It compares actual stateful outcomes, proposes
 bounded model-facing changes, and tests them against independent scenarios.
 
+## Developer entry point
+
+Use the [developer MVP guide](docs/developer-mvp.md) for the live migration CLI,
+patch application, fixed-patch verification, optional external agent runner,
+and the public evidence API. UI replacement is independent of these interfaces.
+
+The exported refund patch has now been applied through the original external
+τ-bench agent runner and tested on three predeclared fresh seeds: source 24/24,
+unchanged Muse 13/24, patched Muse 24/24, with zero unsafe attempts. The run also
+passed three original upstream task fixtures on both models and used 201 real
+Vultr inference requests. See [complete framework evidence](docs/framework-evidence-2026-11-06.md).
+The [public Vultr evidence API](http://80.240.30.92) passed an independent nine-route
+HTTP check; its public paid actions remain disabled.
+
 ## Run the working demo
 
 Refit includes a **zero-build evidence demo** at `/` and `/demo` using
@@ -235,8 +249,8 @@ the actual returned model matches the requested model.
 
 ## Remaining work
 
-1. Reproduce the measured improvement on multiple new seeds and paraphrased
-   tasks; quantify run-to-run variance.
+1. Broaden repeated evaluation to unseen workflow families and independently
+   operated customer agents, beyond the three-seed framework result above.
 2. Build the minimal judge-facing workflow and Vultr-hosted control plane.
 3. Verify gVisor containment and secret separation on the actual Vultr VM;
    the CI proof currently runs on GitHub-hosted machines.

@@ -1,0 +1,65 @@
+{
+  "status": "pass",
+  "origin": "http://80.240.30.92",
+  "records": {
+    "refund": {
+      "id": "recorded-refund-2026-11-06",
+      "source_passed": 8,
+      "target_passed": 6,
+      "repaired_holdout_passed": 8
+    },
+    "deployment": {
+      "id": "recorded-deployment-2026-11-06",
+      "status": "compatible_on_sample"
+    }
+  },
+  "live_runs_enabled": false,
+  "routes_checked": [
+    {
+      "route": "/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "route": "/api/health",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/capabilities",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-refund-2026-11-06",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-refund-2026-11-06/artifact",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-deployment-2026-11-06",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/interpret",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-refund-2026-11-06/events",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    }
+  ],
+  "no_paid_actions_triggered": true
+}
