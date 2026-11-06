@@ -1,0 +1,6 @@
+{
+  "run_live": true,
+  "purpose": "One bounded Vultr Serverless Inference response generating Python, executed in a disposable gVisor runsc sandbox and independently verified against archived refund migration evidence.",
+  "max_requests": 1,
+  "model": "deepseek-v4.1-flash-1017"
+}
