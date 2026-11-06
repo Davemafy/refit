@@ -11,3 +11,6 @@ refit-*-report.json
 .venv/
 .pytest_cache/
 .DS_Store
+
+# Local-only API migration reports and operator runtime state
+/var/
