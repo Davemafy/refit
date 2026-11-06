@@ -271,6 +271,93 @@ class RunService:
         self.executor.submit(self._execute, run_id)
         return {"id": run_id, "status": "queued", "events_url": f"/api/runs/{run_id}/events"}
 
+    def start_diagnostic(self, source_run_id: str, bearer: str) -> dict:
+        # Reuse actual archived migration evidence; never allow arbitrary
+        # uploaded code, custom repository URLs, or model selection.
+        if os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") != "1":
+            raise ApiProblem(503, "sandbox_disabled",
+                             "Live sandbox diagnostics are not enabled.")
+        if not self.live_enabled or not self.run_token:
+            raise ApiProblem(503, "live_disabled", "Live inference is disabled.")
+        if not hmac.compare_digest(bearer, self.run_token):
+            raise ApiProblem(401, "authentication_required",
+                             "Live diagnostics require an operator token.")
+        source = self.get_run(source_run_id)
+        if source.get("mode") != "recorded":
+            raise ApiProblem(422, "recorded_run_required",
+                             "This diagnostic accepts verified archived runs only.")
+        day = datetime.now(timezone.utc).date().isoformat()
+        with self.lock:
+            self.started_dates = [x for x in self.started_dates if x == day]
+            if self.active is not None:
+                raise ApiProblem(409, "run_in_progress", "Another live task is running.")
+            if len(self.started_dates) >= self.daily_limit:
+                raise ApiProblem(429, "daily_limit", "Daily live-run allowance reached.")
+            run_id = "diagnostic-" + secrets.token_hex(8)
+            self.runs[run_id] = {
+                "id": run_id, "mode": "live_diagnostic",
+                "domain": source["domain"], "source": source["source"],
+                "target": source["target"], "status": "queued",
+                "source_run_id": source_run_id, "created_at": timestamp(),
+                "report": None, "patch": None,
+                "execution_isolation": "generated_code_only",
+            }
+            self.events[run_id] = []
+            self._emit(run_id, "queued", "Sandbox diagnosis queued.")
+            self.active = run_id
+            self.started_dates.append(day)
+        self.executor.submit(self._execute_diagnostic, run_id, source)
+        return {
+            "id": run_id, "status": "queued",
+            "events_url": f"/api/runs/{run_id}/events",
+        }
+
+    def _execute_diagnostic(self, run_id: str, source: dict):
+        with self.lock:
+            self.runs[run_id]["status"] = "running"
+            self._emit(run_id, "started", "Vultr model generating a diagnostic program.")
+        try:
+            from .sandbox_diagnostics import generate_and_verify
+            from .sandbox_runner import DockerSandbox
+            client = VultrInference(
+                load_key(Path("/etc/refit/inference.env")), max_requests=1
+            )
+            runtime = os.getenv("REFIT_SANDBOX_RUNTIME", "runc")
+            diagnostic = generate_and_verify(
+                source, client, "deepseek-v4.1-flash-1017",
+                DockerSandbox(runtime=runtime),
+            )
+            with self.lock:
+                record = self.runs[run_id]
+                record["sandbox_diagnostic"] = diagnostic
+                record["model_requests"] = client.requests
+                record["status"] = (
+                    "diagnostic_verified" if diagnostic["verified"]
+                    else "diagnostic_failed"
+                )
+                record["finished_at"] = timestamp()
+                self._emit(
+                    run_id, "complete" if diagnostic["verified"] else "failed",
+                    "Isolated diagnostic verified against the host oracle."
+                    if diagnostic["verified"] else
+                    "Diagnostic or sandbox failed independent verification.",
+                )
+        except Exception as exc:
+            with self.lock:
+                record = self.runs[run_id]
+                record["status"] = "diagnostic_failed"
+                record["error"] = {
+                    "code": type(exc).__name__,
+                    "message": "Sandbox diagnostic failed; archived migration is unchanged.",
+                }
+                record["finished_at"] = timestamp()
+                self._emit(run_id, "failed", "Sandbox diagnostic could not finish.")
+        finally:
+            with self.lock:
+                self.active = None
+            if self.runs_dir:
+                self._persist(run_id)
+
     def _execute(self, run_id: str):
         with self.lock:
             record = self.runs[run_id]
