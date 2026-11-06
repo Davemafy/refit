@@ -1,8 +1,11 @@
 # Refit sandbox execution: operator runbook
 
-**Current security boundary:** Real model-generated Python executes in an isolated
-Docker container. The existing refund and deployment business tools still run
-in process. Do not claim the whole agent is sandboxed.
+**Current security boundary:** Real Vultr-model-generated Python runs in a
+disposable, isolated Docker container. A separate opt-in path now executes
+the **actual refund and deployment agent tool calls** in fresh Docker workers,
+while model requests and repair approvals remain on the host. Both paths are
+verified on GitHub runners; the Vultr VM has not yet been verified. This
+does not support running arbitrary external agents.
 
 ## How it works
 
@@ -66,7 +69,7 @@ server-side environment variables:
 
     REFIT_ENABLE_LIVE=1
     REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1
-    REFIT_SANDBOX_RUNTIME=runc
+    REFIT_SANDBOX_RUNTIME=runsc
     REFIT_RUN_TOKEN=<operator-held high-entropy token>
 
 An authorized operator sends:
@@ -86,8 +89,26 @@ The endpoint accepts NO user-supplied code, arbitrary agent modules, model IDs
 or repository URLs. Runs require an operator token, are concurrency-limited
 and consume at most one Vultr model request each.
 
-Full migrations also attach a sandbox_diagnostic when feature-enabled. This
-does not mean their business tool calls are isolated.
+Full migrations can also attach a sandbox_diagnostic when feature-enabled.
+To isolate the **built-in agent's actual tool calls** during a full migration,
+also set REFIT_USE_TOOL_SANDBOX=1. The server then creates one fresh,
+restricted Docker worker per replay scenario, sends tool calls as JSON over
+stdin/stdout, keeps the Vultr key and model client on the host and verifies
+worker container removal. The server fails closed if Docker or the selected
+runtime is unavailable. Do not treat an enabled flag as containment proof;
+inspect report.execution_boundary in the completed run.
+
+To test the actual worker protocol on a Docker-capable Linux host:
+
+    REFIT_TEST_DOCKER=1 python3 -m unittest tests.test_refit_tool_gateway -v
+
+This parity test runs the same real refund and deployment tool calls in
+Docker and compares their results against the original trusted in-process
+business oracles. It has passed in GitHub Actions but **still needs to run
+on the actual Vultr VM**.
+
+Use REFIT_SANDBOX_RUNTIME=runsc after installing and verifying gVisor.
+An explicit fallback to runc must be labeled as ordinary Docker isolation.
 
 
 ## Verified gVisor option (preferred)
