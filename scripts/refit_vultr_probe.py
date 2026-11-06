@@ -193,11 +193,14 @@ class VultrInference:
         self.requests = 0
         self.max_requests = max_requests
 
-    def complete(self, model: str, messages: list[dict], tools: list[dict] | None = None):
+    def complete(self, model: str, messages: list[dict], tools: list[dict] | None = None,
+                 max_tokens: int = 512):
         if self.requests >= self.max_requests:
             raise RuntimeError("live inference request budget exhausted")
+        if not 1 <= max_tokens <= 4096:
+            raise ValueError("max_tokens must be 1 to 4096")
         payload: dict[str, Any] = {"model": model, "messages": messages, "temperature": 0,
-                                   "max_tokens": 512}
+                                   "max_tokens": max_tokens}
         if tools:
             payload.update(tools=tools, tool_choice="auto")
         req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode(),
@@ -266,15 +269,37 @@ def repair_proposal(model_client: VultrInference, repair_model: str, config: Age
         "order IDs, amounts or customer IDs. Be concise, specific and generalize."
     )
     task = {"old_config": asdict(config), "failure_traces": failures[:4]}
-    msg = model_client.complete(repair_model, [
-        {"role": "system", "content": safety},
+    repair_messages = [
+        {"role": "system", "content": safety + (
+            " Emit only JSON without a code fence or explanatory preface. "
+            "Copy unaffected configuration fields verbatim. Diagnose the failure "
+            "traces, and fix only general tool-use behavior. Start with '{'."
+        )},
         {"role": "user", "content": json.dumps(task)},
-    ])
+    ]
+    if isinstance(model_client, VultrInference):
+        msg = model_client.complete(repair_model, repair_messages, max_tokens=2048)
+    else:
+        msg = model_client.complete(repair_model, repair_messages)
     raw = msg.get("content") or ""
-    found = re.search(r"\{.*\}", raw, re.S)
-    if not found:
-        raise ValueError("repair model failed to return JSON")
-    object_ = json.loads(found.group(0))
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError("repair response was empty; no JSON patch available")
+    # Extract the first complete JSON object rather than greedily consuming
+    # multiple objects from reasoning or markdown-fenced responses.
+    decoder = json.JSONDecoder()
+    object_ = None
+    for position, character in enumerate(raw):
+        if character != "{":
+            continue
+        try:
+            candidate, _ = decoder.raw_decode(raw[position:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict):
+            object_ = candidate
+            break
+    if object_ is None:
+        raise ValueError("repair model did not return a valid JSON object")
     if set(object_) != {"instructions", "lookup_tool_description", "refund_tool_description"}:
         raise ValueError("repair attempted to change an unsupported configuration field")
     if not all(isinstance(v, str) and 20 <= len(v) <= 5000 for v in object_.values()):
