@@ -80,6 +80,14 @@ All counts come from preserved real Vultr inference results against
 where available `model_requests`, `evidence_url`, `caveat`,
 `execution_isolation`.
 
+`GET /api/runs/{id}/artifact` → **full validated compatibility JSON**
+for a run with `verified_adaptation`. The backend checks the artifact
+integrity digest, target model, original configuration fingerprint, and
+protected business contract before serving it. Returns 404
+`artifact_not_found` for a run with no verified patch (e.g. a compatible
+deployment agent). Use this endpoint for the UI's **Export compatibility
+patch** action; never invent an export from the preview string.
+
 For a verified adaptation, display `report.source_training`,
 `report.target_training`, `report.trials`, `report.validation`,
 `report.original_holdout` and `report.repaired_holdout`.
