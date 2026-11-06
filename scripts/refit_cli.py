@@ -69,6 +69,7 @@ def main():
     )
     p.add_argument("--domain", choices=tuple(BUILTINS), default="refund")
     p.add_argument("--adapter", help="Locally trusted Python module implementing Refit's adapter protocol")
+    p.add_argument("--runner", choices=("native", "tau2"), default="native")
     p.add_argument("--source", default="deepseek-v4.1-flash-1017")
     p.add_argument("--target", default="muse-glimmer-30b")
     p.add_argument("--repair", default="deepseek-v4.1-flash-1017")
@@ -87,9 +88,13 @@ def main():
     adapter = resolve_adapter(args.domain, args.adapter)
     key = load_key(args.env_file)
     client = VultrInference(key, max_requests=args.max_requests)
+    runner = client
+    if args.runner == "tau2":
+        from .tau2_bridge import Tau2Client
+        runner = Tau2Client(client)
     seed = args.seed if args.seed is not None else secrets.randbelow(2147483647)
     try:
-        report = adapter.run_live(client, args.source, args.target, args.repair, seed)
+        report = adapter.run_live(runner, args.source, args.target, args.repair, seed)
     except Exception as exc:
         report = {"status": "execution_error", "error": f"{type(exc).__name__}: {str(exc)[:450]}"}
     patch_path = None
@@ -109,8 +114,13 @@ def main():
         "repair_model": args.repair,
         "seed": seed,
         "model_requests": client.requests,
+        "runner": args.runner,
         "report": report,
     }
+    if args.runner == "tau2":
+        from .tau2_bridge import TAU2_COMMIT
+        record["upstream_commit"] = TAU2_COMMIT
+        record["upstream_runner_steps"] = runner.runner_steps
     previous = os.umask(0o077)
     try:
         args.output.write_text(json.dumps(record, indent=2), encoding="utf8")

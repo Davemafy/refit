@@ -39,6 +39,18 @@ in the report. Separate fresh seeds still use known workflow families.
 
 ## Integration boundary
 
+To run the complete detect, propose, verify and export loop through this runner:
+
+```bash
+.venv-tau2/bin/python -m scripts.refit_cli --runner tau2 --domain refund \
+  --source deepseek-v4.1-flash-1017 --target muse-glimmer-30b \
+  --max-requests 400 --output refit-migration-report.json \
+  --export-patch refit-compatibility.json
+```
+
+This command makes real inference calls. A compatible target requires no patch;
+a failing target receives a patch only if independent gates verify improvement.
+
 `Tau2Client` registers tools with upstream `LLMAgent`, converts the conversation
 into upstream typed messages, and calls the original `generate_next_message`.
 The exported instructions populate its system configuration. A locked provider

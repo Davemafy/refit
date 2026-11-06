@@ -1,0 +1,30 @@
+name: Verify public Vultr service
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/public-smoke.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify real public API and downloadable repair evidence
+        run: python -m scripts.smoke_public --url http://80.240.30.92 --output /tmp/refit-public-smoke.json
+      - name: Preserve external observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-public-vultr-smoke
+          path: /tmp/refit-public-smoke.json
+          retention-days: 7
+          if-no-files-found: ignore
