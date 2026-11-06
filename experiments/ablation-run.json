@@ -1,0 +1,5 @@
+{
+  "run_live": false,
+  "purpose": "No billable calls until offline CI succeeds",
+  "request_budget": 160
+}
