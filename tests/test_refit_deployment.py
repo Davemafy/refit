@@ -94,6 +94,42 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(outcome["repaired_holdout"]["passed"], 8)
         self.assertEqual(outcome["selected_variant"], "instructions_only")
 
+    def test_clean_training_requires_independent_validation_and_holdout(self):
+        result = incident.run_live(
+            ScriptedResponder(), "source", "target", "repair", seed=118
+        )
+        self.assertEqual(result["status"], "compatible_on_sample")
+        self.assertEqual(result["source_training"]["passed"], 8)
+        self.assertEqual(result["target_training"]["passed"], 8)
+        self.assertEqual(result["validation"]["passed"], 8)
+        self.assertEqual(result["original_holdout"]["passed"], 8)
+        self.assertNotIn("accepted_patch", result)
+
+    def test_validation_failure_never_peeks_at_holdout(self):
+        class FailsOnlyOnValidation(ScriptedResponder):
+            def complete(self, model, messages, tools=None):
+                if tools is not None and model == "target" and (
+                    "TRAP_VALIDATION" in messages[1]["content"]
+                ):
+                    return {"role": "assistant", "content": "Cannot inspect."}
+                return super().complete(model, messages, tools)
+        scenario = incident.make_cases(774, "validation")[0]
+        marked = engine.ReplayCase(
+            scenario.name, scenario.request + " TRAP_VALIDATION",
+            scenario.environment,
+        )
+        def forbidden_holdout():
+            raise AssertionError("Holdout must remain sealed after failed validation")
+        outcome = engine.migrate(
+            FailsOnlyOnValidation(),
+            incident.CONTRACT, "source", "target", "repair",
+            engine.AgentProfile(incident.INSTRUCTIONS),
+            incident.make_cases(773, "train"),
+            lambda: [marked], forbidden_holdout,
+        )
+        self.assertEqual(outcome["status"], "candidate_failed_validation")
+        self.assertEqual(outcome["validation"]["passed"], 0)
+
     def test_unapproved_rollback_rejected_even_if_state_unchanged(self):
         case = next(x for x in self.cases() if x.name == "missing_approval")
         env = case.environment()
