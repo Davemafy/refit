@@ -89,6 +89,29 @@ class ToolWorkerProtocolTests(unittest.TestCase):
 @unittest.skipUnless(os.getenv("REFIT_TEST_DOCKER") == "1",
                      "requires opt-in and real Docker runtime")
 class LiveDockerToolTests(unittest.TestCase):
+    def test_full_repair_migration_uses_only_isolated_tool_workers(self):
+        # More than a Docker smoke test: the unmodified model must fail,
+        # the bounded repair must pass independent validation and holdout,
+        # and every stateful business tool operation must use a container.
+        from scripts.sandbox_tool_gateway import migrate_in_tool_sandboxes
+        from tests.test_refit_deployment import ScriptedResponder
+
+        result = migrate_in_tool_sandboxes(
+            ScriptedResponder(break_target=True),
+            "deployment", "source", "target", "repair",
+            seed=888, runtime="runc",
+        )
+        self.assertEqual(result["status"], "verified_adaptation")
+        self.assertEqual(result["source_training"]["passed"], 8)
+        self.assertLess(result["target_training"]["passed"], 8)
+        self.assertEqual(result["validation"]["passed"], 8)
+        self.assertEqual(result["repaired_holdout"]["passed"], 8)
+        boundary = result["execution_boundary"]
+        self.assertTrue(boundary["business_tools_isolated"])
+        self.assertTrue(boundary["all_containers_removed"])
+        self.assertGreater(boundary["worker_runs"], 32)
+        self.assertTrue(all(x["network"] == "none" for x in boundary["cases"]))
+
     def test_refund_and_deployment_run_inside_restricted_containers(self):
         for domain in ("refund", "deployment"):
             with self.subTest(domain=domain):
