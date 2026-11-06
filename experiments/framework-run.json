@@ -1,5 +1,5 @@
 {
-  "run_live": true,
+  "run_live": false,
   "seeds": [
     723001,
     723002,
@@ -7,5 +7,5 @@
   ],
   "max_requests": 400,
   "purpose": "Apply the existing exported refund patch through the unmodified tau2 LLMAgent runner on three predeclared fresh seeds.",
-  "reason": "Retry after fixing missing upstream fixture installation; previous attempt made no inference requests."
+  "reason": "Evaluation retry submitted; repeat inference disabled."
 }
