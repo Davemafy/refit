@@ -1,0 +1,5 @@
+{
+  "run_live": false,
+  "purpose": "Dry-run CI check for independent deployment-incident agent",
+  "model_request_cap": 160
+}
