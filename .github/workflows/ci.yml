@@ -20,6 +20,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Compile application and tests
         run: python -m compileall -q scripts tests
+      - name: Validate deploy scripts and zero-build demo JavaScript
+        run: |
+          bash -n deploy/install-gvisor.sh deploy/verify-gvisor-on-host.sh deploy/launch-public.sh
+          python - <<'PY'
+          import pathlib, re
+          html = pathlib.Path('web/demo/index.html').read_text()
+          parts = re.findall(r'<script>(.*?)</script>', html, flags=re.S)
+          assert len(parts) == 1
+          pathlib.Path('/tmp/refit-demo-script.js').write_text(parts[0])
+          PY
+          node --check /tmp/refit-demo-script.js
       - name: Run offline integration and safety tests
         run: python -m unittest discover -s tests -p 'test_refit*.py' -v
       - name: Smoke-test an actual running backend over HTTP
@@ -56,6 +67,7 @@ jobs:
           assert get("/api/capabilities")["sandbox"]["integrated"] is False
           print("HTTP backend startup, truthful evidence and interpretation: OK")
           PY
+          python -m scripts.smoke_public --url http://127.0.0.1:8097 --output /tmp/refit-http-smoke.json
 
 
   sandbox-containment:
