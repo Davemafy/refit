@@ -60,7 +60,7 @@ external agents, generate Python, or initiate inference. **Never automatically
 start a run in response to `/api/interpret`; the user must confirm first.**
 
 `GET /api/runs` → `{"runs":[...items]}`. Each item contains:
-`id`, `mode` (`recorded|live`), `domain`, `source`, `target`,
+`id`, `mode` (`recorded|live|live_diagnostic`), `domain`, `source`, `target`,
 `status`, `evidence_url` (optional), and `created_at` (optional).
 The two recorded run IDs are:
 
@@ -137,6 +137,42 @@ obtain it interactively without localStorage. Fixed agent adapters and
 approved model IDs only; arbitrary model IDs, uploaded code, and adapter
 paths are rejected. Global concurrency is 1 and a daily quota applies.
 The current live adapters still execute in process: **not isolated**.
+
+## Operator-only sandbox diagnostic
+
+POST /api/runs/{recorded_id}/diagnose (JSON body {}, Bearer operator token)
+returns 201 with a new diagnostic run ID and events URL.
+
+This endpoint is enabled only when REFIT_ENABLE_LIVE=1,
+REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1, REFIT_RUN_TOKEN is set,
+and the operator authenticates. It accepts no arbitrary Python, model IDs,
+adapter uploads or repository URLs. It costs at most one real Vultr inference
+request and uses the same daily quota and one-at-a-time global concurrency.
+
+The backend asks Vultr inference to produce Python that examines the archived
+migration evidence, executes it inside Docker, checks the program's JSON
+against a protected independent host oracle and returns execution evidence.
+
+Poll GET /api/runs/{id}/events?after=N, then GET /api/runs/{id}.
+New run mode: live_diagnostic. Terminal statuses: diagnostic_verified
+and diagnostic_failed. The response may contain sandbox_diagnostic with:
+generated_code, expected, observed, verified, validation_error, sandbox.
+Sandbox includes stdout, stderr, exit_code, ledger, ledger_valid, runtime,
+container_created, container_removed_verified and resource restrictions.
+
+The original archived migration remains unchanged. This feature isolates
+only the generated diagnostic program; built-in business tools still run
+in-process. Do not show this as isolation of the entire migrating agent.
+
+GET /api/capabilities provides sandbox.generated_python_diagnostics_enabled,
+sandbox.business_tools_isolated and sandbox.runtime. Use these values to
+avoid rendering unsupported controls.
+
+Security: Never embed the operator token in client source or localStorage.
+An authenticated operator can supply it interactively for the demo.
+
+See docs/sandbox-runtime.md for the exact VM commands, Docker policy,
+and the distinction between GitHub-runner proof and Vultr-VM proof.
 
 ## Error response contract
 
