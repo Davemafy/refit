@@ -1,13 +1,15 @@
 name: Verify public Vultr service
 
+# Read-only external acceptance on every main commit. The SHA below is
+# deliberately the deployed service release, not the latest source HEAD.
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/public-smoke.yml'
-      - 'scripts/smoke_public.py'
-      - 'tests/test_refit_smoke_acceptance.py'
   workflow_dispatch:
+
+concurrency:
+  group: public-vultr-acceptance-main
+  cancel-in-progress: true
 
 permissions:
   contents: read
