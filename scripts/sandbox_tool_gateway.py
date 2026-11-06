@@ -1,0 +1,258 @@
+"""Contain each existing Refit tool-using agent scenario in Docker.
+
+The host owns the model client and protected orchestration. Each tool call
+crosses a JSONL pipe to one disposable, networkless scenario worker. No
+Vultr credentials or user-supplied agent code enter the worker.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import secrets
+import selectors
+import shutil
+import subprocess
+import tempfile
+import time
+from typing import Any
+
+from .migration_engine import ReplayCase, migrate
+from . import refund_adapter, deployment_incident_probe
+
+
+ROOT = Path(__file__).resolve().parent.parent
+DOMAINS = {"refund": refund_adapter, "deployment": deployment_incident_probe}
+# Only audited Python modules are mounted. Never mount a workspace or .env.
+SOURCE_FILES = (
+    "sandbox_tool_worker.py", "refund_adapter.py",
+    "deployment_incident_probe.py", "migration_engine.py",
+    "refit_vultr_probe.py", "refit_stress_probe.py",
+)
+MAX_REQUEST = 32768
+MAX_RESPONSE = 131072
+REPLY_SECONDS = 8
+
+
+class ToolSandboxUnavailable(RuntimeError):
+    pass
+
+
+class ToolSandboxEnvironment:
+    def __init__(self, domain: str, phase: str, seed: int,
+                 case_index: int, records: list[dict],
+                 runtime: str = "runc", image: str = "python:3.11-alpine",
+                 docker: str = "docker"):
+        if domain not in DOMAINS or phase not in ("train", "validation", "holdout"):
+            raise ValueError("invalid scenario")
+        if runtime not in ("runc", "runsc"):
+            raise ValueError("invalid sandbox runtime")
+        if image != "python:3.11-alpine":
+            raise ValueError("unapproved sandbox image")
+        if not 0 <= seed < 2147483647 or not 0 <= case_index < 16:
+            raise ValueError("invalid seed or scenario index")
+        if not shutil.which(docker):
+            raise ToolSandboxUnavailable("Docker is not installed")
+        self.domain = domain
+        self.phase = phase
+        self.seed = seed
+        self.index = case_index
+        self.runtime = runtime
+        self.records = records
+        self.events = []
+        self.started = time.monotonic()
+        self.closed = False
+        self.container = "refit-tool-" + secrets.token_hex(10)
+        self.docker = docker
+        self.temp = tempfile.TemporaryDirectory(prefix="refit-tool-src-")
+        self.proc = None
+        self.source_dir = Path(self.temp.name) / "source"
+        self.source_dir.mkdir(mode=0o755)
+        package_dir = self.source_dir / "scripts"
+        package_dir.mkdir(mode=0o755)
+        try:
+            for file in SOURCE_FILES:
+                original = ROOT / "scripts" / file
+                destination = package_dir / file
+                shutil.copyfile(original, destination)
+                destination.chmod(0o644)
+            command = [
+                docker, "run", "--rm", "-i", "--name", self.container,
+                "--runtime", runtime, "--network", "none",
+                "--user", "65534:65534", "--read-only",
+                "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges:true",
+                "--pids-limit", "32", "--memory", "128m",
+                "--memory-swap", "128m", "--cpus", "0.5",
+                "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=16m",
+                "--log-driver", "none",
+                "--mount", (
+                    "type=bind,src=" + str(self.source_dir)
+                    + ",dst=/refit-source,readonly"
+                ),
+                "--workdir", "/tmp",
+                image, "python", "-I", "-S", "-B", "-u",
+                "/refit-source/scripts/sandbox_tool_worker.py",
+                "--domain", domain, "--phase", phase, "--seed", str(seed),
+                "--case-index", str(case_index),
+            ]
+            self.proc = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, bufsize=0,
+                env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+            )
+        except Exception:
+            self.temp.cleanup()
+            raise
+
+    def _exchange(self, command: dict) -> dict:
+        if self.closed or self.proc is None:
+            raise ToolSandboxUnavailable("sandbox is closed")
+        if time.monotonic() - self.started > 900:
+            raise ToolSandboxUnavailable("sandbox session exceeded deadline")
+        request = json.dumps(command, separators=(",", ":")).encode() + b"\n"
+        if len(request) > MAX_REQUEST:
+            raise ValueError("sandbox request exceeds budget")
+        if self.proc.poll() is not None:
+            raise ToolSandboxUnavailable("sandbox process exited unexpectedly")
+        try:
+            assert self.proc.stdin is not None
+            self.proc.stdin.write(request)
+            self.proc.stdin.flush()
+            assert self.proc.stdout is not None
+            with selectors.DefaultSelector() as selector:
+                selector.register(self.proc.stdout, selectors.EVENT_READ)
+                if not selector.select(REPLY_SECONDS):
+                    raise ToolSandboxUnavailable("sandbox tool response timed out")
+            response = self.proc.stdout.readline(MAX_RESPONSE + 1)
+            if not response or len(response) > MAX_RESPONSE:
+                raise ToolSandboxUnavailable("sandbox response missing or oversized")
+            result = json.loads(response)
+            if not isinstance(result, dict) or "error" in result:
+                raise ToolSandboxUnavailable("sandbox rejected the tool operation")
+            return result
+        except (OSError, ValueError, BrokenPipeError) as exc:
+            raise ToolSandboxUnavailable("sandbox tool transport failed") from exc
+
+    def call(self, name: str, arguments: Any) -> dict:
+        response = self._exchange({
+            "op": "call", "tool": name, "arguments": arguments
+        })
+        answer = response.get("result")
+        if not isinstance(answer, dict):
+            raise ToolSandboxUnavailable("invalid tool result from sandbox")
+        self.events.append({
+            "tool": name, "arguments": arguments, "result": answer,
+        })
+        return answer
+
+    def verify(self) -> dict:
+        try:
+            result = self._exchange({"op": "verify"})
+            verdict = result.get("verdict")
+            trace = result.get("events")
+            if not isinstance(verdict, dict) or not isinstance(trace, list):
+                raise ToolSandboxUnavailable("invalid sandbox verifier response")
+            self.events = trace
+            return verdict
+        except ToolSandboxUnavailable:
+            return {"passed": False, "unsafe_attempts": 0,
+                    "sandbox_error": "worker_unavailable"}
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            if self.proc is not None:
+                try:
+                    if self.proc.poll() is None:
+                        try:
+                            assert self.proc.stdin
+                            self.proc.stdin.write(b'{"op":"close"}\n')
+                            self.proc.stdin.flush()
+                        except (OSError, BrokenPipeError):
+                            pass
+                        self.proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self.proc.kill()
+                    self.proc.wait(timeout=2)
+                finally:
+                    if self.proc.stdin:
+                        self.proc.stdin.close()
+                    if self.proc.stdout:
+                        self.proc.stdout.close()
+            # Docker CLI death doesn't guarantee container death.
+            cleanup = subprocess.run(
+                [self.docker, "rm", "-f", self.container],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=8, check=False,
+            )
+            inspection = subprocess.run(
+                [self.docker, "container", "inspect", self.container],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=8, check=False,
+            )
+            gone = inspection.returncode != 0
+            self.records.append({
+                "domain": self.domain, "phase": self.phase,
+                "case_index": self.index, "runtime": self.runtime,
+                "network": "none", "read_only_root": True,
+                "container_absent": gone,
+                "duration_ms": round((time.monotonic() - self.started) * 1000),
+            })
+            if not gone:
+                raise ToolSandboxUnavailable("container cleanup not verified")
+        finally:
+            self.temp.cleanup()
+
+
+def sandbox_cases(domain: str, seed: int, phase: str, records: list[dict],
+                  runtime: str = "runc") -> list[ReplayCase]:
+    if domain not in DOMAINS:
+        raise ValueError("unknown domain")
+    known_cases = DOMAINS[domain].make_cases(seed, phase)
+    output = []
+    for index, original in enumerate(known_cases):
+        def factory(case_index=index):
+            return ToolSandboxEnvironment(
+                domain, phase, seed, case_index, records, runtime=runtime
+            )
+        output.append(ReplayCase(original.name, original.request, factory))
+    return output
+
+
+def migrate_in_tool_sandboxes(client, domain: str, source: str,
+                             target: str, repair_model: str, seed: int,
+                             runtime: str = "runc") -> dict:
+    """Full source/target/validation/holdout agent replay with isolated tools."""
+    if domain not in DOMAINS:
+        raise ValueError("unknown domain")
+    if runtime not in ("runc", "runsc"):
+        raise ValueError("unsupported runtime")
+    module = DOMAINS[domain]
+    records: list[dict] = []
+    result = migrate(
+        client, module.CONTRACT, source, target, repair_model,
+        module.BASE_PROFILE,
+        sandbox_cases(domain, seed, "train", records, runtime),
+        lambda: sandbox_cases(domain, seed + 109, "validation", records, runtime),
+        lambda: sandbox_cases(domain, seed + 919, "holdout", records, runtime),
+    )
+    result["execution_boundary"] = {
+        "type": "docker_tool_sandbox",
+        "runtime": runtime,
+        "business_tools_isolated": True,
+        "worker_runs": len(records),
+        "all_containers_removed": bool(records) and all(
+            x["container_absent"] for x in records
+        ),
+        "cases": records,
+        "note": (
+            "Model calls remain on host. Synthetic business tools and "
+            "their simulator verifier execute inside disposable containers. "
+            "Host controls accepted patch and business invariants."
+        ),
+    }
+    return result
