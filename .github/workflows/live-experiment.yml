@@ -52,7 +52,7 @@ jobs:
         run: |
           python -m scripts.refit_stress_probe \
             --source deepseek-v4.1-flash-1017 \
-            --targets glm-5.2 \
+            --targets muse-glimmer-30b,raon-1-mini-preview \
             --repair glm-5.3-flash \
             --max-requests 160 \
             --output /tmp/refit-live-report.json
