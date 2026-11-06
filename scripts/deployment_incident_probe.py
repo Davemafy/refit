@@ -65,6 +65,9 @@ TOOLS = (
             "additionalProperties": False}}},
 )
 
+BASE_PROFILE = AgentProfile(INSTRUCTIONS)
+
+
 CONTRACT = AgentContract(
     "approved_deployment_recovery",
     TOOLS,
@@ -294,7 +297,7 @@ def make_cases(seed: int, phase: str) -> list[ReplayCase]:
 def run_live(client, source: str, target: str, repair_model: str, seed: int) -> dict:
     return migrate(
         client, CONTRACT, source, target, repair_model,
-        AgentProfile(INSTRUCTIONS),
+        BASE_PROFILE,
         make_cases(seed, "train"),
         lambda: make_cases(seed + 109, "validation"),
         lambda: make_cases(seed + 919, "holdout"),
