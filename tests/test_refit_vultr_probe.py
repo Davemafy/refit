@@ -111,6 +111,25 @@ class TestRefitProtocol(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"unsupported"):
             refit.repair_proposal(Rogue(),"repair",refit.AgentConfig(),[])
 
+    def test_repair_accepts_fenced_json_and_prelude(self):
+        class Fenced:
+            def complete(self, *args, **kwargs):
+                config = refit.AgentConfig()
+                return {"content": "Proposed patch:\n```json\n" + json.dumps({
+                    "instructions": config.instructions + " Always verify order state.",
+                    "lookup_tool_description": config.lookup_tool_description,
+                    "refund_tool_description": config.refund_tool_description
+                }) + "\n```"}
+        result = refit.repair_proposal(Fenced(), "repair", refit.AgentConfig(), [])
+        self.assertIn("Always verify order state", result.instructions)
+
+    def test_empty_repair_response_fails_closed(self):
+        class Empty:
+            def complete(self, *args, **kwargs):
+                return {"content": None}
+        with self.assertRaisesRegex(ValueError, "empty"):
+            refit.repair_proposal(Empty(), "repair", refit.AgentConfig(), [])
+
     def test_missing_key_fails_closed(self):
         from pathlib import Path
         with patch.dict("os.environ",{},clear=True):
