@@ -1,6 +1,11 @@
 {
   "run_live": true,
-  "run_id": "live-2026-11-06-a",
-  "purpose": "Reproduce genuine GLM 5.2 vs DeepSeek V4.1 agent-tool regression and test a bounded Vultr model-generated repair",
-  "request_budget": 160
+  "run_id": "live-2026-11-06-b",
+  "purpose": "Compare additional Vultr model families after both original models passed all eight stateful cases",
+  "request_budget": 160,
+  "source": "deepseek-v4.1-flash-1017",
+  "targets": [
+    "muse-glimmer-30b",
+    "raon-1-mini-preview"
+  ]
 }
