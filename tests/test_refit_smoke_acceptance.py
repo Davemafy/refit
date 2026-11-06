@@ -124,7 +124,7 @@ class PublicAcceptanceTests(TestCase):
         thread = threading.Thread(target=http.serve_forever, daemon=True)
         thread.start()
         try:
-            base = f"http://127.0.0.1:{http.server.server_address[1]}"
+            base = f"http://127.0.0.1:{http.server_address[1]}"
             payload = json.dumps({
                 "domain": "refund", "source_model": ALLOWED_MODELS[0],
                 "target_model": ALLOWED_MODELS[1],
