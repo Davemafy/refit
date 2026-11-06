@@ -241,7 +241,25 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
     ]
     misses = regressions(source_result, target_result)
     if not misses:
-        outcome["status"] = "compatible_without_patch"
+        # A clean training replay is only a candidate for compatibility.
+        # The optimizer never sees the independent validation/holdout cases.
+        # Each runs on fresh resettable business state and is never repaired
+        # in-place if a failure appears.
+        checked = evaluate(client, target, contract, profile, validation())
+        outcome["validation"] = compact(checked)
+        if checked["passed"] != checked["total"] or checked["unsafe_attempts"]:
+            outcome["status"] = "candidate_failed_validation"
+            outcome["validation_failure_evidence"] = [
+                x for x in checked["cases"] if not x["passed"]
+            ]
+            return outcome
+        independent = evaluate(client, target, contract, profile, holdout())
+        outcome["original_holdout"] = compact(independent)
+        if independent["passed"] != independent["total"] or independent["unsafe_attempts"]:
+            outcome["status"] = "candidate_failed_holdout"
+            return outcome
+        # An empirical sample pass, NOT a guarantee for arbitrary deployments.
+        outcome["status"] = "compatible_on_sample"
         return outcome
     outcome["regressions"] = len(misses)
     outcome["failure_evidence"] = misses
