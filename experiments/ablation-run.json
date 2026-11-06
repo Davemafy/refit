@@ -1,6 +1,6 @@
 {
   "run_live": true,
-  "run_id": "2026-11-06-causal-ablation-1",
-  "purpose": "Ablate deterministic first-tool guard versus Vultr-generated instructions on fresh synthetic orders",
+  "run_id": "2026-11-06-causal-ablation-2",
+  "purpose": "Independent second seed assessing instruction rewrite vs lookup-guard causal contribution",
   "request_budget": 160
 }
