@@ -1,6 +1,8 @@
 {
-  "run_live": true,
+  "run_live": false,
   "purpose": "One bounded Vultr Serverless Inference response generating Python, executed in a disposable gVisor runsc sandbox and independently verified against archived refund migration evidence.",
   "max_requests": 1,
-  "model": "deepseek-v4.1-flash-1017"
+  "model": "deepseek-v4.1-flash-1017",
+  "last_verified_run": "https://github.com/Davemafy/refit/actions/runs/42227479472",
+  "note": "Live one-request gVisor test completed successfully; opt-in disabled to prevent repeat inference spending."
 }
