@@ -21,6 +21,7 @@ import re
 import secrets
 
 from .refit_vultr_probe import VultrInference, load_key
+from .compatibility_artifact import create_receipt, write_receipt
 
 BUILTINS = {
     "refund": "scripts.refund_adapter",
@@ -37,13 +38,15 @@ def resolve_adapter(domain: str, adapter_path: str | None):
         module = importlib.import_module(BUILTINS[domain])
     if not callable(getattr(module, "run_live", None)):
         raise ValueError("adapter must export callable run_live")
+    if getattr(module, "BASE_PROFILE", None) is None:
+        raise ValueError("adapter must export BASE_PROFILE")
     contract = getattr(module, "CONTRACT", None)
     if not getattr(contract, "name", None) or not callable(getattr(contract, "schemas", None)):
         raise ValueError("adapter must export a valid CONTRACT")
     return module
 
 
-def summarize(report: dict, requests: int, output: Path):
+def summarize(report: dict, requests: int, output: Path, patch_path: str | None = None):
     return {
         "status": report["status"],
         "contract": report.get("contract"),
@@ -56,6 +59,7 @@ def summarize(report: dict, requests: int, output: Path):
         "repaired_holdout": report.get("repaired_holdout"),
         "model_requests": requests,
         "report_path": str(output),
+        "compatibility_artifact": patch_path,
     }
 
 
@@ -72,6 +76,7 @@ def main():
     p.add_argument("--max-requests", type=int, default=160)
     p.add_argument("--env-file", type=Path, default=Path("/etc/refit/inference.env"))
     p.add_argument("--output", type=Path, default=Path("refit-migration-report.json"))
+    p.add_argument("--export-patch", type=Path, default=Path("refit-compatibility.json"))
     args = p.parse_args()
     if not 1 <= args.max_requests <= 200:
         p.error("--max-requests must be between 1 and 200")
@@ -87,6 +92,16 @@ def main():
         report = adapter.run_live(client, args.source, args.target, args.repair, seed)
     except Exception as exc:
         report = {"status": "execution_error", "error": f"{type(exc).__name__}: {str(exc)[:450]}"}
+    patch_path = None
+    if report.get("status") == "verified_adaptation":
+        # Export only a candidate that passed all the independent gates.
+        # The user must still review and explicitly roll it out.
+        receipt = create_receipt(
+            report, adapter.CONTRACT, adapter.BASE_PROFILE,
+            args.source, args.target
+        )
+        write_receipt(receipt, args.export_patch)
+        patch_path = str(args.export_patch)
     record = {
         "contract": adapter.CONTRACT.name,
         "source": args.source,
@@ -101,7 +116,7 @@ def main():
         args.output.write_text(json.dumps(record, indent=2), encoding="utf8")
     finally:
         os.umask(previous)
-    print(json.dumps(summarize(report, client.requests, args.output), indent=2))
+    print(json.dumps(summarize(report, client.requests, args.output, patch_path), indent=2))
 
 
 if __name__ == "__main__":
