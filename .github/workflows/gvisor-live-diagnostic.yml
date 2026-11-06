@@ -1,0 +1,78 @@
+name: Real Vultr Model + gVisor Diagnostic (opt-in)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/gvisor-diagnostic-run.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-gvisor-model-proof
+  cancel-in-progress: false
+
+jobs:
+  verified-generated-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Require opt-in and configured secret (no request otherwise)
+        id: gate
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          set -euo pipefail
+          enabled=$(python -c 'import json; print(json.load(open("experiments/gvisor-diagnostic-run.json")).get("run_live", False))')
+          if [ "$enabled" != "True" ] || [ -z "$VULTR_INFERENCE_API_KEY" ]; then
+            echo "Live generated-code probe skipped (not enabled or no secret)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Ready: exactly one permitted Vultr model request."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install signed gVisor Docker runtime
+        if: steps.gate.outputs.ready == 'true'
+        run: sudo bash deploy/install-gvisor.sh
+
+      - name: Generate real code with Vultr; execute in runsc and verify
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python -m scripts.sandbox_diagnostics \
+            --recorded refund \
+            --runtime runsc \
+            --model deepseek-v4.1-flash-1017 \
+            --output artifacts/real-vultr-generated-gvisor.json
+          python - <<'PY'
+          import json
+          with open('artifacts/real-vultr-generated-gvisor.json') as fp:
+              r = json.load(fp)
+          assert r['generator_model'] == 'deepseek-v4.1-flash-1017'
+          assert r['verified'] is True
+          assert r['sandbox']['runtime'] == 'runsc'
+          assert r['sandbox']['container_created']
+          assert r['sandbox']['container_removed_verified']
+          assert r['sandbox']['ledger_valid']
+          assert r['observed'] == r['expected']
+          print('Vultr-generated Python executed in gVisor; protected oracle agrees.')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: refit-live-vultr-gvisor-generated-diagnostic
+          path: artifacts/real-vultr-generated-gvisor.json
+          retention-days: 7
+          if-no-files-found: ignore
