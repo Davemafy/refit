@@ -1,0 +1,87 @@
+name: Refit live experiment (opt-in)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/live-run.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-live-experiment
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify offline tests before any model requests
+        run: python -m unittest discover -s tests -p 'test_refit*.py' -v
+
+      - name: Require explicit live consent and credential
+        id: gate
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          set -euo pipefail
+          enabled=$(python -c 'import json; print(str(json.load(open("experiments/live-run.json")).get("run_live", False)).lower())')
+          if [ "$enabled" != "true" ]; then
+            echo "No billable model calls: run_live is false."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$VULTR_INFERENCE_API_KEY" ]; then
+            echo "No billable model calls: repository inference secret is not configured."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Explicitly enabled live experiment; per-run request budget 160."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run bounded live migration experiment
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python -m scripts.refit_stress_probe \
+            --source deepseek-v4.1-flash-1017 \
+            --targets glm-5.2 \
+            --repair glm-5.3-flash \
+            --max-requests 160 \
+            --output /tmp/refit-live-report.json
+
+      - name: Publish redacted outcome
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          path="/tmp/refit-live-report.json"
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              if not os.path.exists(path):
+                  f.write("No live report generated. Offline tests may still have passed.\n")
+              else:
+                  data=json.load(open(path))
+                  result=data["report"]
+                  summary={
+                      "status": result["status"],
+                      "requests": data.get("requests"),
+                      "source": result.get("source_training"),
+                      "candidates": [
+                          {key: rec.get(key) for key in (
+                              "model","training","regressions_against_source",
+                              "status","repaired_training","validation",
+                              "original_holdout","repaired_holdout")}
+                          for rec in result.get("candidate_models",[])
+                      ],
+                  }
+                  f.write("## Real inference experiment\n\n")
+                  f.write("    "+json.dumps(summary,sort_keys=True)+"\n")
+                  print(json.dumps(summary))
+          PY
