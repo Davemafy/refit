@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/sandbox_runner.py'
+      - 'scripts/docker_cleanup.py'
+      - 'tests/test_refit_docker_cleanup.py'
       - 'tests/test_refit_sandbox.py'
       - 'scripts/sandbox_tool_gateway.py'
       - 'scripts/sandbox_tool_worker.py'

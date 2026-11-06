@@ -17,6 +17,19 @@ from scripts.sandbox_runner import (
 )
 
 
+def fake_commands(results):
+    sequence = iter(results)
+    def execute(command, **kwargs):
+        if "--cidfile" in command:
+            from pathlib import Path
+            Path(command[command.index("--cidfile") + 1]).write_text("a" * 64)
+        response = next(sequence)
+        if isinstance(response, Exception):
+            raise response
+        return response
+    return execute
+
+
 class SandboxPolicyTests(unittest.TestCase):
     def test_hardened_command_has_no_network_or_host_secret_mounts(self):
         from pathlib import Path
@@ -61,14 +74,18 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertTrue(verify_chain(records))
         self.assertFalse(verify_chain(list(reversed(records))))
 
+    @patch("scripts.sandbox_runner.secrets.token_hex", return_value="abc123")
     @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")
     @patch("scripts.sandbox_runner.subprocess.run")
-    def test_successful_execution_records_cleanup(self, run, which):
-        run.side_effect = [
+    def test_successful_execution_records_cleanup(self, run, which, token):
+        run.side_effect = fake_commands([
             subprocess.CompletedProcess(args=["docker"], returncode=0),
-            subprocess.CompletedProcess(args=["docker", "rm"], returncode=0),
-            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=1),
-        ]
+            subprocess.CompletedProcess(args=["docker", "rm"], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=1,
+                                        stdout="[]\n", stderr="Error: No such container: refit-abc123\n"),
+            subprocess.CompletedProcess(args=["docker", "info"], returncode=0,
+                                        stdout='"healthy-daemon"\n', stderr=""),
+        ])
         result = DockerSandbox().run("print(1)", {"answer": 1})
         self.assertEqual(result["status"], "passed")
         self.assertTrue(result["ledger_valid"])
@@ -79,14 +96,18 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertIn("--network", first)
         self.assertEqual(len(result["ledger"]), 3)
 
+    @patch("scripts.sandbox_runner.secrets.token_hex", return_value="abc123")
     @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")
     @patch("scripts.sandbox_runner.subprocess.run")
-    def test_timeout_still_forces_docker_removal(self, run, which):
-        run.side_effect = [
+    def test_timeout_still_forces_docker_removal(self, run, which, token):
+        run.side_effect = fake_commands([
             subprocess.TimeoutExpired(cmd="docker", timeout=2),
-            subprocess.CompletedProcess(args=["docker", "rm"], returncode=0),
-            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=1),
-        ]
+            subprocess.CompletedProcess(args=["docker", "rm"], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=1,
+                                        stdout="[]\n", stderr="Error: No such container: refit-abc123\n"),
+            subprocess.CompletedProcess(args=["docker", "info"], returncode=0,
+                                        stdout='"healthy-daemon"\n', stderr=""),
+        ])
         result = DockerSandbox(timeout_seconds=2).run("while True: pass")
         self.assertEqual(result["status"], "timeout")
         self.assertTrue(result["container_removed_verified"])
@@ -96,13 +117,15 @@ class SandboxPolicyTests(unittest.TestCase):
     @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")
     @patch("scripts.sandbox_runner.subprocess.run")
     def test_cleanup_failure_is_visible_not_hidden(self, run, which):
-        run.side_effect = [
+        run.side_effect = fake_commands([
             subprocess.CompletedProcess(args=["docker"], returncode=0),
-            subprocess.CompletedProcess(args=["docker", "rm"], returncode=1),
-            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=0),
-        ]
+            subprocess.CompletedProcess(args=["docker", "rm"], returncode=1, stdout="", stderr="permission denied"),
+            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=0, stdout="[{}]", stderr=""),
+            subprocess.CompletedProcess(args=["docker", "info"], returncode=0, stdout='"healthy-daemon"', stderr=""),
+        ])
         result = DockerSandbox().run("print(1)")
         self.assertFalse(result["container_removed_verified"])
+        self.assertEqual(result["status"], "cleanup_unverified")
         self.assertTrue(result["ledger_valid"])
 
     @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")

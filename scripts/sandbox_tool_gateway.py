@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from .migration_engine import ReplayCase, migrate
+from .docker_cleanup import remove_and_verify
 from . import refund_adapter, deployment_incident_probe
 
 
@@ -62,6 +63,8 @@ class ToolSandboxEnvironment:
         self.events = []
         self.started = time.monotonic()
         self.closed = False
+        self.cleanup_verified = False
+        self.docker_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
         self.container = "refit-tool-" + secrets.token_hex(10)
         self.docker = docker
         self.temp = tempfile.TemporaryDirectory(prefix="refit-tool-src-")
@@ -100,7 +103,7 @@ class ToolSandboxEnvironment:
                 command,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, bufsize=0,
-                env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+                env=self.docker_env,
             )
         except Exception:
             self.temp.cleanup()
@@ -191,48 +194,47 @@ class ToolSandboxEnvironment:
 
     def close(self) -> None:
         if self.closed:
+            if not self.cleanup_verified:
+                raise ToolSandboxUnavailable("container cleanup previously unverified")
             return
         self.closed = True
+        process_error = None
         try:
-            if self.proc is not None:
-                try:
-                    if self.proc.poll() is None:
-                        try:
-                            assert self.proc.stdin
-                            self.proc.stdin.write(b'{"op":"close"}\n')
-                            self.proc.stdin.flush()
-                        except (OSError, BrokenPipeError):
-                            pass
+            try:
+                if self.proc is not None:
+                    try:
+                        if self.proc.poll() is None:
+                            try:
+                                assert self.proc.stdin
+                                self.proc.stdin.write(b'{"op":"close"}\n')
+                                self.proc.stdin.flush()
+                            except (OSError, BrokenPipeError):
+                                pass
+                            self.proc.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        self.proc.kill()
                         self.proc.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self.proc.kill()
-                    self.proc.wait(timeout=2)
-                finally:
-                    if self.proc.stdin:
-                        self.proc.stdin.close()
-                    if self.proc.stdout:
-                        self.proc.stdout.close()
-            # Docker CLI death doesn't guarantee container death.
-            cleanup = subprocess.run(
-                [self.docker, "rm", "-f", self.container],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=8, check=False,
-            )
-            inspection = subprocess.run(
-                [self.docker, "container", "inspect", self.container],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=8, check=False,
-            )
-            gone = inspection.returncode != 0
+                    finally:
+                        if self.proc.stdin:
+                            self.proc.stdin.close()
+                        if self.proc.stdout:
+                            self.proc.stdout.close()
+            except (OSError, subprocess.SubprocessError) as exc:
+                process_error = type(exc).__name__
+            # Even a failed CLI shutdown must still attempt container removal.
+            cleanup = remove_and_verify(self.docker, self.container, env=self.docker_env)
+            self.cleanup_verified = cleanup["verified"] and process_error is None
             self.records.append({
                 "domain": self.domain, "phase": self.phase,
                 "case_index": self.index, "runtime": self.runtime,
                 "network": "none", "read_only_root": True,
-                "container_absent": gone,
+                "container_absent": self.cleanup_verified,
+                "cleanup_evidence": cleanup,
+                "process_cleanup_error": process_error,
                 "duration_ms": round((time.monotonic() - self.started) * 1000),
             })
-            if not gone:
-                raise ToolSandboxUnavailable("container cleanup not verified")
+            if not self.cleanup_verified:
+                raise ToolSandboxUnavailable("container cleanup not verified: " + cleanup["reason"])
         finally:
             self.temp.cleanup()
 

@@ -19,6 +19,8 @@ import tempfile
 import time
 from typing import Any
 
+from .docker_cleanup import remove_and_verify
+
 IMAGE = "python:3.11-alpine"
 MAX_CODE_BYTES = 20_000
 MAX_INPUT_BYTES = 65_536
@@ -125,6 +127,7 @@ class DockerSandbox:
         if not shutil.which("prlimit"):
             raise SandboxUnavailable("prlimit is required to cap host-side output")
         name = "refit-" + secrets.token_hex(10)
+        docker_env = os.environ.copy()
         started = time.monotonic()
         policy = {
             "runtime": self.runtime, "image": self.image,
@@ -163,7 +166,7 @@ class DockerSandbox:
                 try:
                     proc = subprocess.run(
                         command, stdout=stdout, stderr=stderr,
-                        timeout=self.timeout_seconds, check=False,
+                        timeout=self.timeout_seconds, check=False, env=docker_env,
                     )
                     exit_code = proc.returncode
                 except subprocess.TimeoutExpired:
@@ -172,29 +175,21 @@ class DockerSandbox:
                     startup_error = type(exc).__name__
                 # A timed-out Docker CLI may leave an active container. Kill
                 # it by a random fixed name. Never rely on --rm alone.
-                cleanup = subprocess.run(
-                    [self.docker, "rm", "-f", name],
-                    capture_output=True, timeout=8, check=False,
-                )
-                inspect = subprocess.run(
-                    [self.docker, "container", "inspect", name],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=8, check=False,
-                )
-                # This check proves absence at inspection time. It does not
-                # prove anything about containers with *different* names.
-                removed = inspect.returncode != 0
+                cleanup = remove_and_verify(self.docker, name, env=docker_env)
+                removed = cleanup["verified"]
                 stdout.seek(0)
                 stderr.seek(0)
                 out = stdout.read(OUTPUT_LIMIT)
                 err = stderr.read(OUTPUT_LIMIT)
-            container_created = (
-                (cidfile.is_file() and bool(cidfile.read_text().strip()))
-                or (exit_code is not None and exit_code not in (125, 126, 127))
-            )
+            try:
+                container_id = cidfile.read_text(encoding="ascii").strip()
+            except (OSError, UnicodeError):
+                container_id = ""
+            container_created = bool(re.fullmatch(r"[a-f0-9]{64}", container_id))
             duration_ms = round((time.monotonic() - started) * 1000)
         events.append({
             "type": "execution_observed", "container_created": container_created,
+            "container_id": container_id if container_created else None,
             "exit_code": exit_code, "timed_out": timed_out,
             "startup_error": startup_error,
             "stdout_sha256": _sha(out), "stderr_sha256": _sha(err),
@@ -202,10 +197,12 @@ class DockerSandbox:
         })
         events.append({
             "type": "cleanup_checked", "container_absent": removed,
-            "cleanup_exit_code": cleanup.returncode,
+            "cleanup_exit_code": cleanup["removal"]["returncode"],
+            "evidence": cleanup,
         })
         ledger = chain_events(events)
         status = (
+            "cleanup_unverified" if not removed else
             "timeout" if timed_out else
             "runtime_error" if startup_error or not container_created else
             "passed" if exit_code == 0 else "execution_failed"
@@ -219,7 +216,9 @@ class DockerSandbox:
             "stderr": err.decode("utf8", errors="replace"),
             "code_sha256": _sha(body), "input_sha256": _sha(data),
             "container_created": container_created,
+            "container_id": container_id if container_created else None,
             "container_removed_verified": removed,
+            "cleanup_evidence": cleanup,
             "ledger": ledger, "ledger_valid": verify_chain(ledger),
             "warning": (
                 "Container isolation is not a separate-kernel security boundary."
