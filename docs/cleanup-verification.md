@@ -26,6 +26,13 @@ Tool workers record the same cleanup evidence. A failure raises and blocks
 migration approval; repeated `close()` cannot silently clear that failure.
 Even a failed host-side process shutdown still attempts container removal.
 
+Tool exchanges have one eight-second deadline covering request writes and the
+entire newline-terminated reply. Nonblocking pipe I/O prevents a partial line,
+continuous byte trickle, or a worker that stops reading from holding the
+operator indefinitely. The same deadline is capped by the session lifetime.
+Transport failure follows the existing worker cleanup path; it cannot approve
+a migration.
+
 ## Verify on the actual Vultr host
 
 From the existing authorized host session, use the current `main` checkout:

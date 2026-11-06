@@ -56,6 +56,13 @@ validator also checked nonempty phases, case counts, scores, request totals,
 patch identity and expected seed. Safe/hostile probe ledger and code hashes
 were independently recomputed.
 
+`tests/test_refit_host_evidence.py` runs in ordinary CI discovery on Python
+3.11 and 3.12 without Docker, network access, or inference. It checks pinned
+raw-report and wrapper hashes, every archived file hash, the unchanged patch,
+nonempty paired cases, reconciled scores and request totals, all 24 worker
+cleanup receipts, and the safe/hostile probe ledgers. These checks validate the
+preserved records; they do not turn those records into signed host attestation.
+
 Reproduce the report validation offline from this checkout:
 
 ```python

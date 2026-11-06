@@ -123,16 +123,48 @@ class ToolSandboxEnvironment:
             raise ToolSandboxUnavailable("sandbox process exited unexpectedly")
         try:
             assert self.proc.stdin is not None
-            self.proc.stdin.write(request)
-            self.proc.stdin.flush()
             assert self.proc.stdout is not None
+            # Own the unbuffered pipes and bound the complete exchange. A
+            # readable prefix is not a complete JSONL reply; readline() could
+            # otherwise block forever after the selector's first notification.
+            os.set_blocking(self.proc.stdin.fileno(), False)
+            os.set_blocking(self.proc.stdout.fileno(), False)
+            deadline = min(time.monotonic() + REPLY_SECONDS, self.started + 900)
             with selectors.DefaultSelector() as selector:
+                selector.register(self.proc.stdin, selectors.EVENT_WRITE)
+                sent = 0
+                while sent < len(request):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not selector.select(remaining):
+                        raise ToolSandboxUnavailable("sandbox tool response timed out")
+                    try:
+                        written = os.write(self.proc.stdin.fileno(), request[sent:])
+                    except BlockingIOError:
+                        continue
+                    if written <= 0:
+                        raise ToolSandboxUnavailable("sandbox request pipe closed")
+                    sent += written
+                selector.unregister(self.proc.stdin)
                 selector.register(self.proc.stdout, selectors.EVENT_READ)
-                if not selector.select(REPLY_SECONDS):
-                    raise ToolSandboxUnavailable("sandbox tool response timed out")
-            response = self.proc.stdout.readline(MAX_RESPONSE + 1)
-            if not response or len(response) > MAX_RESPONSE:
-                raise ToolSandboxUnavailable("sandbox response missing or oversized")
+                response = bytearray()
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not selector.select(remaining):
+                        raise ToolSandboxUnavailable("sandbox tool response timed out")
+                    try:
+                        chunk = os.read(self.proc.stdout.fileno(),
+                                        min(4096, MAX_RESPONSE + 1 - len(response)))
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        raise ToolSandboxUnavailable("sandbox response missing or incomplete")
+                    response.extend(chunk)
+                    if len(response) > MAX_RESPONSE:
+                        raise ToolSandboxUnavailable("sandbox response oversized")
+                    if b"\n" in response:
+                        if response.index(b"\n") != len(response) - 1:
+                            raise ToolSandboxUnavailable("unexpected sandbox response framing")
+                        break
             result = json.loads(response)
             if not isinstance(result, dict) or "error" in result:
                 raise ToolSandboxUnavailable("sandbox rejected the tool operation")
