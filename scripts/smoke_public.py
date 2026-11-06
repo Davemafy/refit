@@ -51,6 +51,39 @@ def assert_live_rejection(run: dict, artifact_status: int, artifact: dict,
     assert boundary.get("all_containers_removed") is True, "Worker cleanup is not confirmed"
     worker_runs = boundary.get("worker_runs")
     assert type(worker_runs) is int and worker_runs > 0, "No completed isolated worker runs"
+    receipts = boundary.get("cases")
+    assert isinstance(receipts, list) and len(receipts) == worker_runs, (
+        "Missing or incomplete per-worker containment receipts"
+    )
+    containers = set()
+    daemons = set()
+    for receipt in receipts:
+        assert isinstance(receipt, dict), "Malformed containment receipt"
+        assert receipt.get("runtime") == "runsc", "Worker used a different runtime"
+        assert receipt.get("network") == "none", "Worker network restriction not recorded"
+        assert receipt.get("read_only_root") is True, "Worker root filesystem was not read-only"
+        assert receipt.get("container_absent") is True, "A worker may remain on the host"
+        assert receipt.get("process_cleanup_error") is None, "Worker process cleanup failed"
+        cleanup = receipt.get("cleanup_evidence") or {}
+        assert cleanup.get("verified") is True and cleanup.get("reason") == "verified_absent", (
+            "Worker cleanup lacks an explicit verified-absence receipt"
+        )
+        name = cleanup.get("container_name")
+        daemon = cleanup.get("daemon_id")
+        assert isinstance(name, str) and name.startswith("refit-"), (
+            "Cleanup receipt is not for a Refit-owned container"
+        )
+        assert isinstance(daemon, str) and daemon, "Cleanup receipt lacks daemon identity"
+        assert (cleanup.get("inspection") or {}).get("returncode") == 1, (
+            "Missing-container inspection evidence is incomplete"
+        )
+        assert (cleanup.get("daemon_health") or {}).get("returncode") == 0, (
+            "Docker daemon health was not independently recorded"
+        )
+        assert name not in containers, "Duplicate container cleanup receipt"
+        containers.add(name)
+        daemons.add(daemon)
+    assert len(daemons) == 1, "Containment receipts came from multiple Docker daemons"
     assert run.get("execution_isolation") == "docker_tool_sandbox_verified_cleanup", (
         "Published run is missing its isolation verdict"
     )
