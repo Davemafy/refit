@@ -130,6 +130,31 @@ Its reviewable JSON includes:
 approved business contract or original configuration differs. No production
 agent is silently switched or rolled back.
 
+## Verified export from the real live result
+
+[Offline GitHub Actions export run #42208894380](https://github.com/Davemafy/refit/actions/runs/42208894380)
+retrieved the archived *actual* live refund migration report from run
+#42207396750 and used `create_receipt` followed by `validate_and_load`
+to generate and check a versioned compatibility artifact.
+
+- Artifact format: `refit.compatibility.v1`
+- Contract: `conditional_customer_refunds`
+- Source: `deepseek-v4.1-flash-1017`
+- Target: `muse-glimmer-30b`
+- Accepted adaptation type: `instructions_only`
+- Integrity checksum:
+  `sha256:19cb9d6f15d45dd114ff384e00b0324d5506f74dcf83276f17033e2bc8f1943b`
+- New inference calls for export: **0**
+
+The artifact contains target instructions, the approved protected-contract
+fingerprint, the original configuration fingerprint and measured evaluation
+scores. It contains no API key or executable program.
+
+A checksum is not proof of authorship. Developers must still review changes
+and explicitly integrate/roll out the configuration. The JSON represents
+a **verified configuration proposal**, not an automatically updated live
+customer agent.
+
 ## Remaining proof obligations
 
 1. Support an actual external agent framework adapter, not only built-in
