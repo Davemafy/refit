@@ -50,9 +50,10 @@ jobs:
         env:
           VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
         run: |
-          python -m scripts.refit_stress_probe \
+          python -m scripts.refit_cli \
+            --domain refund \
             --source deepseek-v4.1-flash-1017 \
-            --targets muse-glimmer-30b \
+            --target muse-glimmer-30b \
             --repair deepseek-v4.1-flash-1017 \
             --max-requests 160 \
             --output /tmp/refit-live-report.json
@@ -80,15 +81,15 @@ jobs:
                   result=data["report"]
                   summary={
                       "status": result["status"],
-                      "requests": data.get("requests"),
+                      "contract": data.get("contract"),
+                      "model_requests": data.get("model_requests"),
                       "source": result.get("source_training"),
-                      "candidates": [
-                          {key: rec.get(key) for key in (
-                              "model","training","regressions_against_source",
-                              "status","error","repaired_training","validation",
-                              "original_holdout","repaired_holdout")}
-                          for rec in result.get("candidate_models",[])
-                      ],
+                      "target": result.get("target_training"),
+                      "regressions": result.get("regressions"),
+                      "trials": result.get("trials"),
+                      "validation": result.get("validation"),
+                      "original_holdout": result.get("original_holdout"),
+                      "repaired_holdout": result.get("repaired_holdout"),
                   }
                   f.write("## Real inference experiment\n\n")
                   f.write("    "+json.dumps(summary,sort_keys=True)+"\n")
