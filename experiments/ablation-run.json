@@ -1,6 +1,9 @@
 {
-  "run_live": true,
-  "run_id": "2026-11-06-causal-ablation-2",
-  "purpose": "Independent second seed assessing instruction rewrite vs lookup-guard causal contribution",
+  "run_live": false,
+  "latest_experiments": [
+    "https://github.com/Davemafy/refit/actions/runs/42196501466",
+    "https://github.com/Davemafy/refit/actions/runs/42197001725"
+  ],
+  "reason": "Two controlled causal ablations completed, opt-in disabled to prevent unintended inference spending",
   "request_budget": 160
 }
