@@ -212,7 +212,8 @@ def propose_patch(client, model: str, contract: AgentContract, current: AgentPro
 def migrate(client, contract: AgentContract, source: str, target: str, repair_model: str,
             profile: AgentProfile, train: list[ReplayCase],
             validation: Callable[[], list[ReplayCase]],
-            holdout: Callable[[], list[ReplayCase]]) -> dict:
+            holdout: Callable[[], list[ReplayCase]],
+            progress: Callable[[str, dict], None] | None = None) -> dict:
     """Exactly one repair proposal and bounded variants, then untouched holdout.
 
     This is *not* a population reliability proof. The customer supplies the
@@ -224,7 +225,21 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
         raise ValueError("training cannot be empty")
     outcome = {"contract": contract.name, "source": source, "target": target,
                "repair_model": repair_model}
-    source_result = evaluate(client, source, contract, profile, train)
+
+    def measured(phase: str, model: str, candidate: AgentProfile,
+                 cases: list[ReplayCase]) -> dict:
+        if progress:
+            progress("phase_started", {"phase": phase, "model": model})
+        result = evaluate(client, model, contract, candidate, cases)
+        if progress:
+            progress("phase_completed", {
+                "phase": phase, "model": model,
+                "passed": result["passed"], "total": result["total"],
+                "unsafe_attempts": result["unsafe_attempts"],
+            })
+        return result
+
+    source_result = measured("source_training", source, profile, train)
     outcome["source_training"] = compact(source_result)
     # A score without a synthetic trace is not diagnosable. Preserve rejected
     # tool calls and exact verifier failures in the private run artifact.
@@ -234,7 +249,7 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
     if source_result["passed"] != source_result["total"] or source_result["unsafe_attempts"]:
         outcome["status"] = "source_baseline_insufficient"
         return outcome
-    target_result = evaluate(client, target, contract, profile, train)
+    target_result = measured("target_training", target, profile, train)
     outcome["target_training"] = compact(target_result)
     outcome["target_failure_evidence"] = [
         x for x in target_result["cases"] if not x["passed"]
@@ -245,7 +260,7 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
         # The optimizer never sees the independent validation/holdout cases.
         # Each runs on fresh resettable business state and is never repaired
         # in-place if a failure appears.
-        checked = evaluate(client, target, contract, profile, validation())
+        checked = measured("validation", target, profile, validation())
         outcome["validation"] = compact(checked)
         if checked["passed"] != checked["total"] or checked["unsafe_attempts"]:
             outcome["status"] = "candidate_failed_validation"
@@ -253,7 +268,7 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
                 x for x in checked["cases"] if not x["passed"]
             ]
             return outcome
-        independent = evaluate(client, target, contract, profile, holdout())
+        independent = measured("original_holdout", target, profile, holdout())
         outcome["original_holdout"] = compact(independent)
         if independent["passed"] != independent["total"] or independent["unsafe_attempts"]:
             outcome["status"] = "candidate_failed_holdout"
@@ -263,6 +278,8 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
         return outcome
     outcome["regressions"] = len(misses)
     outcome["failure_evidence"] = misses
+    if progress:
+        progress("repair_started", {"repair_model": repair_model})
     try:
         proposed = propose_patch(client, repair_model, contract, profile, misses)
     except Exception as exc:
@@ -273,6 +290,8 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
         "instructions": proposed.instructions,
         "tool_descriptions": dict(proposed.tool_descriptions),
     }
+    if progress:
+        progress("repair_generated", {"candidate_variants": 3})
     variants = [
         ("instructions_only", replace(profile, instructions=proposed.instructions)),
         ("descriptions_only", replace(profile, tool_descriptions=proposed.tool_descriptions)),
@@ -283,7 +302,7 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
     for name, candidate in variants:
         if candidate == profile:
             continue
-        result = evaluate(client, target, contract, candidate, train)
+        result = measured("trial_" + name, target, candidate, train)
         outcome["trials"].append({"type": name, "result": compact(result)})
         if result["passed"] == result["total"] and result["unsafe_attempts"] == 0:
             selected = (name, candidate)
@@ -292,14 +311,14 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
         outcome["status"] = "repair_rejected_training"
         return outcome
     outcome["selected_variant"] = selected[0]
-    checked = evaluate(client, target, contract, selected[1], validation())
+    checked = measured("validation", target, selected[1], validation())
     outcome["validation"] = compact(checked)
     if checked["passed"] != checked["total"] or checked["unsafe_attempts"] != 0:
         outcome["status"] = "repair_rejected_validation"
         return outcome
     cases = holdout()
-    original = evaluate(client, target, contract, profile, cases)
-    repaired = evaluate(client, target, contract, selected[1], cases)
+    original = measured("original_holdout", target, profile, cases)
+    repaired = measured("repaired_holdout", target, selected[1], cases)
     outcome["original_holdout"] = compact(original)
     outcome["repaired_holdout"] = compact(repaired)
     if (repaired["passed"] == repaired["total"] and repaired["unsafe_attempts"] == 0
