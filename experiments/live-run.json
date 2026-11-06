@@ -1,7 +1,6 @@
 {
-  "run_live": false,
-  "last_successful_live_run": "https://github.com/Davemafy/refit/actions/runs/42193722623",
-  "last_result": "verified_repair",
-  "note": "Explicitly disabled after the verified experiment to prevent accidental billable reruns",
+  "run_live": true,
+  "run_id": "shared-engine-refund-01",
+  "purpose": "Independently execute the domain-generic Refit CLI against real Vultr models using refund adapter",
   "request_budget": 160
 }
