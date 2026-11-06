@@ -25,6 +25,10 @@ The run used 129 inference requests and the execution report says
 `verified_repair`. See [the successful GitHub Actions run](https://github.com/Davemafy/refit/actions/runs/42193722623)
 and [methodology, earlier failures and limitations](docs/live-evidence-2026-11-06.md).
 
+For the engineering rationale, repair operators, verification limits and
+next cross-domain falsification test, read the
+[core thesis and proof plan](docs/core-thesis-and-proof-plan.md).
+
 The accepted adaptation combined an **AI-generated instruction rewrite** with
 an evidence-triggered runtime guard requiring the target model to call
 `get_order` first. The independent SQLite gateway and verifier did not change.
