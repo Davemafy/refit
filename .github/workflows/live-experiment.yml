@@ -56,14 +56,17 @@ jobs:
             --target muse-glimmer-30b \
             --repair deepseek-v4.1-flash-1017 \
             --max-requests 160 \
-            --output /tmp/refit-live-report.json
+            --output /tmp/refit-live-report.json \
+            --export-patch /tmp/refit-compatibility.json
 
       - name: Retain synthetic replay evidence for debugging
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: refit-synthetic-live-report
-          path: /tmp/refit-live-report.json
+          path: |
+            /tmp/refit-live-report.json
+            /tmp/refit-compatibility.json
           if-no-files-found: ignore
           retention-days: 3
 
