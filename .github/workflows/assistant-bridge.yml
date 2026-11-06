@@ -52,9 +52,39 @@ jobs:
           PY
           cd web/assistant-bridge
           REFIT_PUBLIC_URL=http://127.0.0.1:8097 npm test
+      - name: Launch real React app and test user messages in Chromium
+        run: |
+          set -euo pipefail
+          cd web/assistant-bridge
+          npx playwright install --with-deps chromium-headless-shell
+          cd ../..
+          python -m scripts.refit_http --host 127.0.0.1 --port 8097 --runs-dir /tmp/refit-bridge-browser-runs > /tmp/refit-bridge-browser-api.log 2>&1 &
+          api_pid=$!
+          cd web/assistant-bridge
+          npm run dev -- --host 127.0.0.1 --port 3007 > /tmp/refit-bridge-vite.log 2>&1 &
+          ui_pid=$!
+          trap 'kill "$api_pid" "$ui_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time
+          from urllib.request import urlopen
+          for endpoint in ("http://127.0.0.1:8097/api/health", "http://127.0.0.1:3007/"):
+              for _ in range(80):
+                  try:
+                      with urlopen(endpoint, timeout=2) as response:
+                          assert response.status == 200
+                      break
+                  except OSError:
+                      time.sleep(.2)
+              else:
+                  raise RuntimeError("UI or API failed to start: " + endpoint)
+          PY
+          timeout 75s node tests/browser-smoke.mjs
+
       - name: Upload compiled assistant-ui bridge for deployment
         uses: actions/upload-artifact@v4
         with:
           name: refit-assistant-ui-bridge
-          path: web/assistant-bridge/dist/
+          path: |
+            web/assistant-bridge/dist/
+            /tmp/refit-assistant-bridge-*.png
           retention-days: 7
