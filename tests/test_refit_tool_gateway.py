@@ -80,6 +80,50 @@ class ToolWorkerProtocolTests(unittest.TestCase):
                 [(x.name, x.request) for x in orig],
             )
 
+    def test_host_independently_verifies_sandbox_trace(self):
+        # No Docker needed: the host oracle must reconstruct each authorized
+        # state transition, not trust the worker-supplied success flag.
+        case = DOMAINS["refund"].make_cases(123, "train")[0]
+        reference = case.environment()
+        try:
+            reference.call("get_order", {
+                "order_id": reference.scenario.case.order_id
+            })
+            trace = json.loads(json.dumps(reference.events))
+            verdict = json.loads(json.dumps(reference.verify()))
+        finally:
+            reference.close()
+        session = object.__new__(ToolSandboxEnvironment)
+        session.domain = "refund"
+        session.phase = "train"
+        session.seed = 123
+        session.index = 0
+        session.events = []
+        session._exchange = lambda command: {
+            "verdict": verdict, "events": trace,
+        }
+        self.assertEqual(session.verify(), verdict)
+        self.assertEqual(session.events, trace)
+
+        # A worker cannot alter the business verdict even when it returns a
+        # plausible-looking, valid JSON response.
+        poisoned = dict(verdict, passed=not verdict["passed"])
+        session._exchange = lambda command: {
+            "verdict": poisoned, "events": trace,
+        }
+        result = session.verify()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["sandbox_error"], "protected_oracle_rejected_trace")
+
+        forged_trace = json.loads(json.dumps(trace))
+        forged_trace[0]["result"]["order_id"] = "FORGED"
+        session._exchange = lambda command: {
+            "verdict": verdict, "events": forged_trace,
+        }
+        result = session.verify()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["sandbox_error"], "protected_oracle_rejected_trace")
+
     @patch("scripts.sandbox_tool_gateway.shutil.which", return_value=None)
     def test_missing_docker_fails_closed(self, which):
         with self.assertRaises(ToolSandboxUnavailable):
