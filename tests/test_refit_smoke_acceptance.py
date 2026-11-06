@@ -115,6 +115,9 @@ class PublicAcceptanceTests(TestCase):
     def test_real_read_only_http_acceptance_uses_published_data(self):
         service = RunService(recordings_dir=DEFAULT_RECORDINGS)
         published = rejected_run()
+        # Actual gVisor traces can exceed the former 150 KB HTTP read cap.
+        # Test a real large JSON response, not only compact synthetic records.
+        published["report"]["synthetic_trace_padding"] = "x" * 175_000
         with service.lock:
             service.runs[published["id"]] = published
             service.events[published["id"]] = complete_events()["events"]
