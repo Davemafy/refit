@@ -19,7 +19,12 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verify real public API and downloadable repair evidence
-        run: python -m scripts.smoke_public --url http://80.240.30.92 --output /tmp/refit-public-smoke.json
+        run: |
+          python -m scripts.smoke_public \
+            --url http://80.240.30.92 \
+            --expected-revision e53feebd8f6d1d08595d23d3b0794aa814c60841 \
+            --require-live-rejection \
+            --output /tmp/refit-public-smoke.json
       - name: Preserve external observations
         if: always()
         uses: actions/upload-artifact@v4
