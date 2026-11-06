@@ -60,10 +60,12 @@ class RefitHandler(BaseHTTPRequestHandler):
                 return self._send(200, self.service.capabilities())
             if path == "/api/runs":
                 return self._send(200, {"runs": self.service.list_runs()})
-            match = re.fullmatch(r"/api/runs/([a-z0-9-]+)(/events)?", path)
+            match = re.fullmatch(r"/api/runs/([a-z0-9-]+)(/events|/artifact)?", path)
             if match:
-                run_id, event_path = match.groups()
-                if event_path:
+                run_id, suffix = match.groups()
+                if suffix == "/artifact":
+                    return self._send(200, self.service.get_artifact(run_id))
+                if suffix == "/events":
                     query = parse_qs(parts.query)
                     if set(query) - {"after"}:
                         raise ApiProblem(422, "invalid_cursor", "Only the after cursor is supported.")
