@@ -1,93 +1,99 @@
 # Refit
 
-**Move AI agents between models without silently breaking their tools.**
+**Change the model. Keep the behavior.**
 
-Refit is a working, test-first prototype for agent-model migration. It replays
-business tasks against an existing agent and a candidate model, observes real
-tool calls and state transitions, proposes bounded changes to the agent-facing
-configuration, and accepts a candidate only after independent verification.
+Refit finds and repairs tool-use regressions when migrating an AI agent to a
+different language model. It compares actual stateful outcomes, proposes
+bounded model-facing changes, and tests them against independent scenarios.
 
-## Current evidence
+## Live evidence — first verified repair
 
-- A live Vultr comparison of DeepSeek V4.1 Flash and GLM 5.2 completed:
-  **source 3/3; candidate 3/3; no reproduced regression**. The result is not
-  a successful automatic repair.
-- 19/19 offline protocol tests passed in the original dev-mcp development branch.
-- A stronger eight-scenario stress suite has been implemented. Its **live**
-  results have not yet been verified.
-- The prototype is not yet a publicly deployed Vultr application or a fully
-  compliant hackathon submission.
+On November 6, 2026, Refit reproduced and repaired a regression in an
+order-refund agent using real **Vultr Serverless Inference** calls.
 
-We do not report a repair unless the target model actually fails a task that the
-source model passes, a Vultr-hosted model generates a permitted change, and
-protected validation and holdout cases show that the change works.
+| Gate | Result |
+| --- | ---: |
+| DeepSeek V4.1 Flash, source training | 8/8 |
+| Muse Glimmer 30B, unmodified target training | 5/8 |
+| Muse after generated instructions + lookup guard | **8/8** |
+| Independent validation | **8/8** |
+| Unmodified Muse on holdout | 7/8 |
+| Repaired Muse on holdout | **8/8** |
+| Unsafe refund attempts | **0** |
 
-## Repo layout
+The run used 129 inference requests and the execution report says
+`verified_repair`. See [the successful GitHub Actions run](https://github.com/Davemafy/refit/actions/runs/42193722623)
+and [methodology, earlier failures and limitations](docs/live-evidence-2026-11-06.md).
 
-- \`scripts/refit_vultr_probe.py\`: initial 3-scenario live migration experiment.
-- \`scripts/refit_stress_probe.py\`: 8-scenario tool-behavior stress suite with
-  transient lookup failures, user attempts to override authorization, misleading
-  tool content and timeout-after-write checks.
-- \`tests/\`: independent deterministic unit tests; no paid API calls.
-- \`.github/workflows/ci.yml\`: reproducible offline tests on pull requests and pushes.
+The accepted adaptation combined an **AI-generated instruction rewrite** with
+an evidence-triggered runtime guard requiring the target model to call
+`get_order` first. The independent SQLite gateway and verifier did not change.
 
-## Run the tests
+**This is a successful experiment on one synthetic tool-using agent, not proof
+of general agent-migration reliability.** Repeated trials, wider agent support,
+a deployed Vultr app and sandbox isolation remain to be demonstrated.
 
-Python 3.11+; no pip dependencies required:
+## Code
 
-\`\`\`bash
+- `scripts/refit_vultr_probe.py` — baseline 3-case Vultr migration experiment.
+- `scripts/refit_stress_probe.py` — eight adversarial, stateful workflow
+  scenarios with independent verification and selective repair.
+- `tests/` — offline unit tests and deterministic protocol simulations.
+- `.github/workflows/ci.yml` — builds and tests on Python 3.11 and 3.12.
+- `.github/workflows/live-experiment.yml` — explicitly gated, bounded real
+  Vultr inference experiment with a private Actions secret.
+- `docs/architecture.md` — system boundary, requirements and limitations.
+
+No dependency installation is required for the experiment CLI.
+
+## Test
+
+Run on Python 3.11+:
+
+```bash
 python3 -m unittest discover -s tests -p 'test_refit*.py' -v
-\`\`\`
+```
 
-## Run the real experiment on Vultr
+## Run the real experiment
 
-The inference API key must stay in a private server environment, not in the
-repository, the browser, or CI logs. The experiment reads
-\`VULTR_INFERENCE_API_KEY\` or a root-readable environment file such as
-\`/etc/refit/inference.env\`.
+Set `VULTR_INFERENCE_API_KEY` privately, or keep it in a root-only server
+file at `/etc/refit/inference.env`. **Never commit or paste an API key into
+issues or CI logs.**
 
-\`\`\`bash
+```bash
 python3 -m scripts.refit_stress_probe \
   --source deepseek-v4.1-flash-1017 \
-  --targets glm-5.2,muse-glimmer-30b,raon-1-mini-preview \
-  --repair glm-5.3-flash \
-  --max-requests 100 \
+  --targets muse-glimmer-30b \
+  --repair deepseek-v4.1-flash-1017 \
+  --max-requests 160 \
   --output refit-stress-report.json
-\`\`\`
+```
 
-The command makes billable Vultr inference requests. The request count is
-bounded by \`--max-requests\` (default 100). The response's model ID is checked
-to reject an unexpected fallback.
+Vultr inference calls are billable. The report contains only synthetic
+orders, model-generated instructions and traced tool calls. Refit checks that
+the actual returned model matches the requested model.
 
-The suite uses **synthetic** orders and an in-memory SQLite database; it does
-not access or refund real customer orders.
+## Trust and correctness
 
-## Security and limitations
+- The agent has only two declared tools: `get_order` and `issue_refund`.
+- The gateway enforces identity, eligibility, exact minor-currency-unit
+  refund amounts, and idempotency. It never touches real customer accounts.
+- Model prose isn't the oracle: Refit checks the transaction database state,
+  tool call sequence, authorized outcomes and fresh holdout cases.
+- Repair candidates are bounded to instructions, tool descriptions and an
+  evidence-triggered named first-tool policy. They cannot edit the evaluator.
+- In-process SQLite tools are **not** arbitrary-code isolation; a separate
+  hardened Vultr worker and containment test are still needed.
 
-- The candidate model can propose only instructions or tool descriptions.
-  It cannot change business rules or the independent verifier.
-- A refusal that prevents a required eligible refund is a task failure.
-  An unauthorized refund attempt counts separately, even if a gateway blocks it.
-- The verifier checks database state and tool traces, not the model's final
-  prose. Holdout case IDs and amounts differ from training cases.
-- Fixed, in-process SQLite tool calls are **not** a secure arbitrary-code
-  sandbox. The Vultr-hosted containment demonstration remains to be built and
-  independently tested.
-- Arbitrary imported agents, production-grade migration, recovery, observability
-  and product UI are not implemented yet.
+## Remaining work
 
-## What comes next
+1. Reproduce the measured improvement on multiple new seeds and paraphrased
+   tasks; quantify run-to-run variance.
+2. Build the minimal judge-facing workflow and Vultr-hosted control plane.
+3. Demonstrate real sandbox containment and secret separation.
+4. Publish the reproducible demo, video and submission evidence.
 
-1. Find a **genuine** model-induced regression on multiple realistic cases.
-2. Produce and retest the minimal model-facing patch with Vultr inference.
-3. Require clean protected holdout and security checks, across repeated trials.
-4. Deploy the actual Refit controller and isolated workers on Vultr.
-5. Publish a cold-start judge-accessible demo, real recordings and evidence.
+This is the **Refit product repository**. The separate dev-mcp service is a
+development tool, not part of the shipped product.
 
-The original development experiments are in
-[dev-mcp PR #3](https://github.com/Davemafy/dev-mcp/pull/3).
-This repository is the product home; dev-mcp stays a separate development tool.
-
-## License
-
-MIT.
+MIT licensed.
