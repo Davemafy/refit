@@ -3,7 +3,10 @@ name: Verify public Vultr service
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/public-smoke.yml']
+    paths:
+      - '.github/workflows/public-smoke.yml'
+      - 'scripts/smoke_public.py'
+      - 'tests/test_refit_smoke_acceptance.py'
   workflow_dispatch:
 
 permissions:
