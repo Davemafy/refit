@@ -35,6 +35,7 @@ class AgentConfig:
     instructions: str = PROMPT
     lookup_tool_description: str = "Look up an order and retrieve its current state."
     refund_tool_description: str = "Issue a refund for an eligible order."
+    force_initial_lookup: bool = False
 
 @dataclass(frozen=True)
 class Case:
@@ -194,7 +195,7 @@ class VultrInference:
         self.max_requests = max_requests
 
     def complete(self, model: str, messages: list[dict], tools: list[dict] | None = None,
-                 max_tokens: int = 512):
+                 max_tokens: int = 512, tool_choice: Any = "auto"):
         if self.requests >= self.max_requests:
             raise RuntimeError("live inference request budget exhausted")
         if not 1 <= max_tokens <= 4096:
@@ -202,7 +203,7 @@ class VultrInference:
         payload: dict[str, Any] = {"model": model, "messages": messages, "temperature": 0,
                                    "max_tokens": max_tokens}
         if tools:
-            payload.update(tools=tools, tool_choice="auto")
+            payload.update(tools=tools, tool_choice=tool_choice)
         req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode(),
               headers={"Authorization": "Bearer " + self._key, "Content-Type": "application/json"})
         self.requests += 1
@@ -307,7 +308,7 @@ def repair_proposal(model_client: VultrInference, repair_model: str, config: Age
         raise ValueError("repair attempted to change an unsupported configuration field")
     if not all(isinstance(v, str) and 20 <= len(v) <= 5000 for v in object_.values()):
         raise ValueError("repair content does not satisfy size/type constraints")
-    return AgentConfig(**object_)
+    return AgentConfig(**object_, force_initial_lookup=config.force_initial_lookup)
 
 
 def run_experiment(client: VultrInference, source: str, target: str, repair_model: str,
