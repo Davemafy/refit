@@ -30,6 +30,9 @@ CONTRACT = AgentContract(
 class VerifiedRefundEnvironment(StressEnvironment):
     """Applies the original refund stress oracle to generic replay traces."""
 
+    def close(self):
+        self.db.close()
+
     def verify(self) -> dict:
         outcome = super().verify()
         successful_lookup = any(
