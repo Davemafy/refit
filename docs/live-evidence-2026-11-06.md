@@ -59,7 +59,13 @@ industries, unseen task families or multiple stochastic repetitions.
 
 The source and target were evaluated on fixed task families with independently
 randomized synthetic order IDs, amounts, owners and state for each phase.
-The holdout cases were not supplied to the repair proposer.
+The holdout cases were not supplied to the repair proposer, but their eight
+task templates and fixed generation seed had been exercised in earlier
+engineering experiments. Therefore they were **not a pristine, once-only
+blind statistical test**. The result is a valid local compatibility
+demonstration, not a population-level guarantee. A separate guard-only
+ablation and an independently withheld cross-domain test are needed to
+attribute the improvement and substantiate generality.
 
 The evaluator runs on GitHub-hosted Actions; model inference is provided by
 Vultr. The hackathon still needs a deployed Vultr-hosted Refit control plane,
