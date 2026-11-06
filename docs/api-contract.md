@@ -136,7 +136,11 @@ The token must not be embedded in the UI code. An operator-only control may
 obtain it interactively without localStorage. Fixed agent adapters and
 approved model IDs only; arbitrary model IDs, uploaded code, and adapter
 paths are rejected. Global concurrency is 1 and a daily quota applies.
-The current live adapters still execute in process: **not isolated**.
+The default live path uses in-process trusted business tools. Operators can
+enable `REFIT_USE_TOOL_SANDBOX=1` to route all migration tool operations through
+disposable restricted Docker workers. The model client, host control plane and
+approved repair gate stay outside the worker. This bridge has passed actual
+GitHub Docker integration tests; Vultr VM verification is still pending.
 
 ## Operator-only sandbox diagnostic
 
@@ -160,13 +164,18 @@ generated_code, expected, observed, verified, validation_error, sandbox.
 Sandbox includes stdout, stderr, exit_code, ledger, ledger_valid, runtime,
 container_created, container_removed_verified and resource restrictions.
 
-The original archived migration remains unchanged. This feature isolates
-only the generated diagnostic program; built-in business tools still run
-in-process. Do not show this as isolation of the entire migrating agent.
+The original archived migration remains unchanged. This diagnostic action
+isolates only its generated diagnostic program. Independently, opt-in
+`REFIT_USE_TOOL_SANDBOX=1` isolates the built-in refund/deployment tool
+simulations for full live migration runs. This does not support uploaded
+external agents or isolate the host-side inference client.
 
 GET /api/capabilities provides sandbox.generated_python_diagnostics_enabled,
-sandbox.business_tools_isolated and sandbox.runtime. Use these values to
-avoid rendering unsupported controls.
+sandbox.business_tools_sandbox_configured, sandbox.runtime and
+sandbox.business_tools_isolation_verified_on_vultr_vm. Configuration alone
+is not proof of successful containment; actual run records contain
+`report.execution_boundary` and `execution_isolation`. Do not display
+a verified Vultr sandbox label without Vultr-host evidence.
 
 Security: Never embed the operator token in client source or localStorage.
 An authenticated operator can supply it interactively for the demo.
@@ -197,16 +206,16 @@ results as a freshly completed run.
 
 ## Security and truthful claims
 
-- These HTTP endpoints **are not** a finished Track 1 sandbox or a real
-  external-agent integration.
+- These endpoints are not a verified Vultr-hosted Track 1 product deployment
+  or a general external-agent integration.
 - Natural-language `/interpret` only extracts typed options for two trusted
   built-in agents. It does not import arbitrary LangGraph/PydanticAI agents.
 - The historical experiments used **real Vultr model calls**, but their
   business tools operated against isolated synthetic in-process state.
 - No public endpoint can submit Python code, code repositories, arbitrary
   tool definitions, or keys.
-- All user-visible containment evidence must come from a future, separately
-  verified Vultr-hosted sandbox runner. No fake `blocked` counter.
+- Actual GitHub Docker containment and real tool-worker parity have passed.
+  Do not present those as Vultr-host verification. No fake `blocked` counter.
 - Separate workstreams can build UI and sandbox runner without touching
   each other's files; integrate against this API and add cross-boundary tests.
 
