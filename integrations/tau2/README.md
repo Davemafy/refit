@@ -16,6 +16,9 @@ Use Python 3.12 in a separate virtual environment:
 ```bash
 python3.12 -m venv .venv-tau2
 .venv-tau2/bin/pip install -r integrations/tau2/requirements.txt
+git clone https://github.com/sierra-research/tau2-bench.git /tmp/refit-tau2-source
+git -C /tmp/refit-tau2-source checkout 033bf082f48e4a3c6a1256208e93cf2ce9c3bb6f
+export TAU2_DATA_DIR=/tmp/refit-tau2-source/data
 REFIT_TEST_TAU2=1 LITELLM_LOCAL_MODEL_COST_MAP=true \
   .venv-tau2/bin/python -m unittest tests.test_refit_tau2 -v
 ```
