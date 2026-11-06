@@ -43,9 +43,29 @@ Work lands directly on `main`. UI work is deferred.
 4. **Vultr delivery:** verify installation, isolation, cleanup, durable execution,
    CLI/API export and the externally reachable deployed service.
 
+## Frozen-patch repeatability command
+
+The verification command consumes an already exported receipt and never calls
+the repair model. Declare seeds before examining results. Its default is a
+zero-request preview; `--execute` makes billable calls with one shared hard cap.
+
+```bash
+python3 -m scripts.verify_frozen_patch --domain deployment \
+  --patch refit-compatibility.json --seeds 723001 723002 723003 \
+  --paraphrase --max-requests 400
+```
+
+Add `--execute` to run it. It compares the source, unchanged target and fixed
+patched target on each seed's holdout cases and preserves every completed trial.
+The optional paraphrase wraps the request without changing its requirements.
+Fresh IDs and this wrapping are not unseen workflow families. An imported trusted
+adapter must additionally provide `make_cases(seed, phase)` for this command.
+
 Live inference credentials and Docker are not available in the local development
-environment used for this pass. Offline responders verify harness behavior only.
-No new live repair evidence is established by these changes.
+environment used for this pass. A one-shot GitHub Actions run used the existing
+inference secret: source and unchanged Muse target each passed 24/24 deployment
+cases in 186 requests. See [the paired live evidence](paired-deployment-evidence-2026-11-06.md).
+This establishes sample compatibility; second-domain repair remains unproven.
 
 Paired evaluation requires more calls than the earlier protocol. The trusted CLI
 accepts an explicit request cap up to 400; its default remains 160. Public API and

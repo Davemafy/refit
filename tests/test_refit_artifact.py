@@ -5,7 +5,7 @@ import unittest
 from scripts import compatibility_artifact as artifact
 from scripts import refund_adapter, deployment_incident_probe
 from scripts.migration_engine import AgentProfile, AgentContract
-from test_refit_deployment import ScriptedResponder
+from tests.test_refit_deployment import ScriptedResponder
 
 
 def good_result():
