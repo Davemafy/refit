@@ -78,7 +78,8 @@ server {
     client_body_timeout 10s;
     keepalive_timeout 15s;
 
-    location / {
+    # API remains on Python even after the separate Next/React UI replaces /.
+    location ^~ /api/ {
         proxy_pass http://127.0.0.1:8097;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -86,6 +87,18 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_read_timeout 30s;
         proxy_hide_header Server;
+    }
+    # Keep the zero-dependency integration demo available as a fallback.
+    location ^~ /demo {
+        proxy_pass http://127.0.0.1:8097;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+    }
+    # Replace only this block's upstream when the other UI is ready.
+    location / {
+        proxy_pass http://127.0.0.1:8097;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
     }
 }
 EOF
