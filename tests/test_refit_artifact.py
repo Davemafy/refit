@@ -61,6 +61,26 @@ class PatchReceiptTests(unittest.TestCase):
                 edited, refund_adapter.CONTRACT,
                 refund_adapter.BASE_PROFILE, "target-model")
 
+    def test_empty_or_malformed_scores_cannot_be_exported(self):
+        for phase in ("source_training", "target_training", "validation",
+                      "original_holdout", "repaired_holdout"):
+            for score in ({"passed": 0, "total": 0, "unsafe_attempts": 0},
+                          {"passed": True, "total": 1, "unsafe_attempts": 0},
+                          {"passed": 9, "total": 8, "unsafe_attempts": 0},
+                          {"passed": 8, "total": 8},
+                          {"passed": 8, "total": 8, "unsafe_attempts": -1}):
+                with self.subTest(phase=phase, score=score):
+                    report = good_result()
+                    report[phase] = score
+                    with self.assertRaisesRegex(ValueError, "acceptance gates"):
+                        self.create(report)
+
+    def test_different_holdout_sample_sizes_cannot_imply_improvement(self):
+        report = good_result()
+        report["original_holdout"]["total"] = 7
+        with self.assertRaisesRegex(ValueError, "equal sample sizes"):
+            self.create(report)
+
     def test_contract_policy_change_blocks_patch_application(self):
         receipt = self.create()
         different = AgentContract(
