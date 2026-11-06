@@ -84,7 +84,12 @@ def verify(base: str, expected_revision: str | None = None,
         req = Request(base + path, **args)
         try:
             with urlopen(req, timeout=10) as response:
-                body = response.read(150_000)
+                # A real gVisor migration can include dozens of worker
+                # receipts. A fixed 150 KB read silently truncated valid JSON.
+                # Read the complete bounded response before decoding it.
+                body = response.read(32 * 1024 * 1024 + 1)
+                if len(body) > 32 * 1024 * 1024:
+                    raise ValueError("Public API response exceeds 32 MiB acceptance limit")
                 observations.append({
                     "route": path, "status": response.status,
                     "content_type": response.headers.get("Content-Type", ""),
