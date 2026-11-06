@@ -19,7 +19,7 @@ The Vite dev server forwards `/api/*` to the real Refit backend. Production buil
 
 ## Use with your own React interface
 
-Import `RefitRuntimeProvider` from `src/app.tsx` (or copy the provider) and wrap your own thread component. Reuse `createRefitAdapter` from `src/adapter.ts` and the typed `RefitApi` from `src/refit-api.ts`. You can replace **all visual elements** without modifying the adapter.
+Import `RefitRuntimeProvider` from `src/runtime.tsx` (or `src/index.ts`) and wrap your own thread component. Reuse `createRefitAdapter` from `src/adapter.ts` and the typed `RefitApi` from `src/refit-api.ts`. You can replace **all visual elements** without modifying the adapter.
 
 ## Security and product boundaries
 
@@ -28,3 +28,15 @@ Import `RefitRuntimeProvider` from `src/app.tsx` (or copy the provider) and wrap
 - This is not a general conversational LLM agent. The backend supports only two built-in scenarios. A new UI does not magically provide external-agent import.
 - Never put Vultr credentials or a privileged bearer token in the browser. A future live UI should use a trusted server-side BFF with authentication, explicit approval and quota controls.
 - We chose LocalRuntime rather than adding CopilotKit/AG-UI to the existing Python API because it directly supports REST with one documented `ChatModelAdapter`; an AG-UI migration can come later if streaming tool state and bidirectional calls become necessary.
+
+## Verified and deployed staging path
+
+The React bridge is built from the pinned `package-lock.json` in CI. The suite typechecks, produces a static production build, verifies the existing API, and runs a real headless Chromium test for the three critical cases: broken target repaired, already-compatible target, and unsupported model pair. The browser check must pass before relying on this as the public interactive bridge.
+
+After CI is green, from the existing Vultr VM as root:
+
+```bash
+cd /opt/refit-app && git pull --ff-only && bash deploy/launch-bridge.sh
+```
+
+It installs the compiled static client at `/bridge/` and preserves the current `/`, `/demo`, and `/api/*` routes. It does not enable paid inference and must not be presented as a complete agent-import or live migration UI.
