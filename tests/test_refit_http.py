@@ -1,5 +1,6 @@
 """Backend contract tests; no paid inference, network egress, or secrets."""
 from concurrent.futures import Future
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -107,6 +108,35 @@ class ServiceTests(unittest.TestCase):
             service.start(payload, "token")
         self.assertEqual(cm.exception.code, "unsupported_config")
 
+    def test_operator_can_queue_archived_sandbox_diagnosis_without_running_model(self):
+        executor = DeferredExecutor()
+        service = self.service(
+            live_enabled=True, run_token="operator-key", executor=executor
+        )
+        source_id = "recorded-refund-2026-11-06"
+        with patch.dict("os.environ", {"REFIT_ENABLE_SANDBOX_DIAGNOSTICS": "1"}):
+            with self.assertRaises(ApiProblem) as error:
+                service.start_diagnostic(source_id, "")
+            self.assertEqual(error.exception.status, 401)
+            result = service.start_diagnostic(source_id, "operator-key")
+            self.assertEqual(result["status"], "queued")
+            self.assertEqual(len(executor.tasks), 1)
+            queued = service.get_run(result["id"])
+            self.assertEqual(queued["mode"], "live_diagnostic")
+            self.assertEqual(queued["source_run_id"], source_id)
+            self.assertEqual(queued["execution_isolation"], "generated_code_only")
+            self.assertEqual(service.get_events(result["id"])["events"][0]["type"], "queued")
+            with self.assertRaises(ApiProblem) as conflict:
+                service.start_diagnostic(source_id, "operator-key")
+            self.assertEqual(conflict.exception.status, 409)
+
+    def test_sandbox_diagnostic_disabled_until_configured(self):
+        service = self.service(live_enabled=True, run_token="token")
+        with patch.dict("os.environ", {"REFIT_ENABLE_SANDBOX_DIAGNOSTICS": "0"}):
+            with self.assertRaises(ApiProblem) as error:
+                service.start_diagnostic("recorded-refund-2026-11-06", "token")
+        self.assertEqual(error.exception.code, "sandbox_disabled")
+
     def test_daily_quota_single_concurrency_and_event_cursor(self):
         executor = DeferredExecutor()
         service = self.service(live_enabled=True, run_token="token", daily_limit=1,
@@ -195,6 +225,16 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(data["domain"], "deployment")
         self.assertTrue(data["ready_for_review"])
         self.assertTrue(data["requires_confirmation"])
+
+    def test_diagnosis_http_route_requires_explicit_enablement(self):
+        status, data = self.request(
+            "/api/runs/recorded-refund-2026-11-06/diagnose", {})
+        self.assertEqual(status, 503)
+        self.assertEqual(data["error"]["code"], "sandbox_disabled")
+        status, data = self.request(
+            "/api/runs/recorded-refund-2026-11-06/diagnose", {"code": "print(1)"})
+        self.assertEqual(status, 422)
+        self.assertEqual(data["error"]["code"], "invalid_request")
 
     def test_live_call_never_runs_without_explicit_gate(self):
         status, data = self.request("/api/runs", {
