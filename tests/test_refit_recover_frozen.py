@@ -77,6 +77,36 @@ class RecoverFrozenEvidenceTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 self.check(record, receipt)
 
+    def test_rejects_inconsistent_overall_request_count(self):
+        record, receipt = fixture()
+        record["model_requests"] += 1
+        with self.assertRaisesRegex(ValueError, "do not reconcile"):
+            self.check(record, receipt)
+
+    def test_tau2_upstream_fixture_requests_are_counted(self):
+        record, receipt = fixture()
+        record["runner"] = "tau2"
+        record["upstream_fixtures"] = {
+            "source": {"model_requests": 6},
+            "target": {"model_requests": 8},
+        }
+        record["model_requests"] = 71
+        self.assertEqual(self.check(record, receipt)["status"], "verified")
+        record["upstream_fixtures"]["target"]["model_requests"] = 7
+        with self.assertRaisesRegex(ValueError, "do not reconcile"):
+            self.check(record, receipt)
+
+    def test_tau2_fixture_missing_counter_cannot_verify(self):
+        record, receipt = fixture()
+        record["runner"] = "tau2"
+        record["upstream_fixtures"] = {
+            "source": {"model_requests": 6},
+            "target": {},
+        }
+        record["model_requests"] = 71
+        with self.assertRaisesRegex(ValueError, "Missing fixture request"):
+            self.check(record, receipt)
+
     def test_failed_verification_never_claims_a_verified_patch(self):
         record, receipt = fixture()
         record["report"]["status"] = "frozen_patch_failed_verification"
