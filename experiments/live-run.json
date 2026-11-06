@@ -1,11 +1,11 @@
 {
   "run_live": true,
-  "run_id": "live-2026-11-06-b",
-  "purpose": "Compare additional Vultr model families after both original models passed all eight stateful cases",
+  "run_id": "live-2026-11-06-c",
+  "purpose": "Recheck reproduced Muse Glimmer regressions and attempt verified model-generated repair with stronger JSON handling",
   "request_budget": 160,
   "source": "deepseek-v4.1-flash-1017",
   "targets": [
-    "muse-glimmer-30b",
-    "raon-1-mini-preview"
-  ]
+    "muse-glimmer-30b"
+  ],
+  "repair": "deepseek-v4.1-flash-1017"
 }
