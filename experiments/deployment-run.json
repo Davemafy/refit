@@ -1,6 +1,6 @@
 {
   "run_live": true,
-  "run_id": "deployment-incident-03-corrected-contract",
-  "purpose": "Re-evaluate source and target models after fixing independent deployment gateway release semantics",
+  "run_id": "deployment-incident-04-outcome-contract",
+  "purpose": "Run source-target migration with protected business outcomes and recoverable errors classified separately",
   "model_request_cap": 160
 }
