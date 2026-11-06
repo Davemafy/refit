@@ -64,6 +64,28 @@ requested named tool; it is not an enforcement guarantee. See
 of general agent-migration reliability.** Repeated trials, wider agent support,
 a deployed Vultr app and sandbox isolation remain to be demonstrated.
 
+## UI integration contract (current development work)
+
+Refit now exposes a tested, **same-origin JSON backend API** for the separate
+frontend workstream. It serves two preserved genuine Vultr experiment reports,
+returns conservative natural-language migration intents for the supported
+workflows, and provides verified compatibility JSON downloads.
+
+```bash
+python3 -m scripts.refit_http --host 127.0.0.1 --port 8097 --runs-dir ./var/runs
+curl -fsS http://127.0.0.1:8097/api/capabilities
+curl -fsS http://127.0.0.1:8097/api/runs
+```
+
+The exact endpoint shapes, error codes and integration smoke tests are in
+[the authoritative frontend API contract](docs/api-contract.md).
+
+**Boundaries:** model migration intent parsing is limited to the two built-in
+agents; external-agent imports and sandboxed code execution are not yet
+implemented. Live runs require explicit server configuration plus an operator
+token, and are disabled by default. The public-facing UI must not claim the
+backend already meets Track 1 containment requirements.
+
 ## Code
 
 - `scripts/migration_engine.py` — shared contract-driven replay, diagnosis,
