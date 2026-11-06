@@ -1,0 +1,91 @@
+name: Refit causal ablation (opt-in)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "experiments/ablation-run.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-causal-ablation
+  cancel-in-progress: false
+
+jobs:
+  ablation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate code without credentials
+        run: |
+          python -m compileall -q scripts tests
+          python -m unittest discover -s tests -p "test_refit*.py" -v
+
+      - name: Explicitly gate billable inference
+        id: gate
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          enabled=$(python -c 'import json; print(str(json.load(open("experiments/ablation-run.json")).get("run_live",False)).lower())')
+          if [ "$enabled" != "true" ]; then
+            echo "run_live is disabled; no billable model requests."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$VULTR_INFERENCE_API_KEY" ]; then
+            echo "Missing inference secret; no model requests."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Ablation authorized, capped at 160 model requests."
+          fi
+
+      - name: Run four-condition Vultr model experiment
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python -m scripts.refit_causal_ablation \
+            --model muse-glimmer-30b \
+            --max-requests 160 \
+            --output /tmp/refit-ablation-report.json
+
+      - name: Upload synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-causal-ablation
+          path: /tmp/refit-ablation-report.json
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Publish redacted scores
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          path = "/tmp/refit-ablation-report.json"
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              if not os.path.exists(path):
+                  f.write("No live ablation report; offline gate may have passed.\n")
+              else:
+                  raw=json.load(open(path))
+                  result=raw["experiment"]
+                  scores=[
+                      {"condition":c["condition"],
+                       "passed":c["evaluation"]["passed"],
+                       "total":c["evaluation"]["total"],
+                       "unsafe_attempts":c["evaluation"]["unsafe_attempts"]}
+                      for c in result["conditions"]
+                  ]
+                  safe={"status":result["status"],"requests":raw["requests"],"scores":scores}
+                  print("RESULT",json.dumps(safe))
+                  f.write("## Causal ablation\n\n")
+                  f.write("    "+json.dumps(safe)+"\n")
+          PY
