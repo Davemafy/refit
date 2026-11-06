@@ -170,7 +170,7 @@ class RunService:
                     os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
                 ),
                 "runtime": (
-                    os.getenv("REFIT_SANDBOX_RUNTIME", "runc")
+                    os.getenv("REFIT_SANDBOX_RUNTIME", "runsc")
                     if os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
                     else None
                 ),
@@ -322,7 +322,7 @@ class RunService:
             client = VultrInference(
                 load_key(Path("/etc/refit/inference.env")), max_requests=1
             )
-            runtime = os.getenv("REFIT_SANDBOX_RUNTIME", "runc")
+            runtime = os.getenv("REFIT_SANDBOX_RUNTIME", "runsc")
             diagnostic = generate_and_verify(
                 source, client, "deepseek-v4.1-flash-1017",
                 DockerSandbox(runtime=runtime),
@@ -389,7 +389,7 @@ class RunService:
                 try:
                     from .sandbox_diagnostics import generate_and_verify
                     from .sandbox_runner import DockerSandbox
-                    runtime = os.getenv("REFIT_SANDBOX_RUNTIME", "runc")
+                    runtime = os.getenv("REFIT_SANDBOX_RUNTIME", "runsc")
                     diagnostic = generate_and_verify(
                         {"domain": domain, "report": result},
                         client, source, DockerSandbox(runtime=runtime)
