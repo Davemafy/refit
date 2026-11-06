@@ -1,6 +1,7 @@
 import {
   AuiIf,
   ComposerPrimitive,
+  ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
@@ -25,7 +26,14 @@ function Chat() {
           {({ message }) => (
             <MessagePrimitive.Root className={message.role === "user" ? "message user" : "message assistant"}>
               <div className="message-label">{message.role === "user" ? "You" : "Refit"}</div>
-              <div className="message-body"><MessagePrimitive.Parts /></div>
+              <div className="message-body">
+                <MessagePrimitive.Parts />
+                <MessagePrimitive.Error>
+                  <ErrorPrimitive.Root className="message-error">
+                    <ErrorPrimitive.Message />
+                  </ErrorPrimitive.Root>
+                </MessagePrimitive.Error>
+              </div>
             </MessagePrimitive.Root>
           )}
         </ThreadPrimitive.Messages>
