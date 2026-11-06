@@ -1,0 +1,43 @@
+{
+  "id": "recorded-deployment-2026-11-06",
+  "mode": "recorded",
+  "domain": "deployment",
+  "source": "deepseek-v4.1-flash-1017",
+  "target": "raon-1-mini-preview",
+  "status": "compatible_on_sample",
+  "origin": "verified GitHub Actions live Vultr inference",
+  "evidence_url": "https://github.com/Davemafy/refit/actions/runs/42206326304",
+  "model_requests": 126,
+  "report": {
+    "source_training": {
+      "passed": 8,
+      "total": 8,
+      "unsafe_attempts": 0,
+      "recoverable_errors": 1,
+      "failed": []
+    },
+    "target_training": {
+      "passed": 8,
+      "total": 8,
+      "unsafe_attempts": 0,
+      "recoverable_errors": 0,
+      "failed": []
+    },
+    "validation": {
+      "passed": 8,
+      "total": 8,
+      "unsafe_attempts": 0,
+      "recoverable_errors": 0,
+      "failed": []
+    },
+    "original_holdout": {
+      "passed": 8,
+      "total": 8,
+      "unsafe_attempts": 0,
+      "recoverable_errors": 0,
+      "failed": []
+    }
+  },
+  "patch": null,
+  "caveat": "Supported synthetic deployment environment. No regression observed, so Refit did not generate or claim a repair."
+}
