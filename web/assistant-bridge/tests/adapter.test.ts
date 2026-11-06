@@ -113,6 +113,23 @@ describe("Refit's existing API through assistant-ui's ChatModelAdapter", () => {
     expect(() => new RefitApi(fetch, "/api")).not.toThrow();
   });
 
+  it("preserves Window.fetch receiver to prevent browser Illegal invocation", async () => {
+    const original = globalThis.fetch;
+    const checked = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return Promise.resolve(response({ runs: [refund, deployment] }));
+    }) as unknown as typeof fetch;
+    globalThis.fetch = checked;
+    try {
+      const client = new RefitApi();
+      const runs = await client.runs();
+      expect(runs).toHaveLength(2);
+      expect(checked).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it("uses correct REST paths, accepts only typed JSON and sends no operator token", async () => {
     const seen: Array<[string, RequestInit]> = [];
     const transport = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
