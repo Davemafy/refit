@@ -141,6 +141,23 @@ def validate_report(record: dict, receipt: dict, adapter, *,
                    < trial["evaluations"]["original_target"]["total"]
                    for trial in trials):
             raise ValueError("Passing receipt has no observed target regression")
+    if success:
+        # The client records every billable request. Match the three frozen
+        # phases, plus the optional upstream tau2 mock-domain fixture calls.
+        # Incomplete/error reports can have failed attempts that never reached
+        # an evaluation result, so do not impose this equality on failures.
+        counted_requests = sum(totals[p]["model_request_attempts"] for p in PHASES)
+        fixtures = record.get("upstream_fixtures")
+        if fixtures is not None:
+            if record["runner"] != "tau2" or not isinstance(fixtures, dict):
+                raise ValueError("Upstream fixture evidence requires the tau2 runner")
+            for name in ("source", "target"):
+                outcome = fixtures.get(name)
+                if not isinstance(outcome, dict) or not integer(outcome.get("model_requests")):
+                    raise ValueError("Missing fixture request counts")
+                counted_requests += outcome["model_requests"]
+        if calls != counted_requests:
+            raise ValueError("Overall model requests do not reconcile with trial evidence")
     summaries = report.get("summary")
     if success and not isinstance(summaries, dict):
         raise ValueError("Passing receipt has no aggregate scores")
