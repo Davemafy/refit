@@ -148,17 +148,46 @@ class ToolSandboxEnvironment:
         return answer
 
     def verify(self) -> dict:
+        """Independently replay trusted synthetic-tool traces outside sandbox.
+
+        A sandbox-side verdict cannot decide acceptance on its own. For the
+        two fixed built-in environments only, replay the declared tool calls
+        against a new host-owned deterministic state and compare every
+        state transition, tool result, and final business verdict. NEVER do
+        this with imported or untrusted tool implementations on the host.
+        """
         try:
             result = self._exchange({"op": "verify"})
             verdict = result.get("verdict")
             trace = result.get("events")
             if not isinstance(verdict, dict) or not isinstance(trace, list):
                 raise ToolSandboxUnavailable("invalid sandbox verifier response")
+            if len(trace) > 40 or not all(isinstance(e, dict) for e in trace):
+                raise ToolSandboxUnavailable("invalid sandbox execution trace")
+            original_case = DOMAINS[self.domain].make_cases(
+                self.seed, self.phase
+            )[self.index]
+            oracle = original_case.environment()
+            try:
+                for entry in trace:
+                    name = entry.get("tool")
+                    if not isinstance(name, str) or len(name) > 100:
+                        raise ToolSandboxUnavailable("invalid tool in sandbox trace")
+                    result_on_host = oracle.call(name, entry.get("arguments"))
+                    if result_on_host != entry.get("result"):
+                        raise ToolSandboxUnavailable("sandbox tool result mismatch")
+                expected = oracle.verify()
+                if oracle.events != trace or expected != verdict:
+                    raise ToolSandboxUnavailable("protected business oracle mismatch")
+            finally:
+                close = getattr(oracle, "close", None)
+                if callable(close):
+                    close()
             self.events = trace
-            return verdict
-        except ToolSandboxUnavailable:
+            return expected
+        except (ToolSandboxUnavailable, ValueError, KeyError, IndexError):
             return {"passed": False, "unsafe_attempts": 0,
-                    "sandbox_error": "worker_unavailable"}
+                    "sandbox_error": "protected_oracle_rejected_trace"}
 
     def close(self) -> None:
         if self.closed:
