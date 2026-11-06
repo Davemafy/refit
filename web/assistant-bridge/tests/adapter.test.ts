@@ -108,6 +108,54 @@ describe("Refit's existing API through assistant-ui's ChatModelAdapter", () => {
     expect(() => formatRecordedEvidence(incomplete)).toThrow("missing independent evidence");
   });
 
+  it("prefers a completed live Vultr migration, never an active guess", async () => {
+    const api = fakeApi();
+    const live = {
+      ...refund, id: "live-aaaaaaaaaaaaaaaa", mode: "live" as const,
+      evidence_url: undefined,
+    };
+    api.runs.mockResolvedValue([
+      { id: live.id, mode: live.mode, domain: live.domain,
+        source: live.source, target: live.target, status: "running" },
+      { id: refund.id, mode: refund.mode, domain: refund.domain,
+        source: refund.source, target: refund.target, status: refund.status },
+    ]);
+    const first = await answer(api, "show refund example");
+    expect(first).toContain("recorded Vultr inference");
+    expect(api.run).toHaveBeenCalledWith(refund.id, undefined);
+    api.runs.mockResolvedValue([
+      { id: live.id, mode: live.mode, domain: live.domain,
+        source: live.source, target: live.target, status: "verified_adaptation" },
+    ]);
+    api.run.mockResolvedValue(live);
+    const second = await answer(api, "show refund example");
+    expect(second).toContain("live Vultr inference");
+    expect(second).toContain("verified adaptation");
+  });
+
+  it("rejects stale or out-of-order progress cursors", async () => {
+    const runId = "live-aaaaaaaaaaaaaaaa";
+    const good = {
+      run_id: runId,
+      events: [
+        { seq: 2, type: "phase_started", message: "Evaluating source." },
+        { seq: 3, type: "phase_completed", message: "8/8 passed",
+          details: { passed: 8, total: 8 } },
+      ],
+      next_after: 3, terminal: false,
+    };
+    const fetcher = vi.fn(async () => response(good)) as unknown as typeof fetch;
+    const client = new RefitApi(fetcher);
+    const value = await client.events(runId, 1);
+    expect(value.events[1].details?.passed).toBe(8);
+    expect(fetcher).toHaveBeenCalled();
+    await expect(client.events(runId, -1)).rejects.toThrow("Invalid run ID");
+    const bad = vi.fn(async () => response({
+      ...good, events: [{ seq: 1, type: "repeated", message: "wrong" }],
+    })) as unknown as typeof fetch;
+    await expect(new RefitApi(bad).events(runId, 1)).rejects.toThrow("event sequence");
+  });
+
   it("rejects cross-origin API endpoints to keep credentials off external hosts", () => {
     expect(() => new RefitApi(fetch, "https://example.com/api")).toThrow("same-origin");
     expect(() => new RefitApi(fetch, "/api")).not.toThrow();
