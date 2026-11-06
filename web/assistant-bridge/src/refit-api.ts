@@ -43,7 +43,7 @@ export interface MigrationReport {
 }
 export interface RecordedRun {
   id: string;
-  mode: "recorded";
+  mode: "recorded" | "live";
   domain: AgentDomain;
   source: string;
   target: string;
@@ -153,15 +153,58 @@ export class RefitApi {
       typeof item.status === "string" &&
       typeof item.source === "string" &&
       typeof item.target === "string" &&
-      item.mode === "recorded",
+      (item.mode === "recorded" || item.mode === "live"),
     );
   }
+  /**
+   * A trusted, monotonic event cursor is independent of the chat renderer.
+   */
+  async events(id: string, after = 0, signal?: AbortSignal): Promise<{
+    run_id: string;
+    events: Array<{ seq: number; type: string; message: string; at?: string;
+                     details?: Record<string, string | number> }>;
+    next_after: number;
+    terminal: boolean;
+  }> {
+    if (!/^[a-z0-9-]+$/.test(id) || !Number.isSafeInteger(after) || after < 0) {
+      throw new Error("Invalid run ID or event cursor");
+    }
+    const raw = await this.json(
+      "/runs/" + encodeURIComponent(id) + "/events?after=" + after,
+      { signal },
+    );
+    if (!isObject(raw) || raw.run_id !== id || !Array.isArray(raw.events) ||
+        !Number.isSafeInteger(raw.next_after) || typeof raw.terminal !== "boolean") {
+      throw new Error("Invalid run event stream");
+    }
+    let cursor = after;
+    for (const event of raw.events) {
+      if (!isObject(event) || !Number.isSafeInteger(event.seq) ||
+          (event.seq as number) <= cursor || typeof event.type !== "string" ||
+          typeof event.message !== "string") {
+        throw new Error("Invalid Refit event sequence");
+      }
+      cursor = event.seq as number;
+    }
+    if ((raw.next_after as number) < cursor) {
+      throw new Error("Refit event cursor moved backwards");
+    }
+    return raw as unknown as {
+      run_id: string;
+      events: Array<{ seq: number; type: string; message: string; at?: string;
+                       details?: Record<string, string | number> }>;
+      next_after: number;
+      terminal: boolean;
+    };
+  }
+
   async run(id: string, signal?: AbortSignal): Promise<RecordedRun> {
     if (!/^[a-z0-9-]+$/.test(id)) throw new Error("Invalid run id");
     const value = await this.json("/runs/" + encodeURIComponent(id), { signal });
     assertRun(value);
-    if (value.mode !== "recorded") {
-      throw new Error("This bridge only displays verified recorded outcomes");
+    if (!["recorded", "live"].includes(value.mode) ||
+        !["verified_adaptation", "compatible_on_sample"].includes(value.status)) {
+      throw new Error("This run has no completed verified migration outcome");
     }
     return value;
   }
