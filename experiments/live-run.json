@@ -1,0 +1,5 @@
+{
+  "run_live": false,
+  "reason": "Initial smoke test: no live inference credential needed; do not make billable requests",
+  "request_budget": 160
+}
