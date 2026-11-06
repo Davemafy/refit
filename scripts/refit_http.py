@@ -30,6 +30,30 @@ class RefitHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _demo(self):
+        """Serve the self-contained evidence demo; replace root with the UI
+        from the separate frontend workstream when its build is ready.
+        /demo remains a zero-dependency integration fallback.
+        """
+        path = Path(__file__).resolve().parent.parent / "web" / "demo" / "index.html"
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'none'; script-src 'unsafe-inline'; "
+            "style-src 'unsafe-inline'; connect-src 'self'; "
+            "img-src 'self' data:; base-uri 'none'; "
+            "form-action 'self'; object-src 'none'; frame-ancestors 'none'",
+        )
+        self.end_headers()
+        self.wfile.write(body)
+
     def _problem(self, problem: ApiProblem):
         self._send(problem.status, {"error": {"code": problem.code,
                                               "message": problem.detail}})
@@ -54,6 +78,8 @@ class RefitHandler(BaseHTTPRequestHandler):
         try:
             parts = urlsplit(self.path)
             path = parts.path
+            if path in ("/", "/demo", "/demo/"):
+                return self._demo()
             if path == "/api/health":
                 return self._send(200, self.service.health())
             if path == "/api/capabilities":
