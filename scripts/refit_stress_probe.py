@@ -166,6 +166,16 @@ def failures_relative_to(source, candidate):
             if src["passed"] and not cand["passed"]]
 
 
+def failed_evidence(evaluation):
+    """Synthetic tool traces for diagnosis, stored as a temporary CI artifact."""
+    return [
+        {"case": c["case"], "error": c["error"],
+         "lookup_verified": c["lookup_verified"], "verifier": c["verifier"],
+         "trace": c["trace"]}
+        for c in evaluation["cases"] if not c["passed"]
+    ]
+
+
 def discover_and_repair(client, source: str, targets: list[str], repair_model: str,
                         seed=260611, min_source_passes=6):
     if source in targets:
@@ -184,7 +194,8 @@ def discover_and_repair(client, source: str, targets: list[str], repair_model: s
         target_eval = evaluate_stress(client, target, base, train_cases)
         misses = failures_relative_to(source_eval, target_eval)
         record = {"model": target, "training": compact(target_eval),
-                  "regressions_against_source": len(misses)}
+                  "regressions_against_source": len(misses),
+                  "baseline_failure_evidence": failed_evidence(target_eval)}
         evidence["candidate_models"].append(record)
         if not misses:
             record["status"] = "no_reproduced_regression"
@@ -202,16 +213,42 @@ def discover_and_repair(client, source: str, targets: list[str], repair_model: s
             record["status"] = "repair_unchanged"
             continue
         record["proposed_patch"] = asdict(patch)
-        candidate_training = evaluate_stress(client, target, patch, train_cases)
-        record["repaired_training"] = compact(candidate_training)
-        new_regressions = failures_relative_to(source_eval, candidate_training)
-        if new_regressions or candidate_training["unsafe_attempts"] or (
-                candidate_training["passed"] != candidate_training["total"]):
+        # Selective revision: avoid replacing every description and instruction
+        # simultaneously. Try each minimally scoped change independently.
+        variants = [
+            ("tool_descriptions", AgentConfig(
+                instructions=base.instructions,
+                lookup_tool_description=patch.lookup_tool_description,
+                refund_tool_description=patch.refund_tool_description)),
+            ("instructions_only", AgentConfig(
+                instructions=patch.instructions,
+                lookup_tool_description=base.lookup_tool_description,
+                refund_tool_description=base.refund_tool_description)),
+        ]
+        record["repair_trials"] = []
+        selected_patch = None
+        for variant_name, variant in variants:
+            if variant == base:
+                continue
+            candidate_training = evaluate_stress(client, target, variant, train_cases)
+            record["repair_trials"].append({
+                "variant": variant_name, "training": compact(candidate_training),
+                "failed_evidence": failed_evidence(candidate_training),
+            })
+            new_regressions = failures_relative_to(source_eval, candidate_training)
+            if (not new_regressions and not candidate_training["unsafe_attempts"] and
+                    candidate_training["passed"] == candidate_training["total"]):
+                selected_patch = variant
+                record["selected_variant"] = variant_name
+                record["repaired_training"] = compact(candidate_training)
+                break
+        if selected_patch is None:
             record["status"] = "repair_rejected_training"
             continue
         validation = evaluate_stress(
-            client, target, patch, stress_cases(seed + 113, "validation"))
+            client, target, selected_patch, stress_cases(seed + 113, "validation"))
         record["validation"] = compact(validation)
+        record["validation_failures"] = failed_evidence(validation)
         if validation["unsafe_attempts"] or validation["passed"] != validation["total"]:
             record["status"] = "repair_rejected_validation"
             continue
@@ -219,9 +256,10 @@ def discover_and_repair(client, source: str, targets: list[str], repair_model: s
         # Neither its inputs nor its assertions are sent to the optimizer.
         holdout_cases = stress_cases(seed + 709, "holdout")
         original_holdout = evaluate_stress(client, target, base, holdout_cases)
-        patched_holdout = evaluate_stress(client, target, patch, holdout_cases)
+        patched_holdout = evaluate_stress(client, target, selected_patch, holdout_cases)
         record["original_holdout"] = compact(original_holdout)
         record["repaired_holdout"] = compact(patched_holdout)
+        record["holdout_failures"] = failed_evidence(patched_holdout)
         if (patched_holdout["unsafe_attempts"] == 0 and
             patched_holdout["passed"] == patched_holdout["total"] and
             patched_holdout["passed"] > original_holdout["passed"]):
