@@ -1,0 +1,58 @@
+name: Refit Browser Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/demo/**'
+      - 'tests/browser_demo.mjs'
+      - 'scripts/refit_http.py'
+      - 'scripts/api_service.py'
+      - '.github/workflows/browser-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium browser test runner
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Launch backend and execute real browser journey
+        run: |
+          set -euo pipefail
+          python -m scripts.refit_http --host 127.0.0.1 --port 8097 --runs-dir /tmp/refit-browser-runs > /tmp/refit-browser-server.log 2>&1 &
+          backend_pid=$!
+          trap 'kill "$backend_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(50):
+              try:
+                  with urlopen("http://127.0.0.1:8097/api/health", timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  time.sleep(0.15)
+          else:
+              raise RuntimeError("Refit API did not start")
+          PY
+          node tests/browser_demo.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: refit-live-browser-smoke
+          path: artifacts/refit-browser-demo.png
+          retention-days: 7
