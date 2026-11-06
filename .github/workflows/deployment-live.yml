@@ -54,7 +54,7 @@ jobs:
         run: |
           python -m scripts.deployment_incident_probe \
             --source deepseek-v4.1-flash-1017 \
-            --target muse-glimmer-30b \
+            --target raon-1-mini-preview \
             --repair deepseek-v4.1-flash-1017 \
             --max-requests 160 \
             --seed "$(python -c 'import secrets; print(secrets.randbelow(2147483647))')" \
