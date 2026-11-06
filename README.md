@@ -6,6 +6,30 @@ Refit finds and repairs tool-use regressions when migrating an AI agent to a
 different language model. It compares actual stateful outcomes, proposes
 bounded model-facing changes, and tests them against independent scenarios.
 
+## Run the working demo
+
+Refit includes a **zero-build evidence demo** at `/` and `/demo` using
+its same-origin Python API. It shows the actual recorded Vultr evaluations,
+natural-language migration interpretation, and independently validated
+patch export. The separate frontend workstream can replace the root page
+later without changing `/api/*` or `/demo`.
+
+From the existing Vultr Ubuntu VM, as root:
+
+```bash
+cd /opt/refit-app
+git pull --ff-only
+bash deploy/launch-public.sh
+```
+
+The launcher runs tests, installs a restricted systemd service and Nginx
+reverse proxy, verifies HTTP health, and leaves all paid inference disabled
+until an authenticated HTTPS operator workflow is provisioned. After
+deploying, run `python3 -m scripts.smoke_public --url http://YOUR_VULTR_IP`
+from another computer. Full instructions: [public deployment](docs/public-deployment.md).
+
+**Public deployment is not asserted until its external URL is tested.**
+
 ## Current engine — one implementation, two independent agent domains
 
 Refit's contract-driven engine now supports **refund workflows** and
