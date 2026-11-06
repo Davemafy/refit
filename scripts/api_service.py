@@ -236,7 +236,11 @@ class RunService:
                 "source": r["source"], "target": r["target"],
                 "status": r["status"], "evidence_url": r.get("evidence_url"),
                 "created_at": r.get("created_at"),
-            } for r in reversed(list(self.runs.values()))]
+            } for r in sorted(
+                self.runs.values(),
+                key=lambda item: (item.get("created_at") or "", item["id"]),
+                reverse=True,
+            )]
 
     def get_run(self, run_id: str) -> dict:
         with self.lock:
