@@ -1,0 +1,86 @@
+name: Export verified compatibility artifact (offline)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - experiments/export-run.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test exporter and immutable business contract
+        run: python -m unittest discover -s tests -p 'test_refit*.py' -q
+
+      - name: Check explicit offline export request
+        id: gate
+        run: |
+          enabled=$(python -c 'import json; print(str(json.load(open("experiments/export-run.json")).get("run_export",False)).lower())')
+          if [ "$enabled" != "true" ]; then
+            echo "Offline export not requested."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Retrieve previous genuine live model evidence
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/refit-source /tmp/refit-export
+          gh run download 42207396750 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name refit-synthetic-live-report \
+            --dir /tmp/refit-source
+          test -f /tmp/refit-source/refit-live-report.json
+
+      - name: Export verified, versioned patch without making inference calls
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts import refund_adapter
+          from scripts.compatibility_artifact import (
+              create_receipt, validate_and_load, write_receipt)
+          record=json.loads(Path("/tmp/refit-source/refit-live-report.json").read_text())
+          if record["report"]["status"] != "verified_adaptation":
+              raise ValueError("archived report did not verify adaptation")
+          if record["contract"] != refund_adapter.CONTRACT.name:
+              raise ValueError("archived contract does not match approved adapter")
+          receipt=create_receipt(
+              record["report"], refund_adapter.CONTRACT,
+              refund_adapter.BASE_PROFILE, record["source"], record["target"])
+          validate_and_load(
+              receipt, refund_adapter.CONTRACT,
+              refund_adapter.BASE_PROFILE, record["target"])
+          write_receipt(receipt, Path("/tmp/refit-export/refit-compatibility.json"))
+          print(json.dumps({
+              "result":"export_verified","format":receipt["format"],
+              "contract":receipt["contract"],"target":receipt["target_model"],
+              "patch_type":receipt["patch_type"],"integrity":receipt["integrity_sha256"]
+          }))
+          PY
+
+      - name: Publish reviewable compatibility patch
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-first-verified-compatibility-patch
+          path: /tmp/refit-export/refit-compatibility.json
+          if-no-files-found: error
+          retention-days: 7
