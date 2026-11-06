@@ -1,21 +1,15 @@
 import {
-  AssistantRuntimeProvider,
   AuiIf,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
-  useLocalRuntime,
 } from "@assistant-ui/react";
-import { refitAdapter } from "./adapter";
+import { RefitRuntimeProvider } from "./runtime";
 
 /**
  * Bridge test surface, NOT the final Refit UI. Reuse the provider and adapter
  * with any React layout (including the separately-built frontend).
  */
-export function RefitRuntimeProvider({ children }: { children: React.ReactNode }) {
-  const runtime = useLocalRuntime(refitAdapter);
-  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
-}
 function Chat() {
   return (
     <ThreadPrimitive.Root className="thread">
