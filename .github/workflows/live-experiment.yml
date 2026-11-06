@@ -52,10 +52,19 @@ jobs:
         run: |
           python -m scripts.refit_stress_probe \
             --source deepseek-v4.1-flash-1017 \
-            --targets muse-glimmer-30b,raon-1-mini-preview \
-            --repair glm-5.3-flash \
+            --targets muse-glimmer-30b \
+            --repair deepseek-v4.1-flash-1017 \
             --max-requests 160 \
             --output /tmp/refit-live-report.json
+
+      - name: Retain synthetic replay evidence for debugging
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-synthetic-live-report
+          path: /tmp/refit-live-report.json
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Publish redacted outcome
         if: always()
@@ -76,7 +85,7 @@ jobs:
                       "candidates": [
                           {key: rec.get(key) for key in (
                               "model","training","regressions_against_source",
-                              "status","repaired_training","validation",
+                              "status","error","repaired_training","validation",
                               "original_holdout","repaired_holdout")}
                           for rec in result.get("candidate_models",[])
                       ],
