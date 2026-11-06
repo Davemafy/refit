@@ -1,0 +1,73 @@
+name: Verify gVisor Containment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/sandbox_runner.py'
+      - 'tests/test_refit_sandbox.py'
+      - 'deploy/install-gvisor.sh'
+      - '.github/workflows/gvisor-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gvisor-containment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install upstream signed gVisor package (systrap)
+        run: sudo bash deploy/install-gvisor.sh
+
+      - name: Record registered runtime and gVisor version
+        run: |
+          set -euo pipefail
+          command -v runsc
+          runsc --version
+          docker info --format '{{json .Runtimes}}'
+          docker pull python:3.11-alpine
+
+      - name: Execute real gVisor sandbox integration tests
+        env:
+          REFIT_TEST_DOCKER: '1'
+          REFIT_TEST_RUNTIME: 'runsc'
+        run: python -m unittest tests.test_refit_sandbox.RealDockerContainmentTests -v
+
+      - name: Capture and assert independent gVisor evidence
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python -m scripts.sandbox_runner --fixture safe --runtime runsc > artifacts/gvisor-safe.json
+          python -m scripts.sandbox_runner --fixture hostile --runtime runsc > artifacts/gvisor-hostile.json
+          python - <<'PY'
+          import json
+          for name in ('safe', 'hostile'):
+              with open('artifacts/gvisor-' + name + '.json') as fp:
+                  r = json.load(fp)
+              assert r['runtime'] == 'runsc', r['runtime']
+              assert r['container_created'], r
+              assert r['container_removed_verified'], r
+              assert r['ledger_valid'], r
+              assert r['status'] == 'passed', r
+              if name == 'hostile':
+                  probes = json.loads(r['stdout'])
+                  assert probes['key_file'] == 'FileNotFoundError', probes
+                  assert probes['key_in_env'] is False, probes
+                  for name_ in ('dns', 'outbound_connection', 'root_write'):
+                      assert not probes[name_].startswith('unexpectedly'), probes
+              print(name, 'verified:', r['runtime'], r['duration_ms'], 'ms')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: refit-gvisor-containment-evidence
+          path: artifacts/gvisor-*.json
+          retention-days: 7
