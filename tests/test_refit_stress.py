@@ -128,6 +128,23 @@ class StressProtocolTests(unittest.TestCase):
         self.assertEqual(result["status"],"no_verified_repair")
         self.assertEqual(result["candidate_models"][0]["status"],"no_reproduced_regression")
 
+    def test_required_lookup_is_forced_through_model_tool_call(self):
+        class RequiresChoice(StubAgent):
+            def complete(self, model, messages, tools=None, tool_choice="auto"):
+                first_step = not any(m["role"] == "tool" for m in messages)
+                if first_step:
+                    if tool_choice != {"type": "function", "function": {"name": "get_order"}}:
+                        return {"role": "assistant", "content": "I cannot refund."}
+                    order = next(x.strip(".,") for x in messages[1]["content"].split()
+                                 if x.startswith("ORD-"))
+                    return self.call("get_order", {"order_id": order})
+                return super().complete("source", messages, tools)
+        case = stress.stress_cases(27111, "train")[0]
+        forced_config = core.AgentConfig(force_initial_lookup=True)
+        result = stress.execute_stress(RequiresChoice(), "target", forced_config, case)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["trace"][0]["tool"], "get_order")
+
     def test_target_model_must_differ(self):
         with self.assertRaisesRegex(ValueError, "source model"):
             stress.discover_and_repair(StubAgent(),"source",["source"],"repair")
