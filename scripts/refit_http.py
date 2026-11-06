@@ -18,6 +18,8 @@ from .api_service import ApiProblem, RunService
 
 class RefitHandler(BaseHTTPRequestHandler):
     service: RunService
+    server_version = "Refit"
+    sys_version = ""
 
     def _send(self, status: int, payload: dict):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -28,7 +30,8 @@ class RefitHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _demo(self):
         """Serve the self-contained evidence demo; replace root with the UI
@@ -52,7 +55,8 @@ class RefitHandler(BaseHTTPRequestHandler):
             "form-action 'self'; object-src 'none'; frame-ancestors 'none'",
         )
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _problem(self, problem: ApiProblem):
         self._send(problem.status, {"error": {"code": problem.code,
@@ -73,6 +77,16 @@ class RefitHandler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             raise ApiProblem(400, "invalid_json", "The request body must be valid JSON.")
         return parsed
+
+    def do_HEAD(self):
+        path = urlsplit(self.path).path
+        if path in ("/", "/demo", "/demo/"):
+            return self._demo()
+        if path == "/api/health":
+            return self._send(200, self.service.health())
+        return self._send(404, {"error": {
+            "code": "not_found", "message": "No API route exists at this path."
+        }})
 
     def do_GET(self):
         try:
