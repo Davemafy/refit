@@ -19,6 +19,7 @@ from typing import Any
 from .refit_vultr_probe import VultrInference, load_key
 from .compatibility_artifact import create_receipt, validate_and_load
 from .durable_store import RunStore
+from .release_identity import capture_revision
 from . import refund_adapter, deployment_incident_probe
 
 
@@ -117,9 +118,10 @@ class RunService:
                  run_token: str = "", daily_limit: int = 3,
                  max_requests: int = 160,
                  executor: ThreadPoolExecutor | None = None):
-        if daily_limit < 1 or not 1 <= max_requests <= 200:
+        if daily_limit < 1 or not 1 <= max_requests <= 400:
             raise ValueError("invalid run budget")
         self.recordings_dir = Path(recordings_dir)
+        self.release_revision = capture_revision(ROOT)
         self.runs_dir = Path(runs_dir) if runs_dir else None
         self.live_enabled = live_enabled
         self.run_token = run_token
@@ -193,7 +195,8 @@ class RunService:
             self._persist(run_id)
 
     def health(self) -> dict:
-        return {"status": "ok", "service": "refit", "contract_version": "v1"}
+        return {"status": "ok", "service": "refit", "contract_version": "v1",
+                "revision": dict(self.release_revision)}
 
     def capabilities(self) -> dict:
         return {
@@ -370,6 +373,7 @@ class RunService:
             run_id = "live-" + secrets.token_hex(8)
             run = {
                 "id": run_id, "mode": "live", "domain": domain,
+                "engine_revision": dict(self.release_revision),
                 "source": source, "target": target,
                 "status": "queued", "created_at": timestamp(),
                 "execution_isolation": "none",

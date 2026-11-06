@@ -45,7 +45,7 @@ python3 -m scripts.operator_live \
   --domain refund \
   --source deepseek-v4.1-flash-1017 \
   --target muse-glimmer-30b \
-  --max-requests 160 \
+  --max-requests 400 \
   --execute --publish
 \`\`\`
 

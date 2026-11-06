@@ -190,8 +190,8 @@ def main():
     parser.add_argument("--publish", action="store_true",
                         help="After terminal result, publish in read-only public UI.")
     args = parser.parse_args()
-    if args.source == args.target or not 1 <= args.max_requests <= 200:
-        parser.error("source/target must differ and request budget must be 1–200")
+    if args.source == args.target or not 1 <= args.max_requests <= 400:
+        parser.error("source/target must differ and request budget must be 1–400")
     if args.publish and not args.execute:
         parser.error("--publish requires explicit --execute")
     if not args.execute:

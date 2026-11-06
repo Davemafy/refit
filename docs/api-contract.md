@@ -31,6 +31,13 @@ inference API key or operator token in the frontend bundle.
 This proves the HTTP service is responding, **not** that a sandbox or live
 provider is healthy.
 
+The response also includes `revision`: `commit` (a validated Git SHA or null),
+`tracked_files_clean` (boolean or null), and `captured_at`. This is captured once
+when the service starts; pulling new files cannot relabel an older running
+process. Each newly accepted live run retains the same `engine_revision`.
+Use the exact deployed SHA for external acceptance checks. Unknown provenance
+must not be displayed as a verified release.
+
 `GET /api/capabilities` → 200. Source of truth for workflow picker and model
 picker. Fields: `contract_version`, `domains`, `models`,
 `recorded_runs`, `live_runs_enabled`, `external_agent_import`,
