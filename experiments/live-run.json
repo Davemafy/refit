@@ -1,11 +1,7 @@
 {
-  "run_live": true,
-  "run_id": "live-2026-11-06-f",
-  "purpose": "Test model-native forced initial lookup as evidence-triggered migration adaptation, then gate on independent validation and holdout",
-  "request_budget": 160,
-  "source": "deepseek-v4.1-flash-1017",
-  "targets": [
-    "muse-glimmer-30b"
-  ],
-  "repair": "deepseek-v4.1-flash-1017"
+  "run_live": false,
+  "last_successful_live_run": "https://github.com/Davemafy/refit/actions/runs/42193722623",
+  "last_result": "verified_repair",
+  "note": "Explicitly disabled after the verified experiment to prevent accidental billable reruns",
+  "request_budget": 160
 }
