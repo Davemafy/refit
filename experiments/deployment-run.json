@@ -1,6 +1,7 @@
 {
-  "run_live": true,
-  "run_id": "deployment-incident-06-independent-gates",
-  "purpose": "Require unrelated fresh validation and holdout even when target passes training; true cross-domain model compatibility evidence",
+  "run_live": false,
+  "latest_live_result": "https://github.com/Davemafy/refit/actions/runs/42206326304",
+  "status": "compatible_on_sample",
+  "reason": "Completed independent training, validation and holdout. Explicitly disabled to avoid accidental model charges.",
   "model_request_cap": 160
 }
