@@ -1,7 +1,7 @@
 {
   "run_live": true,
-  "run_id": "live-2026-11-06-c",
-  "purpose": "Recheck reproduced Muse Glimmer regressions and attempt verified model-generated repair with stronger JSON handling",
+  "run_id": "live-2026-11-06-d",
+  "purpose": "Evaluate selective tool-description vs instruction-only repair for reproduced Muse Glimmer refund regressions",
   "request_budget": 160,
   "source": "deepseek-v4.1-flash-1017",
   "targets": [
