@@ -148,7 +148,7 @@ class DeploymentTests(unittest.TestCase):
         env.call("inspect_service", {"service_id": id_})
         data = env.call("inspect_recent_deploy", {"service_id": id_})
         result = env.call("rollback_release", {
-            "service_id": id_, "release_id": data["active_release"],
+            "service_id": id_, "release_id": data["rollback_target_release"],
             "approval_code": data["approval_code"],
             "idempotency_key": data["idempotency_key"]})
         self.assertIn("timeout", result["error"])
