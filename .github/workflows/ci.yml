@@ -22,3 +22,38 @@ jobs:
         run: python -m compileall -q scripts tests
       - name: Run offline integration and safety tests
         run: python -m unittest discover -s tests -p 'test_refit*.py' -v
+      - name: Smoke-test an actual running backend over HTTP
+        run: |
+          set -euo pipefail
+          python -m scripts.refit_http --host 127.0.0.1 --port 8097 --runs-dir /tmp/refit-ci-runs &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import json, time
+          from urllib.request import Request, urlopen
+          base = "http://127.0.0.1:8097"
+          for _ in range(30):
+              try:
+                  with urlopen(base + "/api/health", timeout=2) as r:
+                      assert json.load(r)["status"] == "ok"
+                  break
+              except OSError:
+                  time.sleep(0.2)
+          else:
+              raise AssertionError("API never became reachable")
+          def get(path):
+              with urlopen(base + path, timeout=3) as r:
+                  return json.load(r)
+          assert len(get("/api/runs")["runs"]) == 2
+          artifact = get("/api/runs/recorded-refund-2026-11-06/artifact")
+          assert artifact["format"] == "refit.compatibility.v1"
+          body = json.dumps({"text": "migrate refund from DeepSeek to Muse"}).encode()
+          req = Request(base + "/api/interpret", data=body,
+                        headers={"Content-Type": "application/json"})
+          with urlopen(req, timeout=3) as r:
+              intent = json.load(r)
+          assert intent["ready_for_review"] is True
+          assert get("/api/capabilities")["sandbox"]["integrated"] is False
+          print("HTTP backend startup, truthful evidence and interpretation: OK")
+          PY
+
