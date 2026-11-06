@@ -33,6 +33,18 @@ def assert_release(health: dict, expected_revision: str) -> dict:
     return {"commit": actual["commit"], "tracked_files_clean": True}
 
 
+def assert_public_execution_locked(caps: dict) -> None:
+    """Fail acceptance if the public endpoint advertises executable features."""
+    assert caps.get("live_runs_enabled") is False, (
+        "Public Refit service must not enable paid inference or live agent execution"
+    )
+    sandbox = caps.get("sandbox")
+    assert isinstance(sandbox, dict), "Public sandbox capabilities are missing"
+    assert sandbox.get("generated_python_diagnostics_enabled") is False, (
+        "Public Refit service must not enable generated-code diagnostics"
+    )
+
+
 def assert_live_rejection(run: dict, artifact_status: int, artifact: dict,
                           events: dict, expected_revision: str | None) -> dict:
     assert run.get("mode") == "live", "Run was not executed by the live operator"
@@ -144,6 +156,7 @@ def verify(base: str, expected_revision: str | None = None,
     release = assert_release(health, expected_revision) if expected_revision else None
     status, caps = request("/api/capabilities")
     assert status == 200 and caps["contract_version"] == "v1"
+    assert_public_execution_locked(caps)
     status, data = request("/api/runs")
     assert status == 200 and len(data["runs"]) >= 2
     refund_id = next(x["id"] for x in data["runs"]
@@ -194,7 +207,8 @@ def verify(base: str, expected_revision: str | None = None,
                        "target_passed": 6, "repaired_holdout_passed": 8},
             "deployment": {"id": deployment_id, "status": "compatible_on_sample"},
         },
-        "live_runs_enabled": bool(caps.get("live_runs_enabled")),
+        "live_runs_enabled": False,
+        "public_execution_locked": True,
         "routes_checked": observations,
         "no_paid_actions_triggered": True,
     }
