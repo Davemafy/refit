@@ -224,11 +224,19 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
                "repair_model": repair_model}
     source_result = evaluate(client, source, contract, profile, train)
     outcome["source_training"] = compact(source_result)
+    # A score without a synthetic trace is not diagnosable. Preserve rejected
+    # tool calls and exact verifier failures in the private run artifact.
+    outcome["source_failure_evidence"] = [
+        x for x in source_result["cases"] if not x["passed"]
+    ]
     if source_result["passed"] != source_result["total"] or source_result["unsafe_attempts"]:
         outcome["status"] = "source_baseline_insufficient"
         return outcome
     target_result = evaluate(client, target, contract, profile, train)
     outcome["target_training"] = compact(target_result)
+    outcome["target_failure_evidence"] = [
+        x for x in target_result["cases"] if not x["passed"]
+    ]
     misses = regressions(source_result, target_result)
     if not misses:
         outcome["status"] = "compatible_without_patch"
