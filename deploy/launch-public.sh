@@ -192,11 +192,11 @@ systemctl reload nginx
 
 # Confirm the actual public-facing reverse-proxy path, not just Python.
 CHECK_HOST="${HOSTNAME_OPTION:-localhost}"
-if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/api/health     | grep -q '"status": "ok"'; then
+if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/api/health     | grep -F '"status": "ok"' >/dev/null; then
   echo "Nginx /api/health reverse proxy failed" >&2
   exit 5
 fi
-if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/demo     | grep -q 'Change the model.'; then
+if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/demo     | grep -F 'Change the model.' >/dev/null; then
   echo "Nginx /demo reverse proxy failed" >&2
   exit 5
 fi
