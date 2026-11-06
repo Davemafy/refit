@@ -94,6 +94,105 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(outcome["repaired_holdout"]["passed"], 8)
         self.assertEqual(outcome["selected_variant"], "instructions_only")
 
+    def test_paired_evidence_preserves_successes_and_final_responses(self):
+        result = incident.run_live(ScriptedResponder(break_target=True),
+                                   "source", "target", "repair", seed=888)
+        self.assertEqual(result["evaluation_version"], 2)
+        phases = result["evaluations"]
+        for split, names in (
+            ("training", ("source_training", "target_training", "trial_instructions_only")),
+            ("validation", ("source_validation", "original_validation", "validation")),
+            ("holdout", ("source_holdout", "original_holdout", "repaired_holdout")),
+        ):
+            expected = [x["case"] for x in result["split_manifests"][split]]
+            for name in names:
+                self.assertEqual([x["case"] for x in phases[name]["cases"]], expected)
+                for case in phases[name]["cases"]:
+                    self.assertEqual(case["transcript"][0]["role"], "system")
+                    self.assertEqual(case["transcript"][-1]["role"], "assistant")
+                    self.assertGreater(case["model_requests"], 0)
+                    self.assertGreaterEqual(case["elapsed_seconds"], 0)
+        self.assertEqual(phases["source_holdout"]["profile_sha256"],
+                         phases["original_holdout"]["profile_sha256"])
+        self.assertNotEqual(phases["source_holdout"]["profile_sha256"],
+                            phases["repaired_holdout"]["profile_sha256"])
+
+    def test_source_failure_on_unseen_split_blocks_both_paths(self):
+        for broken in (False, True):
+            for failed_phase in ("validation", "holdout"):
+                with self.subTest(broken=broken, phase=failed_phase):
+                    class SourceFails(ScriptedResponder):
+                        def complete(self, model, messages, tools=None):
+                            if (tools is not None and model == "source" and
+                                    "SOURCE_FAIL" in messages[1]["content"]):
+                                return {"role": "assistant", "content": "Unable to act."}
+                            return super().complete(model, messages, tools)
+
+                    def cases(phase):
+                        suite = incident.make_cases(881, phase)
+                        if phase == failed_phase:
+                            case = suite[0]
+                            suite[0] = engine.ReplayCase(
+                                case.name, case.request + " SOURCE_FAIL", case.environment)
+                        return suite
+
+                    result = engine.migrate(
+                        SourceFails(break_target=broken), incident.CONTRACT,
+                        "source", "target", "repair", incident.BASE_PROFILE,
+                        cases("train"), lambda: cases("validation"),
+                        lambda: cases("holdout"))
+                    self.assertEqual(result["status"], "source_baseline_insufficient")
+                    self.assertEqual(result["failed_source_phase"], failed_phase)
+                    self.assertNotIn("accepted_patch", result)
+                    if failed_phase == "validation":
+                        self.assertNotIn("holdout", result["split_manifests"])
+
+    def test_regression_comparison_rejects_misaligned_cases(self):
+        with self.assertRaisesRegex(ValueError, "matching ordered cases"):
+            engine.regressions({"cases": [{"case": "a", "passed": True}]},
+                               {"cases": [{"case": "b", "passed": False}]})
+
+    def test_small_description_edit_is_preferred_to_full_instruction_rewrite(self):
+        class DescriptionRepair(ScriptedResponder):
+            def complete(self, model, messages, tools=None):
+                if tools is None:
+                    return {"content": json.dumps({
+                        "instructions": incident.INSTRUCTIONS + " Unnecessary wording." * 20,
+                        "tool_descriptions": {
+                            "inspect_service": "Inspect the service before choosing a recovery action."
+                        },
+                    })}
+                if model == "target":
+                    description = tools[0]["function"]["description"]
+                    if description.startswith("Inspect the service before"):
+                        return super().complete("source", messages, tools)
+                return super().complete(model, messages, tools)
+
+        result = incident.run_live(DescriptionRepair(break_target=True),
+                                   "source", "target", "repair", seed=888)
+        self.assertEqual(result["status"], "verified_adaptation")
+        self.assertEqual(result["selected_variant"], "descriptions_only")
+        self.assertEqual(result["accepted_patch"]["instructions"], incident.INSTRUCTIONS)
+        self.assertEqual(result["candidate_order"][0]["type"], "descriptions_only")
+        self.assertTrue(all(x["category"] == "finalized_without_tool_execution"
+                            for x in result["diagnosis"]))
+
+    def test_rejected_candidates_keep_their_evidence(self):
+        class NoRepair(ScriptedResponder):
+            def complete(self, model, messages, tools=None):
+                if tools is None:
+                    return {"content": json.dumps({
+                        "instructions": incident.INSTRUCTIONS + " Another phrasing.",
+                        "tool_descriptions": {},
+                    })}
+                return super().complete(model, messages, tools)
+        result = incident.run_live(NoRepair(break_target=True),
+                                   "source", "target", "repair", seed=888)
+        self.assertEqual(result["status"], "repair_rejected_training")
+        self.assertEqual(len(result["trials"]), 1)
+        self.assertIn("trial_instructions_only", result["evaluations"])
+        self.assertNotIn("holdout", result["split_manifests"])
+
     def test_clean_training_requires_independent_validation_and_holdout(self):
         result = incident.run_live(
             ScriptedResponder(), "source", "target", "repair", seed=118

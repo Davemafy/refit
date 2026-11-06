@@ -40,8 +40,12 @@ def create_receipt(report: dict, contract: AgentContract, baseline: AgentProfile
                    source_model: str, target_model: str) -> dict:
     if report.get("status") != "verified_adaptation":
         raise ValueError("only independently verified adaptations can be exported")
-    needed = ("source_training", "target_training", "validation",
-              "original_holdout", "repaired_holdout", "accepted_patch")
+    phases = ["source_training", "target_training", "validation",
+              "original_holdout", "repaired_holdout"]
+    paired = report.get("evaluation_version") == 2
+    if paired:
+        phases.extend(("source_validation", "original_validation", "source_holdout"))
+    needed = (*phases, "accepted_patch")
     if any(x not in report for x in needed):
         raise ValueError("missing evidence required for verified adaptation")
     for name in needed[:-1]:
@@ -57,6 +61,13 @@ def create_receipt(report: dict, contract: AgentContract, baseline: AgentProfile
         raise ValueError("holdout evidence must compare equal sample sizes")
     checks = (report["source_training"], report["validation"],
               report["repaired_holdout"])
+    if paired:
+        checks += (report["source_validation"], report["source_holdout"])
+        for names in (("source_training", "target_training"),
+                      ("source_validation", "original_validation", "validation"),
+                      ("source_holdout", "original_holdout", "repaired_holdout")):
+            if len({report[name]["total"] for name in names}) != 1:
+                raise ValueError("paired evidence must compare equal sample sizes")
     if any(x["passed"] != x["total"] or x.get("unsafe_attempts") for x in checks):
         raise ValueError("acceptance gates not satisfied")
     if report["repaired_holdout"]["passed"] <= report["original_holdout"]["passed"]:
@@ -83,19 +94,17 @@ def create_receipt(report: dict, contract: AgentContract, baseline: AgentProfile
         "patch_type": patch["type"],
         "target_profile": {"instructions": instruction,
                            "tool_descriptions": descriptions},
-        "evidence": {
-            "source_training": report["source_training"],
-            "target_training": report["target_training"],
-            "validation": report["validation"],
-            "original_holdout": report["original_holdout"],
-            "repaired_holdout": report["repaired_holdout"],
-        },
+        "evidence": {name: report[name] for name in phases},
         "caveat": (
             "Success is empirical for the stated task distribution, not a "
             "guarantee of future agent reliability. Customer must review the "
             "patch and control rollout."
         ),
     }
+    if paired:
+        body["evaluation_version"] = 2
+        body["report_sha256"] = digest(report)
+        body["split_manifests"] = report["split_manifests"]
     return {**body, "integrity_sha256": digest(body)}
 
 

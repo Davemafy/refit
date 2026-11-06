@@ -5,6 +5,7 @@ import unittest
 from scripts import compatibility_artifact as artifact
 from scripts import refund_adapter, deployment_incident_probe
 from scripts.migration_engine import AgentProfile, AgentContract
+from test_refit_deployment import ScriptedResponder
 
 
 def good_result():
@@ -39,6 +40,27 @@ class PatchReceiptTests(unittest.TestCase):
         self.assertIn("Perform a successful lookup", loaded.instructions)
         self.assertEqual(loaded.tool_descriptions, ())
         self.assertEqual(receipt["format"], artifact.FORMAT_VERSION)
+
+    def test_paired_engine_report_exports_with_provenance(self):
+        report = deployment_incident_probe.run_live(
+            ScriptedResponder(break_target=True), "source", "target", "repair", 888)
+        receipt = artifact.create_receipt(
+            report, deployment_incident_probe.CONTRACT,
+            deployment_incident_probe.BASE_PROFILE, "source", "target")
+        self.assertEqual(receipt["evaluation_version"], 2)
+        self.assertEqual(receipt["report_sha256"], artifact.digest(report))
+        for phase in ("source_validation", "source_holdout", "original_validation"):
+            self.assertIn(phase, receipt["evidence"])
+        artifact.validate_and_load(receipt, deployment_incident_probe.CONTRACT,
+                                   deployment_incident_probe.BASE_PROFILE, "target")
+        for phase in ("source_validation", "source_holdout"):
+            with self.subTest(phase=phase):
+                failed = copy.deepcopy(report)
+                failed[phase]["passed"] = 0
+                with self.assertRaisesRegex(ValueError, "acceptance gates"):
+                    artifact.create_receipt(
+                        failed, deployment_incident_probe.CONTRACT,
+                        deployment_incident_probe.BASE_PROFILE, "source", "target")
 
     def test_unverified_candidate_cannot_be_exported(self):
         report = good_result()
