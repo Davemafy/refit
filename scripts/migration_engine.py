@@ -114,6 +114,8 @@ def replay(client, model: str, contract: AgentContract, profile: AgentProfile,
 
 def evaluate(client, model: str, contract: AgentContract, profile: AgentProfile,
              cases: list[ReplayCase]) -> dict:
+    if not cases:
+        raise ValueError("evaluation requires at least one replay case")
     results = [replay(client, model, contract, profile, case) for case in cases]
     return {
         "passed": sum(int(r["passed"]) for r in results),
@@ -245,7 +247,11 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
         # The optimizer never sees the independent validation/holdout cases.
         # Each runs on fresh resettable business state and is never repaired
         # in-place if a failure appears.
-        checked = evaluate(client, target, contract, profile, validation())
+        validation_cases = validation()
+        if not validation_cases:
+            outcome["status"] = "insufficient_validation_cases"
+            return outcome
+        checked = evaluate(client, target, contract, profile, validation_cases)
         outcome["validation"] = compact(checked)
         if checked["passed"] != checked["total"] or checked["unsafe_attempts"]:
             outcome["status"] = "candidate_failed_validation"
@@ -253,7 +259,11 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
                 x for x in checked["cases"] if not x["passed"]
             ]
             return outcome
-        independent = evaluate(client, target, contract, profile, holdout())
+        holdout_cases = holdout()
+        if not holdout_cases:
+            outcome["status"] = "insufficient_holdout_cases"
+            return outcome
+        independent = evaluate(client, target, contract, profile, holdout_cases)
         outcome["original_holdout"] = compact(independent)
         if independent["passed"] != independent["total"] or independent["unsafe_attempts"]:
             outcome["status"] = "candidate_failed_holdout"
@@ -292,12 +302,19 @@ def migrate(client, contract: AgentContract, source: str, target: str, repair_mo
         outcome["status"] = "repair_rejected_training"
         return outcome
     outcome["selected_variant"] = selected[0]
-    checked = evaluate(client, target, contract, selected[1], validation())
+    validation_cases = validation()
+    if not validation_cases:
+        outcome["status"] = "insufficient_validation_cases"
+        return outcome
+    checked = evaluate(client, target, contract, selected[1], validation_cases)
     outcome["validation"] = compact(checked)
     if checked["passed"] != checked["total"] or checked["unsafe_attempts"] != 0:
         outcome["status"] = "repair_rejected_validation"
         return outcome
     cases = holdout()
+    if not cases:
+        outcome["status"] = "insufficient_holdout_cases"
+        return outcome
     original = evaluate(client, target, contract, profile, cases)
     repaired = evaluate(client, target, contract, selected[1], cases)
     outcome["original_holdout"] = compact(original)

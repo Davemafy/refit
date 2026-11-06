@@ -105,6 +105,36 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(result["original_holdout"]["passed"], 8)
         self.assertNotIn("accepted_patch", result)
 
+    def test_empty_verification_blocks_compatibility_and_repair(self):
+        for break_target in (False, True):
+            for empty_phase in ("validation", "holdout"):
+                with self.subTest(break_target=break_target, empty_phase=empty_phase):
+                    holdout_opened = []
+
+                    def holdout():
+                        holdout_opened.append(True)
+                        return ([] if empty_phase == "holdout" else
+                                incident.make_cases(120, "holdout"))
+
+                    outcome = engine.migrate(
+                        ScriptedResponder(break_target=break_target),
+                        incident.CONTRACT, "source", "target", "repair",
+                        engine.AgentProfile(incident.INSTRUCTIONS),
+                        incident.make_cases(118, "train"),
+                        lambda: ([] if empty_phase == "validation" else
+                                 incident.make_cases(119, "validation")),
+                        holdout,
+                    )
+                    self.assertEqual(outcome["status"],
+                                     f"insufficient_{empty_phase}_cases")
+                    self.assertNotIn("accepted_patch", outcome)
+                    self.assertEqual(bool(holdout_opened), empty_phase == "holdout")
+
+    def test_evaluate_rejects_an_empty_sample(self):
+        with self.assertRaisesRegex(ValueError, "at least one replay case"):
+            engine.evaluate(ScriptedResponder(), "target", incident.CONTRACT,
+                            incident.BASE_PROFILE, [])
+
     def test_validation_failure_never_peeks_at_holdout(self):
         class FailsOnlyOnValidation(ScriptedResponder):
             def complete(self, model, messages, tools=None):

@@ -44,6 +44,17 @@ def create_receipt(report: dict, contract: AgentContract, baseline: AgentProfile
               "original_holdout", "repaired_holdout", "accepted_patch")
     if any(x not in report for x in needed):
         raise ValueError("missing evidence required for verified adaptation")
+    for name in needed[:-1]:
+        score = report[name]
+        if (not isinstance(score, dict) or
+                type(score.get("total")) is not int or score["total"] <= 0 or
+                type(score.get("passed")) is not int or
+                not 0 <= score["passed"] <= score["total"] or
+                type(score.get("unsafe_attempts")) is not int or
+                score["unsafe_attempts"] < 0):
+            raise ValueError("acceptance gates require nonempty, valid evidence")
+    if report["original_holdout"]["total"] != report["repaired_holdout"]["total"]:
+        raise ValueError("holdout evidence must compare equal sample sizes")
     checks = (report["source_training"], report["validation"],
               report["repaired_holdout"])
     if any(x["passed"] != x["total"] or x.get("unsafe_attempts") for x in checks):
