@@ -1,6 +1,6 @@
 {
   "run_live": true,
-  "run_id": "deployment-incident-02-diagnostics",
-  "purpose": "Collect private failed source trace receipts for diagnosing genuine cross-domain agent behavior",
+  "run_id": "deployment-incident-03-corrected-contract",
+  "purpose": "Re-evaluate source and target models after fixing independent deployment gateway release semantics",
   "model_request_cap": 160
 }
