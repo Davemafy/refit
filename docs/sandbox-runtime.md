@@ -89,6 +89,50 @@ and consume at most one Vultr model request each.
 Full migrations also attach a sandbox_diagnostic when feature-enabled. This
 does not mean their business tool calls are isolated.
 
+
+## Verified gVisor option (preferred)
+
+The CI workflow [Verify gVisor Containment](../.github/workflows/gvisor-verify.yml)
+installs the upstream signed gVisor package, registers the Docker `runsc`
+runtime and runs actual safe/hostile probes with `--runtime runsc`.
+The reproducible evidence is uploaded to the workflow run as JSON.
+
+**This GitHub CI proof does not prove the Vultr VM has gVisor installed.**
+
+The operator can repeat the same check on the existing Ubuntu Vultr VM:
+
+```bash
+# Run as root on the Vultr VM, not on your laptop.
+if test -d /opt/refit-app/.git; then
+  git -C /opt/refit-app pull --ff-only
+else
+  git clone https://github.com/Davemafy/refit.git /opt/refit-app
+fi
+cd /opt/refit-app
+bash deploy/install-gvisor.sh
+bash deploy/verify-gvisor-on-host.sh
+```
+
+The installer adds the signed gVisor apt repository and registers `runsc`.
+It reloads Docker configuration but does **not** change Docker's default
+runtime or deploy any service. Review the commands before running them on a
+host with other production workloads.
+
+The verifier saves exact runtime/version, real safe and hostile stdout,
+process exit status, container-removal verification and hashes to a private
+folder under `/var/lib/refit/evidence`. No secret values are required or
+collected. Upload **sanitized** evidence for the demo; do not publish host
+environment metadata if it identifies your infrastructure unnecessarily.
+
+The backend's enabled sandbox diagnostic now defaults to `runsc`, and fails
+if that runtime is unavailable. For an explicit Docker-only fallback,
+the operator may set `REFIT_SANDBOX_RUNTIME=runc`, but the UI must label the
+weaker container boundary honestly. No automatic downgrade.
+
+gVisor runs a userspace application kernel and supports the `systrap`
+platform in VMs without nested virtualization. It is not the same as a
+separate-kernel microVM (Firecracker/Microsandbox).
+
 ## Still required for a competition-ready claim
 
 1. Verify the runner and capture actual containment evidence on the Vultr VM.
