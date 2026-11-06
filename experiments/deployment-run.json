@@ -1,6 +1,6 @@
 {
   "run_live": true,
-  "run_id": "2026-11-06-independent-deployment-incident-01",
-  "purpose": "Real Vultr test of Refit domain-independent migration engine against deployment incident responder",
+  "run_id": "deployment-incident-02-diagnostics",
+  "purpose": "Collect private failed source trace receipts for diagnosing genuine cross-domain agent behavior",
   "model_request_cap": 160
 }
