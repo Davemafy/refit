@@ -80,11 +80,33 @@ curl -fsS http://127.0.0.1:8097/api/runs
 The exact endpoint shapes, error codes and integration smoke tests are in
 [the authoritative frontend API contract](docs/api-contract.md).
 
-**Boundaries:** model migration intent parsing is limited to the two built-in
-agents; external-agent imports and sandboxed code execution are not yet
-implemented. Live runs require explicit server configuration plus an operator
-token, and are disabled by default. The public-facing UI must not claim the
-backend already meets Track 1 containment requirements.
+**Boundaries:** natural-language parsing is limited to the two built-in
+agents; external-agent imports and sandboxing the agents' business tools are
+**not** implemented. A separate optional path runs real model-generated
+migration diagnostics inside a disposable restricted Docker/gVisor worker.
+Live calls require explicit server flags and an operator token. The public UI
+must not claim the entire migration agent is sandboxed.
+
+## Executing generated diagnostics safely
+
+Refit's **supplementary code-writing step** can ask Vultr Serverless Inference
+to generate a migration diagnostic program and execute that Python in a
+disposable sandbox, while a protected host-side oracle independently checks
+the results. It cannot approve a business migration by itself.
+
+A dedicated [gVisor test workflow](.github/workflows/gvisor-verify.yml)
+installs the signed upstream `runsc` runtime and tests real Python execution,
+denied outbound network/DNS, absent credentials, read-only root filesystem,
+hash-chained execution events, and verified container cleanup. The same tests
+also run with ordinary Docker for comparison. See
+[the sandbox runbook](docs/sandbox-runtime.md), the operator-gated
+[API contract](docs/api-contract.md), and the
+[Vultr-host installation and verification scripts](deploy/).
+
+**Deployment distinction:** GitHub runner containment tests do not establish
+that gVisor is installed on our Vultr VM. The existing refund/deployment
+business tool environments still execute in-process. No arbitrary agent-code
+uploads are exposed through the API.
 
 ## Code
 
@@ -156,15 +178,18 @@ the actual returned model matches the requested model.
   Historical probes also tested a first-tool request, but the provider did
   not always honor it; it must not be mistaken for hard enforcement.
   Patches cannot edit the evaluator or protected business invariants.
-- In-process SQLite tools are **not** arbitrary-code isolation; a separate
-  hardened Vultr worker and containment test are still needed.
+- Existing in-process SQLite business tools are **not** isolated.
+  The separate Docker/gVisor worker isolates only generated diagnostics;
+  it is not a comprehensive agent sandbox. Host-specific Vultr proof
+  and full-stack integration remain pending.
 
 ## Remaining work
 
 1. Reproduce the measured improvement on multiple new seeds and paraphrased
    tasks; quantify run-to-run variance.
 2. Build the minimal judge-facing workflow and Vultr-hosted control plane.
-3. Demonstrate real sandbox containment and secret separation.
+3. Verify gVisor containment and secret separation on the actual Vultr VM;
+   the CI proof currently runs on GitHub-hosted machines.
 4. Publish the reproducible demo, video and submission evidence.
 
 This is the **Refit product repository**. The separate dev-mcp service is a
