@@ -1,5 +1,6 @@
 {
-  "run_live": false,
-  "reason": "Initial smoke test: no live inference credential needed; do not make billable requests",
+  "run_live": true,
+  "run_id": "live-2026-11-06-a",
+  "purpose": "Reproduce genuine GLM 5.2 vs DeepSeek V4.1 agent-tool regression and test a bounded Vultr model-generated repair",
   "request_budget": 160
 }
