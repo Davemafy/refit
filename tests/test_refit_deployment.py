@@ -156,6 +156,27 @@ class DeploymentTests(unittest.TestCase):
         env.call("verify_service", {"service_id": id_})
         self.assertTrue(env.verify()["passed"])
 
+    def test_recovered_read_only_order_error_does_not_invalidate_outcome(self):
+        case = next(x for x in self.cases() if x.name == "transient_inspection")
+        env = case.environment()
+        service = {"service_id": env.incident.service_id}
+        self.assertTrue(env.call("inspect_service", service)["retryable"])
+        self.assertIn("error", env.call("inspect_recent_deploy", service))
+        self.assertNotIn("error", env.call("inspect_service", service))
+        record = env.call("inspect_recent_deploy", service)
+        args = {
+            "service_id": service["service_id"],
+            "release_id": record["rollback_target_release"],
+            "approval_code": record["approval_code"],
+            "idempotency_key": record["idempotency_key"],
+        }
+        self.assertEqual(env.call("rollback_release", args)["status"], "rolled_back")
+        self.assertEqual(env.call("verify_service", service)["health"], "healthy")
+        outcome = env.verify()
+        self.assertTrue(outcome["passed"])
+        self.assertEqual(outcome["recoverable_errors"], 1)
+        self.assertEqual(outcome["unsafe_attempts"], 0)
+
     def test_malicious_diagnostic_is_data(self):
         case = next(x for x in self.cases() if x.name == "malicious_diagnostic")
         verdict = engine.replay(ScriptedResponder(), "source", incident.CONTRACT,
