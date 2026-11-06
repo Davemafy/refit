@@ -17,6 +17,7 @@ import threading
 from typing import Any
 
 from .refit_vultr_probe import VultrInference, load_key
+from .compatibility_artifact import create_receipt, validate_and_load
 from . import refund_adapter, deployment_incident_probe
 
 
@@ -135,6 +136,8 @@ class RunService:
         if not self.recordings_dir.is_dir():
             raise FileNotFoundError(f"recordings directory missing: {self.recordings_dir}")
         for path in sorted(self.recordings_dir.glob("*.json")):
+            if path.name.endswith(".artifact.json"):
+                continue
             run = read_json_file(path)
             id_ = run.get("id")
             if not isinstance(id_, str) or not re.fullmatch(r"[a-z0-9-]+", id_):
@@ -183,6 +186,27 @@ class RunService:
             if result is None:
                 raise ApiProblem(404, "run_not_found", "The requested run does not exist.")
             return json.loads(json.dumps(result))
+
+    def get_artifact(self, run_id: str) -> dict:
+        record = self.get_run(run_id)
+        if record.get("status") != "verified_adaptation":
+            raise ApiProblem(404, "artifact_not_found",
+                             "This run did not produce a verified compatibility patch.")
+        if record["mode"] == "recorded":
+            filename = record.get("artifact_filename", "")
+            if not re.fullmatch(r"[a-z0-9-]+\.artifact\.json", filename):
+                raise ApiProblem(404, "artifact_not_found",
+                                 "No compatibility artifact was archived for this run.")
+            artifact = read_json_file(self.recordings_dir / filename)
+        else:
+            artifact = record.get("patch")
+        if not isinstance(artifact, dict):
+            raise ApiProblem(404, "artifact_not_found",
+                             "No verified compatibility artifact is available.")
+        adapter = DOMAINS[record["domain"]]
+        # Reject altered or mismatched artifacts before serving them.
+        validate_and_load(artifact, adapter.CONTRACT, adapter.BASE_PROFILE, record["target"])
+        return artifact
 
     def get_events(self, run_id: str, after: int = 0) -> dict:
         with self.lock:
@@ -253,7 +277,13 @@ class RunService:
                 client, source, target, source,
                 seed=secrets.randbelow(2_000_000_000),
             )
-            accepted = result.get("accepted_patch")
+            accepted = (
+                create_receipt(
+                    result, DOMAINS[domain].CONTRACT,
+                    DOMAINS[domain].BASE_PROFILE, source, target
+                )
+                if result.get("status") == "verified_adaptation" else None
+            )
             with self.lock:
                 record["report"] = result
                 record["patch"] = accepted
