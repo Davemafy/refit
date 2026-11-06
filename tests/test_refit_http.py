@@ -42,6 +42,20 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(deployment["status"], "compatible_on_sample")
         self.assertIsNone(deployment["patch"])
 
+    def test_exported_artifact_is_complete_and_contract_bound(self):
+        service = self.service()
+        artifact = service.get_artifact("recorded-refund-2026-11-06")
+        self.assertEqual(artifact["format"], "refit.compatibility.v1")
+        self.assertEqual(artifact["patch_type"], "instructions_only")
+        self.assertEqual(
+            artifact["integrity_sha256"],
+            "sha256:19cb9d6f15d45dd114ff384e00b0324d5506f74dcf83276f17033e2bc8f1943b",
+        )
+        self.assertIn("first call get_order", artifact["target_profile"]["instructions"])
+        with self.assertRaises(ApiProblem) as error:
+            service.get_artifact("recorded-deployment-2026-11-06")
+        self.assertEqual(error.exception.code, "artifact_not_found")
+
     def test_capabilities_do_not_claim_external_import_or_sandbox(self):
         capabilities = self.service().capabilities()
         self.assertFalse(capabilities["external_agent_import"])
@@ -162,6 +176,17 @@ class HttpTests(unittest.TestCase):
         code, events = self.request("/api/runs/" + id_ + "/events")
         self.assertEqual(code, 200)
         self.assertTrue(events["terminal"])
+
+    def test_http_exports_full_verified_artifact(self):
+        status, artifact = self.request(
+            "/api/runs/recorded-refund-2026-11-06/artifact")
+        self.assertEqual(status, 200)
+        self.assertIn("source_contract_sha256", artifact)
+        self.assertIn("target_profile", artifact)
+        status, response = self.request(
+            "/api/runs/recorded-deployment-2026-11-06/artifact")
+        self.assertEqual(status, 404)
+        self.assertEqual(response["error"]["code"], "artifact_not_found")
 
     def test_http_natural_language_migration_proposal(self):
         status, data = self.request("/api/interpret",
