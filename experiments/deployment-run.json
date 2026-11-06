@@ -1,5 +1,6 @@
 {
-  "run_live": false,
-  "purpose": "Dry-run CI check for independent deployment-incident agent",
+  "run_live": true,
+  "run_id": "2026-11-06-independent-deployment-incident-01",
+  "purpose": "Real Vultr test of Refit domain-independent migration engine against deployment incident responder",
   "model_request_cap": 160
 }
