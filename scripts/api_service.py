@@ -163,7 +163,18 @@ class RunService:
             "recorded_runs": True,
             "live_runs_enabled": bool(self.live_enabled and self.run_token),
             "external_agent_import": False,
-            "sandbox": {"integrated": False, "isolation": "none"},
+            "sandbox": {
+                "integrated": False,
+                "business_tools_isolated": False,
+                "generated_python_diagnostics_enabled": (
+                    os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
+                ),
+                "runtime": (
+                    os.getenv("REFIT_SANDBOX_RUNTIME", "runc")
+                    if os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
+                    else None
+                ),
+            },
             "warnings": [
                 "Only built-in, synthetic business workflows are currently supported.",
                 "Live runs are disabled unless explicitly configured and authenticated.",
@@ -284,9 +295,35 @@ class RunService:
                 )
                 if result.get("status") == "verified_adaptation" else None
             )
+            diagnostic = None
+            if os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1":
+                # A separate, genuine Vultr model response writes Python.
+                # This is supplementary diagnosis, NEVER the business oracle.
+                try:
+                    from .sandbox_diagnostics import generate_and_verify
+                    from .sandbox_runner import DockerSandbox
+                    runtime = os.getenv("REFIT_SANDBOX_RUNTIME", "runc")
+                    diagnostic = generate_and_verify(
+                        {"domain": domain, "report": result},
+                        client, source, DockerSandbox(runtime=runtime)
+                    )
+                except Exception as exc:
+                    diagnostic = {
+                        "kind": "vultr_model_generated_python_diagnostic",
+                        "verified": False, "error_code": type(exc).__name__,
+                        "message": "Isolated code diagnosis failed; migration outcome unchanged."
+                    }
             with self.lock:
                 record["report"] = result
                 record["patch"] = accepted
+                if diagnostic is not None:
+                    record["sandbox_diagnostic"] = diagnostic
+                    self._emit(
+                        run_id, "sandbox_diagnostic",
+                        "Generated code executed and independently verified in a sandbox."
+                        if diagnostic.get("verified")
+                        else "Sandbox diagnosis did not pass verification."
+                    )
                 record["model_requests"] = client.requests
                 record["status"] = result["status"]
                 record["finished_at"] = timestamp()
