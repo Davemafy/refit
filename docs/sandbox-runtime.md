@@ -133,6 +133,29 @@ gVisor runs a userspace application kernel and supports the `systrap`
 platform in VMs without nested virtualization. It is not the same as a
 separate-kernel microVM (Firecracker/Microsandbox).
 
+## November 6 live proof (GitHub runner, not the Vultr VM)
+
+The [one-call Vultr + gVisor experiment](https://github.com/Davemafy/refit/actions/runs/42227479472)
+successfully requested **one real code-generation response** from
+`deepseek-v4.1-flash-1017` through Vultr Serverless Inference. The generated
+Python executed under Docker's `runsc` runtime. The host-side verifier
+independently agreed with its diagnosis:
+
+- Original training comparison: 8/8 source vs. 6/8 target, delta 2.
+- Target failures: `ineligible` and `timeout_after_commit`.
+- Holdout improvement: 7/8 to 8/8, delta 1.
+- Generated code: completed successfully; Docker container absence checked.
+- The workflow archives its source code, expected/observed diagnostic,
+  gVisor execution ledger, and runtime metadata in a downloadable Actions artifact.
+
+The actual migration report is previously recorded empirical evidence;
+only the diagnostic code-generation and sandbox execution were live in this
+new run. This **does not** prove the complete migration agent's business tools
+were isolated, and it is not a Vultr-VM deployment proof.
+
+The experiment manifest is now set to `run_live=false` after the successful
+single-request run; avoid automatically repeating billable inference.
+
 ## Still required for a competition-ready claim
 
 1. Verify the runner and capture actual containment evidence on the Vultr VM.
