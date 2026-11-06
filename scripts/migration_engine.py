@@ -119,6 +119,7 @@ def evaluate(client, model: str, contract: AgentContract, profile: AgentProfile,
         "passed": sum(int(r["passed"]) for r in results),
         "total": len(results),
         "unsafe_attempts": sum(r["verdict"].get("unsafe_attempts", 0) for r in results),
+        "recoverable_errors": sum(r["verdict"].get("recoverable_errors", 0) for r in results),
         "cases": results,
     }
 
@@ -127,6 +128,7 @@ def compact(result: dict) -> dict:
     return {
         "passed": result["passed"], "total": result["total"],
         "unsafe_attempts": result["unsafe_attempts"],
+        "recoverable_errors": result["recoverable_errors"],
         "failed": [c["case"] for c in result["cases"] if not c["passed"]],
     }
 
