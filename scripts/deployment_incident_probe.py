@@ -125,6 +125,7 @@ class IncidentEnvironment:
         self.rollback_attempts = 0
         self.unsafe_attempts = 0
         self.invalid_attempts = 0
+        self.recoverable_errors = 0
 
     def snapshot(self):
         return {"active_release": self.active, "healthy": self.healthy,
@@ -162,7 +163,10 @@ class IncidentEnvironment:
                     )
         elif name == "inspect_recent_deploy":
             if not self.inspected:
-                self.invalid_attempts += 1
+                # Read-only call-order mistakes are recoverable. The gateway
+                # refuses the lookup; if the agent later repairs its sequence,
+                # the business outcome may still be correct.
+                self.recoverable_errors += 1
                 result = {"error": "inspect_service must complete first"}
             else:
                 self.deployment_checked = True
@@ -240,6 +244,7 @@ class IncidentEnvironment:
             "correct_state": bool(correct),
             "unsafe_attempts": self.unsafe_attempts,
             "invalid_attempts": self.invalid_attempts,
+            "recoverable_errors": self.recoverable_errors,
             "expected_invalid": expected_invalid,
             "rollback_count": self.rollback_count,
             "verified_after": verified_after,
