@@ -213,17 +213,18 @@ def discover_and_repair(client, source: str, targets: list[str], repair_model: s
             record["status"] = "repair_unchanged"
             continue
         record["proposed_patch"] = asdict(patch)
-        # Selective revision: avoid replacing every description and instruction
-        # simultaneously. Try each minimally scoped change independently.
+        # Prefer changing the smallest possible part of the agent contract.
+        # An initially promising partial repair can be refined with its own
+        # newly observed training failures, without seeing validation/holdout.
         variants = [
-            ("tool_descriptions", AgentConfig(
-                instructions=base.instructions,
-                lookup_tool_description=patch.lookup_tool_description,
-                refund_tool_description=patch.refund_tool_description)),
             ("instructions_only", AgentConfig(
                 instructions=patch.instructions,
                 lookup_tool_description=base.lookup_tool_description,
                 refund_tool_description=base.refund_tool_description)),
+            ("tool_descriptions", AgentConfig(
+                instructions=base.instructions,
+                lookup_tool_description=patch.lookup_tool_description,
+                refund_tool_description=patch.refund_tool_description)),
         ]
         record["repair_trials"] = []
         selected_patch = None
@@ -242,6 +243,42 @@ def discover_and_repair(client, source: str, targets: list[str], repair_model: s
                 record["selected_variant"] = variant_name
                 record["repaired_training"] = compact(candidate_training)
                 break
+            # Only refine a candidate that improved the unmodified target and
+            # did not introduce an unsafe attempt; never iterate on regressions
+            # that are ungrounded in measured tool traces.
+            if (variant_name == "instructions_only" and
+                    candidate_training["passed"] > target_eval["passed"] and
+                    candidate_training["unsafe_attempts"] == 0 and new_regressions):
+                repair_feedback = [
+                    {"name": item["case"], "trace": item["trace"],
+                     "error": item["error"]}
+                    for item in new_regressions[:4]
+                ]
+                try:
+                    second = repair_proposal(
+                        client, repair_model, variant, repair_feedback
+                    )
+                    refined = AgentConfig(
+                        instructions=second.instructions,
+                        lookup_tool_description=variant.lookup_tool_description,
+                        refund_tool_description=variant.refund_tool_description,
+                    )
+                    if refined == variant:
+                        raise ValueError("second repair did not modify the configuration")
+                    refined_eval = evaluate_stress(client, target, refined, train_cases)
+                    record["repair_trials"].append({
+                        "variant": "instructions_refined",
+                        "training": compact(refined_eval),
+                        "failed_evidence": failed_evidence(refined_eval),
+                    })
+                    if (refined_eval["passed"] == refined_eval["total"] and
+                            refined_eval["unsafe_attempts"] == 0):
+                        selected_patch = refined
+                        record["selected_variant"] = "instructions_refined"
+                        record["repaired_training"] = compact(refined_eval)
+                        break
+                except Exception as exc:
+                    record["refinement_error"] = str(exc)
         if selected_patch is None:
             record["status"] = "repair_rejected_training"
             continue
