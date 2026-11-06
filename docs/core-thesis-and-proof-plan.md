@@ -63,6 +63,23 @@ Our archived synthetic report contains patch text, phase scores and failure
 trace snippets. It does not retain every successful tool transition; future
 reports must contain a richer independently replayable receipt.
 
+## New causal evidence (two runs, November 6)
+
+The post-hoc ablations separated the previously selected instruction patch
+from the named-first-tool request. Across two new random seeds, the baseline
+passed 6/8, the first-tool request alone passed 5/8, the **Vultr-generated
+instruction rewrite alone passed 8/8**, and the combination passed 8/8.
+See [the experiment record](causal-ablation-evidence-2026-11-06.md).
+
+This confirms that prompt adaptation is a genuine contributor for the
+tested workflow. It also establishes a limitation of our so-called
+`force_initial_lookup` flag: on some provider responses there was no tool
+call despite the named `tool_choice`. Request controls are NOT policy
+enforcement. Required actions must be validated against actual responses,
+and failure must be explicit.
+
+The two runs reused known task templates; they do not establish generality.
+
 ## Architecture: seven separable jobs
 
 ### 1. Connect/capture
