@@ -76,6 +76,8 @@ class StressProtocolTests(unittest.TestCase):
         result=stress.discover_and_repair(runner,"source",["target"],"repair")
         self.assertEqual(result["status"],"verified_repair")
         selected=result["candidate_models"][0]
+        self.assertEqual(selected["selected_variant"], "tool_descriptions")
+        self.assertEqual(selected["repair_trials"][0]["variant"], "tool_descriptions")
         self.assertEqual(selected["repaired_holdout"]["passed"],8)
         self.assertGreater(selected["repaired_holdout"]["passed"],
                            selected["original_holdout"]["passed"])
