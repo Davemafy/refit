@@ -15,6 +15,24 @@ from scripts.smoke_public import assert_live_rejection, assert_release, verify
 SHA = "e53feebd8f6d1d08595d23d3b0794aa814c60841"
 
 
+def worker_receipts():
+    return [
+        {
+            "runtime": "runsc", "network": "none",
+            "read_only_root": True, "container_absent": True,
+            "process_cleanup_error": None,
+            "cleanup_evidence": {
+                "verified": True, "reason": "verified_absent",
+                "container_name": f"refit-worker-{index}",
+                "daemon_id": "test-daemon-identity",
+                "inspection": {"returncode": 1},
+                "daemon_health": {"returncode": 0},
+            },
+        }
+        for index in range(48)
+    ]
+
+
 def rejected_run():
     return {
         "id": "live-" + "a" * 16,
@@ -37,6 +55,7 @@ def rejected_run():
                 "business_tools_isolated": True,
                 "all_containers_removed": True,
                 "worker_runs": 48,
+                "cases": worker_receipts(),
             },
         },
     }
@@ -99,6 +118,30 @@ class PublicAcceptanceTests(TestCase):
             with self.subTest(field=key), self.assertRaises(AssertionError):
                 assert_live_rejection(run, 404, {"error": {"code": "artifact_not_found"}},
                                       complete_events(), SHA)
+
+    def test_every_cleanup_receipt_must_be_consistent(self):
+        for kind in ("missing", "duplicate", "daemon", "network", "inspection", "verified"):
+            run = rejected_run()
+            cases = run["report"]["execution_boundary"]["cases"]
+            if kind == "missing":
+                cases.pop()
+            elif kind == "duplicate":
+                cases[1]["cleanup_evidence"]["container_name"] = (
+                    cases[0]["cleanup_evidence"]["container_name"]
+                )
+            elif kind == "daemon":
+                cases[1]["cleanup_evidence"]["daemon_id"] = "other-daemon"
+            elif kind == "network":
+                cases[1]["network"] = "bridge"
+            elif kind == "inspection":
+                cases[1]["cleanup_evidence"]["inspection"]["returncode"] = 0
+            else:
+                cases[1]["cleanup_evidence"]["verified"] = False
+            with self.subTest(kind=kind), self.assertRaises(AssertionError):
+                assert_live_rejection(
+                    run, 404, {"error": {"code": "artifact_not_found"}},
+                    complete_events(), SHA
+                )
 
     def test_wrong_release_or_incomplete_events_fail(self):
         run = rejected_run()
