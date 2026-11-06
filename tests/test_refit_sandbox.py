@@ -126,8 +126,14 @@ class SandboxPolicyTests(unittest.TestCase):
     "needs opt-in and a real disposable Docker-capable runner",
 )
 class RealDockerContainmentTests(unittest.TestCase):
+    def runner(self):
+        # Override only the real, opt-in integration tests. Mock policy tests
+        # should continue asserting the standard runc baseline.
+        return DockerSandbox(runtime=os.environ.get('REFIT_TEST_RUNTIME', 'runc'),
+                             timeout_seconds=25)
+
     def test_safe_generated_python_execution(self):
-        result = DockerSandbox(timeout_seconds=16).run(
+        result = self.runner().run(
             SAFE_PROBE,
             {"counts": {"source_passed": 8, "target_passed": 6}},
             label="safe_probe",
@@ -139,7 +145,7 @@ class RealDockerContainmentTests(unittest.TestCase):
         self.assertEqual(json.loads(result["stdout"])["delta"], 2)
 
     def test_hostile_program_cannot_access_host_or_egress(self):
-        result = DockerSandbox(timeout_seconds=16).run(
+        result = self.runner().run(
             HOSTILE_PROBE, label="hostile_probe")
         self.assertEqual(result["status"], "passed", result["stderr"])
         self.assertTrue(result["container_removed_verified"])
