@@ -30,6 +30,25 @@ from another computer. Full instructions: [public deployment](docs/public-deploy
 
 **Public deployment is not asserted until its external URL is tested.**
 
+## Real inference on Vultr, without an exposed paid endpoint
+
+The backend now saves live run records **before** making paid model calls
+and persists observed evaluation stages, event cursors and outcomes. A
+restarted server restores completed records and marks interrupted work
+explicitly; it never automatically replays a paid migration.
+
+For one genuine live evaluation on the Vultr VM, use the
+[operator migration runbook](docs/live-operator-run.md).
+The operator-only CLI requires an explicit `--execute` flag, checks that
+`runsc` is registered, runs built-in business tools under gVisor,
+and refuses to approve a migration if containment/cleanup proof is absent.
+The optional `--publish` flag copies **finished evidence** into the
+unprivileged public API without enabling browser-side inference.
+
+The public site remains read-only until HTTPS and properly authenticated
+server-side job submission exist. These reviewed synthetic business agents
+are not imported third-party agents.
+
 ## Current engine — one implementation, two independent agent domains
 
 Refit's contract-driven engine now supports **refund workflows** and
