@@ -1,0 +1,156 @@
+"""Executable security-policy and integrity tests for Refit's sandbox runner.
+
+Docker integration tests are opt-in for CI or a disposable Vultr test VM:
+    REFIT_TEST_DOCKER=1 python -m unittest tests.test_refit_sandbox -v
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import unittest
+from unittest.mock import patch
+
+from scripts.sandbox_runner import (
+    DockerSandbox, HOSTILE_PROBE, SAFE_PROBE, chain_events, verify_chain,
+)
+
+
+class SandboxPolicyTests(unittest.TestCase):
+    def test_hardened_command_has_no_network_or_host_secret_mounts(self):
+        from pathlib import Path
+        flags = DockerSandbox()._command(
+            "refit-test", Path("/tmp/refit-fake/payload"), Path("/tmp/refit-fake/cid"))
+        self.assertIn("none", flags)
+        self.assertEqual(flags[flags.index("--network") + 1], "none")
+        self.assertEqual(flags[flags.index("--runtime") + 1], "runc")
+        self.assertEqual(flags[flags.index("--user") + 1], "65534:65534")
+        self.assertEqual(flags[flags.index("--cap-drop") + 1], "ALL")
+        self.assertIn("--read-only", flags)
+        self.assertIn("no-new-privileges:true", flags)
+        self.assertEqual(flags[flags.index("--memory") + 1], "128m")
+        self.assertEqual(flags[flags.index("--pids-limit") + 1], "32")
+        self.assertIn("readonly", flags[flags.index("--mount") + 1])
+        self.assertNotIn("/var/run/docker.sock", " ".join(flags))
+        self.assertNotIn("/etc/refit", " ".join(flags))
+        self.assertNotIn("--privileged", flags)
+        self.assertNotIn("--env-file", flags)
+        self.assertNotIn("-e", flags)
+        self.assertNotIn("--publish", flags)
+
+    def test_runtime_and_image_allowlist(self):
+        self.assertEqual(DockerSandbox(runtime="runsc").runtime, "runsc")
+        with self.assertRaises(ValueError):
+            DockerSandbox(runtime="privileged")
+        with self.assertRaises(ValueError):
+            DockerSandbox(image="attacker/payload")
+        with self.assertRaises(ValueError):
+            DockerSandbox(timeout_seconds=1000)
+
+    def test_ledger_detects_modified_or_reordered_records(self):
+        records = chain_events([
+            {"type": "launch_requested", "digest": "abc"},
+            {"type": "execution_observed", "exit_code": 1},
+            {"type": "cleanup_checked", "container_absent": True},
+        ])
+        self.assertTrue(verify_chain(records))
+        records[1]["event"]["exit_code"] = 0
+        self.assertFalse(verify_chain(records))
+        records[1]["event"]["exit_code"] = 1
+        self.assertTrue(verify_chain(records))
+        self.assertFalse(verify_chain(list(reversed(records))))
+
+    @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")
+    @patch("scripts.sandbox_runner.subprocess.run")
+    def test_successful_execution_records_cleanup(self, run, which):
+        run.side_effect = [
+            subprocess.CompletedProcess(args=["docker"], returncode=0),
+            subprocess.CompletedProcess(args=["docker", "rm"], returncode=0),
+            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=1),
+        ]
+        result = DockerSandbox().run("print(1)", {"answer": 1})
+        self.assertEqual(result["status"], "passed")
+        self.assertTrue(result["ledger_valid"])
+        self.assertTrue(result["container_removed_verified"])
+        first = run.call_args_list[0].args[0]
+        self.assertEqual(first[0], "prlimit")
+        self.assertIn("--fsize=65536:65536", first)
+        self.assertIn("--network", first)
+        self.assertEqual(len(result["ledger"]), 3)
+
+    @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")
+    @patch("scripts.sandbox_runner.subprocess.run")
+    def test_timeout_still_forces_docker_removal(self, run, which):
+        run.side_effect = [
+            subprocess.TimeoutExpired(cmd="docker", timeout=2),
+            subprocess.CompletedProcess(args=["docker", "rm"], returncode=0),
+            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=1),
+        ]
+        result = DockerSandbox(timeout_seconds=2).run("while True: pass")
+        self.assertEqual(result["status"], "timeout")
+        self.assertTrue(result["container_removed_verified"])
+        self.assertTrue(result["timed_out"])
+        self.assertEqual(run.call_args_list[1].args[0][1:3], ["rm", "-f"])
+
+    @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")
+    @patch("scripts.sandbox_runner.subprocess.run")
+    def test_cleanup_failure_is_visible_not_hidden(self, run, which):
+        run.side_effect = [
+            subprocess.CompletedProcess(args=["docker"], returncode=0),
+            subprocess.CompletedProcess(args=["docker", "rm"], returncode=1),
+            subprocess.CompletedProcess(args=["docker", "inspect"], returncode=0),
+        ]
+        result = DockerSandbox().run("print(1)")
+        self.assertFalse(result["container_removed_verified"])
+        self.assertTrue(result["ledger_valid"])
+
+    @patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker")
+    @patch("scripts.sandbox_runner.subprocess.run")
+    def test_input_validation_stops_untrusted_code_before_docker(self, run, which):
+        runner = DockerSandbox()
+        for code, payload in [
+            ("", {}),
+            ("a" * 30000, {}),
+            ("print('\\0')\0", {}),
+            ("print(1)", {"oversize": "x" * 90000}),
+        ]:
+            with self.subTest(size=len(code)):
+                with self.assertRaises(ValueError):
+                    runner.run(code, payload)
+        run.assert_not_called()
+
+
+@unittest.skipUnless(
+    os.getenv("REFIT_TEST_DOCKER") == "1",
+    "needs opt-in and a real disposable Docker-capable runner",
+)
+class RealDockerContainmentTests(unittest.TestCase):
+    def test_safe_generated_python_execution(self):
+        result = DockerSandbox(timeout_seconds=16).run(
+            SAFE_PROBE,
+            {"counts": {"source_passed": 8, "target_passed": 6}},
+            label="safe_probe",
+        )
+        self.assertEqual(result["status"], "passed", result["stderr"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertTrue(result["container_removed_verified"])
+        self.assertTrue(result["ledger_valid"])
+        self.assertEqual(json.loads(result["stdout"])["delta"], 2)
+
+    def test_hostile_program_cannot_access_host_or_egress(self):
+        result = DockerSandbox(timeout_seconds=16).run(
+            HOSTILE_PROBE, label="hostile_probe")
+        self.assertEqual(result["status"], "passed", result["stderr"])
+        self.assertTrue(result["container_removed_verified"])
+        self.assertTrue(result["ledger_valid"])
+        probes = json.loads(result["stdout"])
+        self.assertEqual(probes["key_file"], "FileNotFoundError")
+        self.assertFalse(probes["key_in_env"])
+        self.assertNotEqual(probes["dns"], "unexpectedly_resolved")
+        self.assertNotEqual(probes["outbound_connection"], "unexpectedly_connected")
+        self.assertNotEqual(probes["root_write"], "unexpectedly_writable")
+
+
+if __name__ == "__main__":
+    unittest.main()
