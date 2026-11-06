@@ -7,7 +7,7 @@ This package is a **working integration substrate**, not the final visual design
 python3 -m scripts.refit_http --host 127.0.0.1 --port 8097 --runs-dir ./var/runs
 
 # Terminal 2: from web/assistant-bridge
-npm install
+npm ci
 npm test
 npm run build
 npm run dev
