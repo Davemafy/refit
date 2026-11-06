@@ -107,6 +107,26 @@ class DurabilityTests(unittest.TestCase):
         self.assertEqual(final_record["status"], "execution_interrupted")
         self.assertIsNone(final_record["patch"])
 
+    def test_live_history_is_ordered_by_creation_not_random_file_id(self):
+        older = "live-" + "f" * 16
+        newer = "live-" + "a" * 16
+        for id_, created in (
+            (older, "2026-11-05T11:00:00Z"),
+            (newer, "2026-11-06T11:00:00Z"),
+        ):
+            run = {
+                "id": id_, "mode": "live", "domain": "refund",
+                "source": ALLOWED_MODELS[0], "target": ALLOWED_MODELS[1],
+                "status": "compatible_on_sample", "created_at": created,
+                "patch": None, "report": {},
+            }
+            RunStore(self.directory).save(
+                id_, run, [{"seq": 1, "type": "complete", "message": "Completed."}]
+            )
+        svc = self.make_service()
+        ids = [x["id"] for x in svc.list_runs()]
+        self.assertEqual(ids[:2], [newer, older])
+
     def test_queue_is_on_disk_before_worker_is_scheduled(self):
         service = self.make_service(executor=self.executor)
         result = service.start(self.payload, "private")
