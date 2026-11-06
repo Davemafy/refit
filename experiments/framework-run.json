@@ -1,6 +1,11 @@
 {
-  "run_live": true,
-  "seeds": [723001, 723002, 723003],
+  "run_live": false,
+  "seeds": [
+    723001,
+    723002,
+    723003
+  ],
   "max_requests": 400,
-  "purpose": "Apply the existing exported refund patch through the unmodified tau2 LLMAgent runner on three predeclared fresh seeds."
+  "purpose": "Apply the existing exported refund patch through the unmodified tau2 LLMAgent runner on three predeclared fresh seeds.",
+  "reason": "One-shot framework evaluation submitted; automatic repeat inference disabled."
 }
