@@ -1,0 +1,72 @@
+name: Verify external agent runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/tau2_bridge.py'
+      - 'scripts/verify_frozen_patch.py'
+      - 'integrations/tau2/**'
+      - 'tests/test_refit_tau2.py'
+      - 'experiments/framework-run.json'
+      - '.github/workflows/framework-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-framework-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned upstream runner
+        run: pip install -r integrations/tau2/requirements.txt
+      - name: Execute original upstream agent with stateful tools
+        env:
+          REFIT_TEST_TAU2: '1'
+          LITELLM_LOCAL_MODEL_COST_MAP: 'true'
+        run: python -m unittest discover -s tests -p 'test_refit*.py' -q
+      - name: Evaluate exported patch through upstream runner
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+          LITELLM_LOCAL_MODEL_COST_MAP: 'true'
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys
+          config = json.load(open('experiments/framework-run.json'))
+          if config.get('run_live') is not True:
+              print('Live framework evaluation disabled; no inference calls.')
+              sys.exit(0)
+          if not os.getenv('VULTR_INFERENCE_API_KEY'):
+              sys.exit('Inference secret unavailable; no model requests made.')
+          seeds = config['seeds']
+          assert len(seeds) == len(set(seeds)) == 3
+          assert all(type(seed) is int and 0 <= seed < 2147483647 for seed in seeds)
+          cap = config['max_requests']
+          assert type(cap) is int and 1 <= cap <= 400
+          subprocess.run([
+              sys.executable, '-m', 'scripts.verify_frozen_patch',
+              '--runner', 'tau2', '--upstream-fixtures', '--domain', 'refund',
+              '--patch', 'data/recorded/refund-compatibility-2026-11-06.artifact.json',
+              '--seeds', *map(str, seeds), '--paraphrase',
+              '--max-requests', str(cap), '--execute',
+              '--output', '/tmp/refit-tau2-frozen.json',
+          ], check=True)
+          PY
+      - name: Preserve complete framework evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-tau2-frozen-verification
+          path: /tmp/refit-tau2-frozen.json
+          retention-days: 7
+          if-no-files-found: ignore

@@ -86,7 +86,11 @@ def main():
     parser.add_argument("--env-file", type=Path, default=Path("/etc/refit/inference.env"))
     parser.add_argument("--output", type=Path, default=Path("refit-frozen-verification.json"))
     parser.add_argument("--execute", action="store_true", help="Make billable inference calls")
+    parser.add_argument("--runner", choices=("native", "tau2"), default="native")
+    parser.add_argument("--upstream-fixtures", action="store_true")
     args = parser.parse_args()
+    if args.upstream_fixtures and args.runner != "tau2":
+        parser.error("--upstream-fixtures requires --runner tau2")
     if not 1 <= args.max_requests <= 400:
         parser.error("request cap must be 1..400")
     if not 1 <= len(args.seeds) <= 10 or len(set(args.seeds)) != len(args.seeds):
@@ -100,14 +104,33 @@ def main():
     if not args.execute:
         print(json.dumps({"execute": False, "seeds": args.seeds,
                           "max_requests": args.max_requests,
+                          "runner": args.runner,
                           "paraphrase": args.paraphrase,
                           "patch_sha256": digest(receipt)}, indent=2))
         return
     client = VultrInference(load_key(args.env_file), max_requests=args.max_requests)
-    report = verify_frozen(client, adapter, profile, receipt["source_model"],
+    runner = client
+    if args.runner == "tau2":
+        from .tau2_bridge import Tau2Client
+        runner = Tau2Client(client)
+    upstream_fixtures = None
+    if args.upstream_fixtures:
+        from .tau2_fixtures import verify_upstream_fixtures
+        upstream_fixtures = verify_upstream_fixtures(
+            runner, receipt["source_model"], receipt["target_model"])
+    report = verify_frozen(runner, adapter, profile, receipt["source_model"],
                            receipt["target_model"], args.seeds, args.paraphrase)
     record = {"patch_sha256": digest(receipt), "model_requests": client.requests,
-              "report": report}
+              "runner": args.runner, "report": report}
+    if args.runner == "tau2":
+        from .tau2_bridge import TAU2_COMMIT
+        record["upstream_commit"] = TAU2_COMMIT
+        record["upstream_runner_steps"] = runner.runner_steps
+    if upstream_fixtures is not None:
+        record["upstream_fixtures"] = upstream_fixtures
+        if upstream_fixtures["status"] != "passed":
+            report["frozen_verification_status"] = report["status"]
+            report["status"] = "upstream_fixture_failed"
     mask = os.umask(0o077)
     try:
         args.output.write_text(json.dumps(record, indent=2))
