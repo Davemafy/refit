@@ -1,0 +1,97 @@
+name: Refit cross-domain Vultr evaluation (opt-in)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/deployment-run.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-deployment-live
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Confirm offline engine and gateway tests
+        run: |
+          python -m compileall -q scripts tests
+          python -m unittest discover -s tests -p 'test_refit*.py' -v
+
+      - name: Gate billable model execution
+        id: gate
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          set -euo pipefail
+          enabled=$(python -c 'import json; print(str(json.load(open("experiments/deployment-run.json")).get("run_live", False)).lower())')
+          if [ "$enabled" != "true" ]; then
+            echo "Live experiment disabled. No model requests."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$VULTR_INFERENCE_API_KEY" ]; then
+            echo "Missing inference key. No model requests."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Approved: bounded, synthetic, cross-domain live evaluation."
+          fi
+
+      - name: Run independent deployment incident agent on real models
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python -m scripts.deployment_incident_probe \
+            --source deepseek-v4.1-flash-1017 \
+            --target muse-glimmer-30b \
+            --repair deepseek-v4.1-flash-1017 \
+            --max-requests 160 \
+            --seed "$(python -c 'import secrets; print(secrets.randbelow(2147483647))')" \
+            --output /tmp/refit-deployment-live.json
+
+      - name: Preserve synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-deployment-incident-traces
+          path: /tmp/refit-deployment-live.json
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Publish status and pass counts only
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          path="/tmp/refit-deployment-live.json"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf8") as out:
+              if not os.path.isfile(path):
+                  out.write("No billable execution report generated.\n")
+              else:
+                  data=json.load(open(path,encoding="utf8"))
+                  r=data["report"]
+                  summary={
+                      "status":r["status"],"requests":data["requests"],
+                      "source_training":r.get("source_training"),
+                      "target_training":r.get("target_training"),
+                      "regressions":r.get("regressions"),
+                      "trials":r.get("trials"),
+                      "validation":r.get("validation"),
+                      "original_holdout":r.get("original_holdout"),
+                      "repaired_holdout":r.get("repaired_holdout"),
+                  }
+                  print("RESULT",json.dumps(summary))
+                  out.write("## Independent-domain evaluation\n\n")
+                  out.write("    "+json.dumps(summary,sort_keys=True)+"\n")
+          PY
