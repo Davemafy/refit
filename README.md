@@ -6,6 +6,27 @@ Refit finds and repairs tool-use regressions when migrating an AI agent to a
 different language model. It compares actual stateful outcomes, proposes
 bounded model-facing changes, and tests them against independent scenarios.
 
+## Current engine — one implementation, two independent agent domains
+
+Refit's contract-driven engine now supports **refund workflows** and
+**deployment incident recovery** through separate adapters and protected
+stateful business verifiers.
+
+A new live Vultr experiment through the **shared migration engine** produced
+`verified_adaptation`: DeepSeek source 8/8, unmodified Muse target 6/8,
+generated-instruction Muse 8/8 training, 8/8 independent validation, and
+8/8 holdout (vs 7/8 unmodified). No unsafe refund attempts; 134
+real model requests. See [run #42207396750](https://github.com/Davemafy/refit/actions/runs/42207396750).
+
+The independent deployment agent returned `compatible_on_sample` for
+DeepSeek → Raon: 8/8 training, 8/8 validation and 8/8 holdout, zero
+unsafe rollback attempts, 126 inference requests.
+[Deployment run #42206326304](https://github.com/Davemafy/refit/actions/runs/42206326304).
+
+See the [shared-engine evidence and evaluator bug postmortem](docs/shared-engine-evidence-2026-11-06.md).
+This is empirical success on two supported synthetic agents; it is
+**not** a universal agent-migration guarantee.
+
 ## Live evidence — first verified repair
 
 On November 6, 2026, Refit reproduced and repaired a regression in an
@@ -45,7 +66,15 @@ a deployed Vultr app and sandbox isolation remain to be demonstrated.
 
 ## Code
 
-- `scripts/refit_vultr_probe.py` — baseline 3-case Vultr migration experiment.
+- `scripts/migration_engine.py` — shared contract-driven replay, diagnosis,
+  bounded repair search and independent verification.
+- `scripts/refund_adapter.py` and `scripts/deployment_incident_probe.py` —
+  separate stateful tool environments and business invariants.
+- `scripts/refit_cli.py` — run a supported or trusted locally imported agent
+  adapter against live inference and produce an evidence report.
+- `scripts/compatibility_artifact.py` — export a model-scoped patch and verify
+  immutable contract/configuration fingerprints (not a digital signature).
+- `scripts/refit_vultr_probe.py` — historical baseline Vultr experiment.
 - `scripts/refit_stress_probe.py` — eight adversarial, stateful workflow
   scenarios with independent verification and selective repair.
 - `tests/` — offline unit tests and deterministic protocol simulations.
@@ -71,13 +100,23 @@ file at `/etc/refit/inference.env`. **Never commit or paste an API key into
 issues or CI logs.**
 
 ```bash
-python3 -m scripts.refit_stress_probe \
+python3 -m scripts.refit_cli \
+  --domain refund \
   --source deepseek-v4.1-flash-1017 \
-  --targets muse-glimmer-30b \
+  --target muse-glimmer-30b \
   --repair deepseek-v4.1-flash-1017 \
   --max-requests 160 \
-  --output refit-stress-report.json
+  --output refit-migration-report.json \
+  --export-patch refit-compatibility.json
 ```
+
+Use `--domain deployment` to run the independent deployment responder.
+Use `--adapter trusted.module` only with locally reviewed Python code:
+adapter imports are **not sandboxed** and must not be offered to public users.
+
+On a verified adaptation, the CLI exports a reviewable JSON patch bound to
+the target model and original approved contract. A developer must explicitly
+approve and apply it; Refit never silently changes a production agent.
 
 Vultr inference calls are billable. The report contains only synthetic
 orders, model-generated instructions and traced tool calls. Refit checks that
@@ -85,13 +124,16 @@ the actual returned model matches the requested model.
 
 ## Trust and correctness
 
-- The agent has only two declared tools: `get_order` and `issue_refund`.
+- Built-in agents have declared tools; refunds use `get_order` and
+  `issue_refund`, while deployment recovery uses four independent tools.
 - The gateway enforces identity, eligibility, exact minor-currency-unit
   refund amounts, and idempotency. It never touches real customer accounts.
 - Model prose isn't the oracle: Refit checks the transaction database state,
   tool call sequence, authorized outcomes and fresh holdout cases.
-- Repair candidates are bounded to instructions, tool descriptions and an
-  evidence-triggered named first-tool policy. They cannot edit the evaluator.
+- The shared engine permits bounded instruction and tool-description patches.
+  Historical probes also tested a first-tool request, but the provider did
+  not always honor it; it must not be mistaken for hard enforcement.
+  Patches cannot edit the evaluator or protected business invariants.
 - In-process SQLite tools are **not** arbitrary-code isolation; a separate
   hardened Vultr worker and containment test are still needed.
 
