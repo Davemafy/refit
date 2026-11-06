@@ -165,7 +165,10 @@ class RunService:
             "external_agent_import": False,
             "sandbox": {
                 "integrated": False,
-                "business_tools_isolated": False,
+                "business_tools_isolated": (
+                    os.getenv("REFIT_USE_TOOL_SANDBOX") == "1"
+                ),
+                "business_tools_isolation_verified_on_vultr_vm": False,
                 "generated_python_diagnostics_enabled": (
                     os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
                 ),
@@ -179,6 +182,7 @@ class RunService:
                 "Only built-in, synthetic business workflows are currently supported.",
                 "Live runs are disabled unless explicitly configured and authenticated.",
                 "This API does not provide secure execution of arbitrary agent code.",
+                "Sandboxed tool replay supports only two reviewed built-in agent environments.",
             ],
         }
 
@@ -371,10 +375,17 @@ class RunService:
                 load_key(Path("/etc/refit/inference.env")),
                 max_requests=self.max_requests,
             )
-            result = DOMAINS[domain].run_live(
-                client, source, target, source,
-                seed=secrets.randbelow(2_000_000_000),
-            )
+            seed = secrets.randbelow(2_000_000_000)
+            if os.getenv("REFIT_USE_TOOL_SANDBOX") == "1":
+                from .sandbox_tool_gateway import migrate_in_tool_sandboxes
+                result = migrate_in_tool_sandboxes(
+                    client, domain, source, target, source, seed,
+                    runtime=os.getenv("REFIT_SANDBOX_RUNTIME", "runc"),
+                )
+            else:
+                result = DOMAINS[domain].run_live(
+                    client, source, target, source, seed=seed,
+                )
             accepted = (
                 create_receipt(
                     result, DOMAINS[domain].CONTRACT,
@@ -402,6 +413,13 @@ class RunService:
                     }
             with self.lock:
                 record["report"] = result
+                boundary = result.get("execution_boundary") or {}
+                record["execution_isolation"] = (
+                    "docker_tool_sandbox_verified_cleanup"
+                    if boundary.get("business_tools_isolated")
+                    and boundary.get("all_containers_removed")
+                    else "none"
+                )
                 record["patch"] = accepted
                 if diagnostic is not None:
                     record["sandbox_diagnostic"] = diagnostic
