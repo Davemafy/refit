@@ -192,6 +192,25 @@ class HttpTests(unittest.TestCase):
         except HTTPError as response:
             return response.code, json.load(response)
 
+    def test_demo_is_served_same_origin_with_security_headers(self):
+        for path in ("/", "/demo", "/demo/"):
+            with self.subTest(path=path):
+                with urlopen(self.base + path, timeout=4) as response:
+                    body = response.read().decode("utf8")
+                    self.assertEqual(
+                        response.headers["Content-Type"],
+                        "text/html; charset=utf-8",
+                    )
+                    self.assertIn("frame-ancestors 'none'",
+                                  response.headers["Content-Security-Policy"])
+                    self.assertEqual(response.headers["X-Frame-Options"], "DENY")
+                    self.assertIn("Change the model.", body)
+                    self.assertIn('id="runList"', body)
+                    self.assertIn('id="diagnoseButton"', body)
+                    self.assertIn("/api/interpret", body)
+                    self.assertIn("/api/runs", body)
+                    self.assertNotIn("VULTR_INFERENCE_API_KEY", body)
+
     def test_frontend_can_load_capabilities_and_recorded_runs(self):
         code, caps = self.request("/api/capabilities")
         self.assertEqual(code, 200)
