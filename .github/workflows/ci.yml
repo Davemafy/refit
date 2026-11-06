@@ -74,7 +74,7 @@ jobs:
       - name: Run actual disposable Docker containment tests
         env:
           REFIT_TEST_DOCKER: '1'
-        run: python -m unittest tests.test_refit_sandbox -v
+        run: python -m unittest tests.test_refit_sandbox tests.test_refit_tool_gateway -v
       - name: Record honest execution evidence from actual containers
         run: |
           mkdir -p artifacts
