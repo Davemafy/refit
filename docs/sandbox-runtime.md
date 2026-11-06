@@ -177,6 +177,29 @@ were isolated, and it is not a Vultr-VM deployment proof.
 The experiment manifest is now set to `run_live=false` after the successful
 single-request run; avoid automatically repeating billable inference.
 
+## Independent business correctness: host-side replay
+
+The built-in refund and deployment workflows now support separate per-scenario
+sandbox workers in `scripts/sandbox_tool_gateway.py`. The host retains all
+Vultr model credentials and receives JSON tool results via bounded pipes.
+
+**Crucially, the worker's success verdict is not sufficient.** For these
+trusted, deterministic built-in workflows only, the host replays the worker's
+reported tool-call sequence against fresh protected business state and checks
+every tool result, full event trace, and final verdict. A mismatch makes the
+scenario fail closed. Offline tests deliberately forge both a result and a
+worker verdict to verify rejection. This does not authorize running untrusted
+third-party tools on the host, nor does it prove worker execution authenticity.
+
+The independent gVisor workflow also tests the **entire deployment-agent
+migration** under `runsc` with a scripted model provider (zero billable inference).
+It verifies source success, observed target regression, repaired validation
+and holdout success, and no leftover worker containers. This is separate
+from the live one-call Vultr code-generation proof.
+
+These checks are complementary: security containment does not imply business
+correctness, and a correct business verdict does not imply containment.
+
 ## Still required for a competition-ready claim
 
 1. Verify the runner and capture actual containment evidence on the Vultr VM.
