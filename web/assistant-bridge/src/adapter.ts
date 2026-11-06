@@ -11,7 +11,9 @@ export function formatRecordedEvidence(run: RecordedRun): string {
   const r = run.report;
   const domain = run.domain === "refund" ? "Customer refunds" : "Deployment recovery";
   const lines = [
-    domain + " — recorded Vultr inference, synthetic business state",
+    domain + (run.mode === "live"
+      ? " — live Vultr inference, synthetic business state"
+      : " — recorded Vultr inference, synthetic business state"),
     "Source: " + run.source + " — " + score(r.source_training),
     "Replacement: " + run.target + " — " + score(r.target_training),
   ];
@@ -57,7 +59,8 @@ async function choose(
 ): Promise<RecordedRun | null> {
   const saved = await api.runs(signal);
   const candidate: RunListItem | undefined = saved.find((entry) =>
-    entry.mode === "recorded" &&
+    (entry.mode === "recorded" || entry.mode === "live") &&
+    ["verified_adaptation", "compatible_on_sample"].includes(entry.status) &&
     entry.domain === domain &&
     (!source || entry.source === source) &&
     (!target || entry.target === target),
@@ -77,9 +80,12 @@ export async function answer(
     const saved = await api.runs(signal);
     return [
       "Refit currently offers these evaluated agent migrations:",
-      ...saved.map((run) =>
+      ...saved.filter((run) =>
+        ["verified_adaptation", "compatible_on_sample"].includes(run.status),
+      ).map((run) =>
         "• " + (run.domain === "refund" ? "Customer refunds" : "Deployment recovery") +
-        ": " + run.source + " → " + run.target + " (" + run.status + ")",
+        ": " + run.source + " → " + run.target + " (" + run.status +
+        (run.mode === "live" ? ", live evaluation" : ", archived evaluation") + ")",
       ),
       "To view evidence, say “show refund example” or “show deployment example.”",
       "Actual live migrations require an authenticated operator; this public bridge cannot start them.",
