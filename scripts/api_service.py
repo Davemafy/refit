@@ -18,6 +18,7 @@ from typing import Any
 
 from .refit_vultr_probe import VultrInference, load_key
 from .compatibility_artifact import create_receipt, validate_and_load
+from .durable_store import RunStore
 from . import refund_adapter, deployment_incident_probe
 
 
@@ -131,6 +132,8 @@ class RunService:
         self.events: dict[str, list[dict]] = {}
         self.executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix="refit")
         self._load_recordings()
+        self.recovery_warnings = []
+        self._restore_runs()
 
     def _load_recordings(self):
         if not self.recordings_dir.is_dir():
@@ -152,6 +155,43 @@ class RunService:
             self.events[id_] = [{"seq": 1, "type": "recorded", "at": "2026-11-06",
                                  "message": "Imported from a verified historical run"}]
 
+    def _restore_runs(self):
+        if self.runs_dir is None:
+            return
+        records, warnings = RunStore(self.runs_dir).load()
+        self.recovery_warnings.extend(warnings)
+        changed = []
+        for run, events in records:
+            run_id = run["id"]
+            if (run_id in self.runs or run.get("domain") not in DOMAINS or
+                    run.get("source") not in ALLOWED_MODELS or
+                    run.get("target") not in ALLOWED_MODELS):
+                self.recovery_warnings.append(run_id)
+                continue
+            if not events:
+                events = [{"seq": 1, "type": "restored",
+                           "message": "Legacy run restored without earlier events.",
+                           "at": timestamp()}]
+            self.runs[run_id] = run
+            self.events[run_id] = events
+            created = run.get("created_at")
+            if isinstance(created, str) and re.fullmatch(
+                    r"\d{4}-\d{2}-\d{2}", created[:10]):
+                self.started_dates.append(created[:10])
+            if run["status"] in ("queued", "running"):
+                run["status"] = "execution_interrupted"
+                run["finished_at"] = timestamp()
+                run["patch"] = None
+                run["error"] = {
+                    "code": "worker_interrupted",
+                    "message": "Server restarted during evaluation. Not retried or approved.",
+                }
+                self._emit(run_id, "interrupted",
+                           "Run interrupted by restart; no automatic inference retry.")
+                changed.append(run_id)
+        for run_id in changed:
+            self._persist(run_id)
+
     def health(self) -> dict:
         return {"status": "ok", "service": "refit", "contract_version": "v1"}
 
@@ -161,6 +201,8 @@ class RunService:
             "domains": list(DOMAINS),
             "models": list(ALLOWED_MODELS),
             "recorded_runs": True,
+            "durable_run_history": self.runs_dir is not None,
+            "recovery_warnings": len(self.recovery_warnings),
             "live_runs_enabled": bool(self.live_enabled and self.run_token),
             "external_agent_import": False,
             "sandbox": {
@@ -230,13 +272,74 @@ class RunService:
                 raise ApiProblem(404, "run_not_found", "The requested run does not exist.")
             events = [dict(item) for item in self.events[run_id] if item["seq"] > after]
             return {"run_id": run_id, "events": events,
-                    "next_after": self.events[run_id][-1]["seq"],
+                    "next_after": self.events[run_id][-1]["seq"] if self.events[run_id] else 0,
                     "terminal": self.runs[run_id]["status"] not in ("queued", "running")}
 
-    def _emit(self, run_id: str, type_: str, message: str):
+    def _emit(self, run_id: str, type_: str, message: str,
+              details: dict | None = None):
         series = self.events[run_id]
-        series.append({"seq": len(series) + 1, "type": type_,
-                       "message": message, "at": timestamp()})
+        event = {"seq": len(series) + 1, "type": type_,
+                 "message": message, "at": timestamp()}
+        if details is not None:
+            event["details"] = details
+        series.append(event)
+
+    def _progress(self, run_id: str, event_type: str, details: dict) -> None:
+        """Persist measured stage events, never guessed progress percentages."""
+        if event_type not in (
+            "phase_started", "phase_completed", "repair_started", "repair_generated"
+        ):
+            raise ValueError("unsupported progress event")
+        allowed = {"phase", "model", "passed", "total", "unsafe_attempts",
+                   "repair_model", "candidate_variants"}
+        if set(details) - allowed or any(
+                not isinstance(value, (str, int)) or type(value) is bool
+                for value in details.values()):
+            raise ValueError("invalid progress payload")
+        phase = str(details.get("phase", "repair"))
+        if event_type == "phase_started":
+            message = "Evaluating " + phase.replace("_", " ") + "."
+        elif event_type == "phase_completed":
+            message = (
+                "Evaluated " + phase.replace("_", " ") + ": " +
+                str(details["passed"]) + "/" + str(details["total"]) + " passed."
+            )
+        elif event_type == "repair_started":
+            message = "Generating a bounded compatibility repair."
+        else:
+            message = "Repair proposal generated; evaluating candidates."
+        with self.lock:
+            self._emit(run_id, event_type, message, details)
+            self.runs[run_id]["current_phase"] = phase
+        if self.runs_dir:
+            self._persist(run_id)
+
+    def _submit_durably(self, run_id: str, day: str, fn, *args) -> None:
+        """No paid worker launch without an on-disk queued event."""
+        try:
+            if self.runs_dir:
+                self._persist(run_id)
+        except (OSError, ValueError, TypeError):
+            with self.lock:
+                self.runs.pop(run_id, None)
+                self.events.pop(run_id, None)
+                if self.active == run_id:
+                    self.active = None
+                self.started_dates.remove(day)
+            raise ApiProblem(503, "persistence_unavailable",
+                             "Cannot start a live run without durable storage.")
+        try:
+            self.executor.submit(fn, *args)
+        except Exception:
+            with self.lock:
+                self.runs[run_id]["status"] = "execution_error"
+                self.runs[run_id]["finished_at"] = timestamp()
+                self._emit(run_id, "failed", "Worker scheduling failed.")
+                if self.active == run_id:
+                    self.active = None
+            if self.runs_dir:
+                self._persist(run_id)
+            raise ApiProblem(503, "worker_unavailable", "Could not start live worker.")
 
     def start(self, data: Any, bearer: str) -> dict:
         if not self.live_enabled or not self.run_token:
@@ -273,7 +376,7 @@ class RunService:
             self._emit(run_id, "queued", "Live migration accepted.")
             self.active = run_id
             self.started_dates.append(day)
-        self.executor.submit(self._execute, run_id)
+        self._submit_durably(run_id, day, self._execute, run_id)
         return {"id": run_id, "status": "queued", "events_url": f"/api/runs/{run_id}/events"}
 
     def start_diagnostic(self, source_run_id: str, bearer: str) -> dict:
@@ -311,7 +414,7 @@ class RunService:
             self._emit(run_id, "queued", "Sandbox diagnosis queued.")
             self.active = run_id
             self.started_dates.append(day)
-        self.executor.submit(self._execute_diagnostic, run_id, source)
+        self._submit_durably(run_id, day, self._execute_diagnostic, run_id, source)
         return {
             "id": run_id, "status": "queued",
             "events_url": f"/api/runs/{run_id}/events",
@@ -322,6 +425,8 @@ class RunService:
             self.runs[run_id]["status"] = "running"
             self._emit(run_id, "started", "Vultr model generating a diagnostic program.")
         try:
+            if self.runs_dir:
+                self._persist(run_id)
             from .sandbox_diagnostics import generate_and_verify
             from .sandbox_runner import DockerSandbox
             client = VultrInference(
@@ -359,7 +464,8 @@ class RunService:
                 self._emit(run_id, "failed", "Sandbox diagnostic could not finish.")
         finally:
             with self.lock:
-                self.active = None
+                if self.active == run_id:
+                    self.active = None
             if self.runs_dir:
                 self._persist(run_id)
 
@@ -370,22 +476,31 @@ class RunService:
             self._emit(run_id, "started", "Evaluating with live Vultr inference.")
             domain, source, target = record["domain"], record["source"], record["target"]
         try:
-            # Fixed vetted adapters only. The agent gateway currently runs
-            # in-process, so this does NOT fulfill Track 1 containment.
+            if self.runs_dir:
+                self._persist(run_id)
+            # Fixed vetted adapters only; business isolation needs explicit
+            # gVisor configuration and host-specific verification.
             client = VultrInference(
                 load_key(Path("/etc/refit/inference.env")),
                 max_requests=self.max_requests,
             )
             seed = secrets.randbelow(2_000_000_000)
+            with self.lock:
+                record["evaluation_seed"] = seed
+            if self.runs_dir:
+                self._persist(run_id)
+            progress = lambda event, details: self._progress(run_id, event, details)
             if os.getenv("REFIT_USE_TOOL_SANDBOX") == "1":
                 from .sandbox_tool_gateway import migrate_in_tool_sandboxes
                 result = migrate_in_tool_sandboxes(
                     client, domain, source, target, source, seed,
                     runtime=os.getenv("REFIT_SANDBOX_RUNTIME", "runsc"),
+                    progress=progress,
                 )
             else:
                 result = DOMAINS[domain].run_live(
                     client, source, target, source, seed=seed,
+                    progress=progress,
                 )
             accepted = (
                 create_receipt(
@@ -446,18 +561,16 @@ class RunService:
                 self._emit(run_id, "failed", "The evaluation could not complete.")
         finally:
             with self.lock:
-                self.active = None
+                if self.active == run_id:
+                    self.active = None
             if self.runs_dir:
                 self._persist(run_id)
 
     def _persist(self, run_id: str):
-        self.runs_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        path = self.runs_dir / f"{run_id}.json"
-        temp = self.runs_dir / f".{run_id}.{secrets.token_hex(4)}.tmp"
-        old_mask = os.umask(0o077)
-        try:
-            temp.write_text(json.dumps(self.get_run(run_id), indent=2), encoding="utf8")
-            os.replace(temp, path)
-        finally:
-            os.umask(old_mask)
-            temp.unlink(missing_ok=True)
+        """Atomically save the complete state and resumable event cursor."""
+        if not self.runs_dir:
+            return
+        with self.lock:
+            run = json.loads(json.dumps(self.runs[run_id]))
+            events = json.loads(json.dumps(self.events[run_id]))
+        RunStore(self.runs_dir).save(run_id, run, events)

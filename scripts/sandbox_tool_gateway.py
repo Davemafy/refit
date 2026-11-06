@@ -254,7 +254,7 @@ def sandbox_cases(domain: str, seed: int, phase: str, records: list[dict],
 
 def migrate_in_tool_sandboxes(client, domain: str, source: str,
                              target: str, repair_model: str, seed: int,
-                             runtime: str = "runc") -> dict:
+                             runtime: str = "runc", progress=None) -> dict:
     """Full source/target/validation/holdout agent replay with isolated tools."""
     if domain not in DOMAINS:
         raise ValueError("unknown domain")
@@ -268,6 +268,7 @@ def migrate_in_tool_sandboxes(client, domain: str, source: str,
         sandbox_cases(domain, seed, "train", records, runtime),
         lambda: sandbox_cases(domain, seed + 109, "validation", records, runtime),
         lambda: sandbox_cases(domain, seed + 919, "holdout", records, runtime),
+        progress=progress,
     )
     result["execution_boundary"] = {
         "type": "docker_tool_sandbox",

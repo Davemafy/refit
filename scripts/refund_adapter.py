@@ -69,11 +69,12 @@ def make_cases(seed: int, phase: str) -> list[ReplayCase]:
     ]
 
 
-def run_live(client, source: str, target: str, repair_model: str, seed: int) -> dict:
+def run_live(client, source: str, target: str, repair_model: str, seed: int, progress=None) -> dict:
     return migrate(
         client, CONTRACT, source, target, repair_model,
         BASE_PROFILE,
         make_cases(seed, "train"),
         lambda: make_cases(seed + 109, "validation"),
         lambda: make_cases(seed + 919, "holdout"),
+        progress=progress,
     )
