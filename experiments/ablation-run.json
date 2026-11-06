@@ -1,5 +1,6 @@
 {
-  "run_live": false,
-  "purpose": "No billable calls until offline CI succeeds",
+  "run_live": true,
+  "run_id": "2026-11-06-causal-ablation-1",
+  "purpose": "Ablate deterministic first-tool guard versus Vultr-generated instructions on fresh synthetic orders",
   "request_budget": 160
 }
