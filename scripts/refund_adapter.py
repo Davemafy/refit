@@ -11,6 +11,9 @@ from .refit_vultr_probe import AgentConfig, PROMPT, tool_schemas
 from .refit_stress_probe import StressEnvironment, stress_cases
 
 
+BASE_PROFILE = AgentProfile(PROMPT)
+
+
 CONTRACT = AgentContract(
     name="conditional_customer_refunds",
     tools=tuple(tool_schemas(AgentConfig())),
@@ -69,7 +72,7 @@ def make_cases(seed: int, phase: str) -> list[ReplayCase]:
 def run_live(client, source: str, target: str, repair_model: str, seed: int) -> dict:
     return migrate(
         client, CONTRACT, source, target, repair_model,
-        AgentProfile(PROMPT),
+        BASE_PROFILE,
         make_cases(seed, "train"),
         lambda: make_cases(seed + 109, "validation"),
         lambda: make_cases(seed + 919, "holdout"),
