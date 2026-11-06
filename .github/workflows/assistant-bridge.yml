@@ -80,11 +80,12 @@ jobs:
           PY
           timeout 75s node tests/browser-smoke.mjs
 
-      - name: Upload compiled assistant-ui bridge for deployment
+      - name: Upload compiled assistant-ui bridge and browser evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: refit-assistant-ui-bridge
           path: |
             web/assistant-bridge/dist/
-            /tmp/refit-assistant-bridge-*.png
+            web/assistant-bridge/artifacts/*.png
           retention-days: 7
