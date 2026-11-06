@@ -4,8 +4,9 @@
 disposable, isolated Docker container. A separate opt-in path now executes
 the **actual refund and deployment agent tool calls** in fresh Docker workers,
 while model requests and repair approvals remain on the host. Both paths are
-verified on GitHub runners; the Vultr VM has not yet been verified. This
-does not support running arbitrary external agents.
+verified on GitHub runners. The [recovered Vultr-host evidence](vultr-frozen-patch-recovery-2026-11-06.md)
+records safe/hostile probes and a successful frozen-patch refund evaluation
+with gVisor tool workers on the VM. This does not support arbitrary external agents.
 
 ## How it works
 
@@ -45,7 +46,8 @@ container_removed_verified=true and runtime identity in the JSON.
 
 GitHub Actions runs these actual Docker tests in the sandbox-containment job
 and uploads two short-lived JSON reports. **This proves Docker containment on
-GitHub's runner, not yet on the Vultr VM.**
+GitHub's runner. The separate [host evidence](vultr-frozen-patch-recovery-2026-11-06.md)
+records the observations made on Vultr.**
 
 ## One model-generated code execution on the Vultr VM
 
@@ -104,8 +106,8 @@ To test the actual worker protocol on a Docker-capable Linux host:
 
 This parity test runs the same real refund and deployment tool calls in
 Docker and compares their results against the original trusted in-process
-business oracles. It has passed in GitHub Actions but **still needs to run
-on the actual Vultr VM**.
+business oracles. CI covers both adapters; the [host evidence](vultr-frozen-patch-recovery-2026-11-06.md)
+exercises the refund adapter on Vultr.
 
 Use REFIT_SANDBOX_RUNTIME=runsc after installing and verifying gVisor.
 An explicit fallback to runc must be labeled as ordinary Docker isolation.

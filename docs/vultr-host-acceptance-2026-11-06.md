@@ -52,8 +52,12 @@ evaluations: patched Muse 24/24 vs unmodified Muse 13/24 across three seeds.
 That evidence is separate from the on-host rejected run above; do not combine
 the two experiments into a fictional successful on-host repair.
 
-The newer frozen-patch verification on the Vultr host was still pending when
-this document was created. Do not label it complete without its actual receipt.
+The previously pending frozen-patch report has now been recovered from the
+Vultr host: source **8/8**, unmodified Muse **5/8**, patched Muse **8/8**, zero
+unsafe attempts, **63** requests and **24** gVisor workers cleaned up. The
+[original report, recovery checks and reproduction](vultr-frozen-patch-recovery-2026-11-06.md)
+are preserved separately. Recovery made no new inference calls. This used the
+previously exported patch, not the candidate rejected in the run above.
 
 ## Reproducing the public acceptance (no inference billing)
 

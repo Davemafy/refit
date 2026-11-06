@@ -1,0 +1,103 @@
+{
+  "status": "pass",
+  "origin": "http://80.240.30.92",
+  "release": {
+    "commit": "e53feebd8f6d1d08595d23d3b0794aa814c60841",
+    "tracked_files_clean": true
+  },
+  "live_rejection": {
+    "id": "live-8faad4e25db3a36d",
+    "status": "repair_rejected_validation",
+    "runtime": "runsc",
+    "worker_runs": 48,
+    "cleanup_verified": true,
+    "patch_withheld": true
+  },
+  "records": {
+    "refund": {
+      "id": "recorded-refund-2026-11-06",
+      "source_passed": 8,
+      "target_passed": 6,
+      "repaired_holdout_passed": 8
+    },
+    "deployment": {
+      "id": "recorded-deployment-2026-11-06",
+      "status": "compatible_on_sample"
+    }
+  },
+  "live_runs_enabled": false,
+  "public_execution_locked": true,
+  "routes_checked": [
+    {
+      "route": "/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8"
+    },
+    {
+      "route": "/api/health",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/capabilities",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-refund-2026-11-06",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-refund-2026-11-06/artifact",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-deployment-2026-11-06",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/interpret",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/recorded-refund-2026-11-06/events",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/live-8faad4e25db3a36d",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/live-8faad4e25db3a36d/artifact",
+      "status": 404,
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "route": "/api/runs/live-8faad4e25db3a36d/events",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8"
+    }
+  ],
+  "no_paid_actions_triggered": true,
+  "observer": {
+    "client": "Independent E2B host accessing public HTTP origin, without SSH tunnel",
+    "observed_at": "2026-11-06T23:12:13.816889+00:00"
+  },
+  "frozen_artifact_comparison": {
+    "status": "pass",
+    "public_artifact_digest": "sha256:5c80c12561e12cb8cc3940c6eb5ca82460fa12e1a39a7cfb96f8717f390f6505",
+    "matches_recovered_host_patch": true,
+    "integrity_valid": true
+  }
+}

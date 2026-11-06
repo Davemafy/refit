@@ -20,6 +20,13 @@ Vultr inference requests. See [complete framework evidence](docs/framework-evide
 The [public Vultr evidence API](http://80.240.30.92) passed an independent nine-route
 HTTP check; its public paid actions remain disabled.
 
+The [recovered Vultr-host frozen-patch test](docs/vultr-frozen-patch-recovery-2026-11-06.md)
+passed **8/8 patched vs. 5/8 unchanged Muse**, with source 8/8, zero unsafe
+attempts, 63 inference requests, and all 24 gVisor workers cleaned up. The raw
+report, operator wrapper, containment probes and recovery checks are preserved.
+This is separate from the published host run that correctly rejected a new
+candidate during validation.
+
 ## Run the working demo
 
 Refit includes a **zero-build evidence demo** at `/` and `/demo` using
@@ -42,7 +49,8 @@ until an authenticated HTTPS operator workflow is provisioned. After
 deploying, run `python3 -m scripts.smoke_public --url http://YOUR_VULTR_IP`
 from another computer. Full instructions: [public deployment](docs/public-deployment.md).
 
-**Public deployment is not asserted until its external URL is tested.**
+The [external acceptance](docs/vultr-host-acceptance-2026-11-06.md) checks the
+public service against its exact deployed startup revision.
 
 ## Real inference on Vultr, without an exposed paid endpoint
 
@@ -117,9 +125,9 @@ passed 5/8.** The provider sometimes returned no tool call despite the
 requested named tool; it is not an enforcement guarantee. See
 [the two-run ablation evidence](docs/causal-ablation-evidence-2026-11-06.md).
 
-**This is a successful experiment on one synthetic tool-using agent, not proof
-of general agent-migration reliability.** Repeated trials, wider agent support,
-a deployed Vultr app and sandbox isolation remain to be demonstrated.
+This historical experiment covers one synthetic agent. Subsequent framework
+and [Vultr-host evidence](docs/vultr-frozen-patch-recovery-2026-11-06.md) extend
+that evidence without establishing general agent-migration reliability.
 
 ## UI integration contract (current development work)
 
@@ -142,8 +150,9 @@ agents; external-agent imports remain unsupported. Built-in refund and
 deployment tools now have an **opt-in isolated Docker/gVisor execution path**
 using one disposable worker per scenario. A separate path runs real
 Vultr-model-generated migration diagnostic Python in another worker.
-Live calls require explicit server flags and an operator token. Deployment
-on the actual Vultr VM has not yet been verified.
+Live calls require explicit server flags and an operator token.
+[Host execution evidence](docs/vultr-frozen-patch-recovery-2026-11-06.md) is
+preserved separately from CI and from the public read-only service.
 
 ## Executing generated diagnostics safely
 
@@ -167,7 +176,8 @@ that gVisor is installed on our Vultr VM. When
 to ephemeral, networkless Docker workers. The original in-process mode remains
 for legacy experiments and offline tests. All model requests and compatibility
 patch approvals stay with the host. This bridge is verified by CI on GitHub's
-Docker runner but still needs deployment proof on Vultr. No arbitrary
+Docker runner and exercised on Vultr in the
+[recovered fixed-patch verification](docs/vultr-frozen-patch-recovery-2026-11-06.md). No arbitrary
 agent-code uploads are exposed through the API.
 
 ## Code
@@ -245,15 +255,16 @@ the actual returned model matches the requested model.
   in fresh, networkless Docker containers, validated against the original
   stateful oracle in GitHub CI. Generated diagnostics have a separate isolated
   execution path. This is not a universal external-agent sandbox. Host-specific
-  Vultr proof and full-stack integration remain pending.
+  Vultr containment and fixed-patch verification are recorded in the
+  [host evidence](docs/vultr-frozen-patch-recovery-2026-11-06.md).
 
 ## Remaining work
 
 1. Broaden repeated evaluation to unseen workflow families and independently
    operated customer agents, beyond the three-seed framework result above.
 2. Build the minimal judge-facing workflow and Vultr-hosted control plane.
-3. Verify gVisor containment and secret separation on the actual Vultr VM;
-   the CI proof currently runs on GitHub-hosted machines.
+3. Preserve the known deployed revision and reproduce external read-only
+   acceptance before submission; host containment evidence is now archived.
 4. Publish the reproducible demo, video and submission evidence.
 
 This is the **Refit product repository**. The separate dev-mcp service is a
