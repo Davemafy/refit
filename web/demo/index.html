@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101310">
+<meta name="description" content="Refit evaluates, repairs, and verifies AI agent model migrations.">
+<title>Refit — change the model, keep the behavior</title>
+<style>
+:root{font-family:Inter,"Segoe UI",Arial,sans-serif;color:#e9eee8;background:#101310;font-synthesis:none}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}button,textarea,input,select{font:inherit}
+button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.48}a{color:inherit}
+:focus-visible{outline:2px solid #b7ed97;outline-offset:3px}
+.shell{max-width:1160px;margin:auto;padding:30px 28px 100px}
+nav{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:93px}
+.brand{font-size:23px;font-weight:750;letter-spacing:-.075em;display:flex;align-items:center;gap:10px}
+.symbol{height:23px;width:23px;display:block;position:relative}
+.symbol:before,.symbol:after{content:"";position:absolute;background:#b7ed97;border-radius:3px;transform:rotate(-20deg)}
+.symbol:before{width:11px;height:22px;left:5px;top:0}
+.symbol:after{width:8px;height:15px;left:15px;top:6px;background:#6b9373}
+.navlink{font-size:13px;text-decoration:none;color:#9ba79e}.navlink:hover{color:#e9eee8}
+.hero{max-width:790px;margin-bottom:60px}.hero h1{font-size:clamp(46px,7vw,88px);letter-spacing:-.074em;line-height:1.05;margin:0 0 21px;font-weight:650}
+.hero h1 em{font-style:normal;color:#b7ed97}.hero p{font-size:18px;line-height:1.6;max-width:600px;color:#a3afa6;margin:0}
+.workspace{display:grid;grid-template-columns:350px minmax(0,1fr);gap:22px;align-items:start}
+.panel{background:#1b201b;border:1px solid #2d362e;border-radius:18px;padding:25px}
+.panel h2{font-size:18px;letter-spacing:-.03em;font-weight:600;margin:0 0 6px}
+.muted{color:#9ba99e}p.muted{line-height:1.55;margin:0 0 23px;font-size:14px}
+.input{display:block;width:100%;background:#111611;border:1px solid #384339;border-radius:10px;padding:12px 13px;color:#edf4ed;resize:vertical;min-height:108px;line-height:1.5}
+.input:focus{border-color:#b7ed97;outline:none}
+.btn{border:0;border-radius:10px;background:#b7ed97;padding:12px 16px;color:#1a2719;font-weight:650;transition:filter .18s,transform .18s}
+.btn:hover:not(:disabled){filter:brightness(1.08)}.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.subtle{background:#29342a;color:#edf4ea}.btn.full{width:100%;margin-top:13px}
+.small{font-size:12px}.summary{margin-top:16px;min-height:20px;line-height:1.5;font-size:13px}
+.label{display:block;font-size:12px;color:#a9b5aa;margin:22px 0 9px}
+.examples{display:grid;gap:8px}
+.example{display:block;text-align:left;width:100%;color:#e3ede2;border:1px solid transparent;background:#252c25;border-radius:10px;padding:13px}
+.example:hover,.example.active{background:#303d31;border-color:#5d745d}
+.example strong{display:block;font-size:14px;font-weight:620;margin-bottom:5px}
+.example span{font-size:12px;color:#a7b4a6}
+.recordheader{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.flag{border-radius:30px;padding:7px 11px;font-size:12px;font-weight:600;background:#2f412e;color:#bdebab;white-space:nowrap}
+.flag.neutral{background:#34352f;color:#d4d5c3}
+.recordtitle{font-size:25px;letter-spacing:-.04em;margin:20px 0 6px;font-weight:640}
+.modelpath{color:#acb7ae;font-size:13px;line-height:1.6}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:28px 0}
+.metric{background:#252c25;border-radius:12px;padding:16px;min-height:105px}
+.metric .name{font-size:12px;color:#a7b4a6;line-height:1.4}
+.metric .value{font-size:29px;letter-spacing:-.055em;margin-top:12px;font-weight:600}
+.metric .value.green{color:#b7ed97}
+.steps{display:grid;gap:9px;margin:19px 0}.step{display:flex;gap:10px;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid #313a31;font-size:13px}
+.step:last-child{border:0}.step span{color:#aab7ac}.step strong{font-weight:620}
+.info{font-size:13px;line-height:1.6;color:#b1beb3}
+.actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}
+.actionLink{border-radius:10px;padding:12px 14px;text-decoration:none;background:#2e392e;font-size:13px;font-weight:600;display:inline-flex;align-items:center}
+.actionLink:hover{background:#3d4c3d}
+pre{background:#131813;padding:16px;border-radius:10px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#d6e4d2;font-size:12px;line-height:1.65}
+details{margin-top:24px}summary{cursor:pointer;color:#dce9d7;font-size:13px}
+.operator{margin-top:24px;border-top:1px solid #313a31;padding-top:20px}
+.operator .input{min-height:0;height:42px}
+.operator .label{margin:12px 0 9px}
+.alert{font-size:12px;line-height:1.5;color:#b8c9b6;margin-top:12px}
+.status{margin-top:17px;color:#b7ed97;font-size:13px;line-height:1.55;min-height:20px}
+footer{margin-top:50px;color:#6f8072;font-size:12px;line-height:1.5}
+.hidden{display:none!important}
+@media(max-width:800px){nav{margin-bottom:65px}.workspace{grid-template-columns:1fr}.shell{padding:22px 16px 70px}.panel{padding:20px}.hero{margin-bottom:40px}.metrics{grid-template-columns:repeat(3,1fr)}.metric{padding:13px}.metric .value{font-size:23px}.hero p{font-size:16px}}
+@media(max-width:380px){.metrics{grid-template-columns:1fr}.metric{min-height:0}.metric .value{margin-top:5px}}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav><div class="brand"><span class="symbol" aria-hidden="true"></span>refit</div><a class="navlink" href="https://github.com/Davemafy/refit" target="_blank" rel="noreferrer">View source ↗</a></nav>
+<section class="hero"><h1>Change the model.<br><em>Keep the behavior.</em></h1><p>Model migration isn't just an API swap. Refit finds where an existing agent's behavior changes, proposes bounded repairs, and verifies the outcome against independent tests.</p></section>
+<main class="workspace">
+<section class="panel">
+<h2>Describe a migration</h2>
+<p class="muted">Try a supported scenario. Refit interprets your request without starting paid model calls.</p>
+<form id="intentForm"><label class="label" for="intentText">Your request</label>
+<textarea id="intentText" class="input" spellcheck="false" required maxlength="1200">Move our refund agent from DeepSeek to Muse.</textarea>
+<button class="btn full" type="submit" id="interpretButton">Interpret request</button></form>
+<div class="summary" id="intentResult" aria-live="polite"></div>
+<div id="runActions" class="hidden">
+<label class="label" for="accessToken">Operator token (only for authenticated live runs)</label>
+<input class="input" style="min-height:0;height:42px" id="accessToken" type="password" autocomplete="off" placeholder="Not needed for recorded evidence">
+<button type="button" class="btn full" id="startLive">Start live migration</button>
+</div>
+<div class="label" style="margin-top:30px">Recorded Vultr evaluations</div>
+<div class="examples" id="runList" aria-live="polite"><div class="muted small">Loading evidence…</div></div>
+</section>
+<section class="panel" id="resultPanel">
+<div class="recordheader"><h2>Migration evidence</h2><span class="flag neutral" id="recordStatus">Loading</span></div>
+<h3 class="recordtitle" id="recordTitle">Fetching evaluations</h3>
+<div class="modelpath" id="recordModels"></div>
+<div class="metrics" id="metrics"></div>
+<div class="steps" id="steps"></div>
+<p class="info" id="recordCaveat"></p>
+<div class="actions">
+<a class="actionLink hidden" id="evidenceLink" target="_blank" rel="noreferrer">Original Vultr evidence ↗</a>
+<button class="btn subtle hidden" id="artifactButton" type="button">Export verified patch</button>
+</div>
+<details id="detailBox"><summary>Inspect migration report</summary><pre id="reportText"></pre></details>
+<div class="operator" id="diagnosticPanel">
+<h2>Isolated code diagnostic</h2>
+<p class="muted">For operators: ask Vultr inference to generate Python that analyzes this migration, then execute it in a restricted sandbox. Refit checks the result independently.</p>
+<button type="button" class="btn subtle" id="diagnoseButton" disabled>Run in sandbox</button>
+<p id="diagnoseHint" class="alert">Checking runtime capabilities…</p>
+<div id="runStatus" class="status" aria-live="polite"></div>
+<details id="sandboxDetail" class="hidden"><summary>Inspect generated code and sandbox output</summary><pre id="sandboxText"></pre></details>
+</div>
+</section>
+</main>
+<footer>Recorded evaluations used real Vultr inference with synthetic business tools. Historical evidence is labeled separately from live execution. This is a focused demo, not a production-migration guarantee.</footer>
+</div>
+<script>
+(() => {
+"use strict";
+const $ = id => document.getElementById(id);
+let runs = [], selected = null, capabilities = null, intent = null, timer = null;
+async function json(path, options) {
+  const response = await fetch(path, {...options, cache:"no-store"});
+  let value;
+  try { value = await response.json(); } catch { throw new Error("Invalid API response"); }
+  if (!response.ok) throw new Error(value?.error?.message || `Request failed (${response.status})`);
+  return value;
+}
+function node(tag, className, text) {
+  const el = document.createElement(tag);
+  if(className) el.className = className;
+  if(text !== undefined) el.textContent = String(text);
+  return el;
+}
+function val(phase) {
+  if(!phase || !Number.isInteger(phase.passed) || !Number.isInteger(phase.total)) return "—";
+  return phase.passed + "/" + phase.total;
+}
+function statusMessage(status) {
+  const names = {
+    verified_adaptation:"Verified repair",
+    compatible_on_sample:"Compatible on sample",
+    diagnostic_verified:"Diagnostic verified",
+    diagnostic_failed:"Diagnostic failed",
+    source_baseline_insufficient:"Baseline failed",
+    candidate_failed_validation:"Validation failed",
+    candidate_failed_holdout:"Holdout failed",
+    queued:"Queued",
+    running:"Running",
+    execution_error:"Execution error"
+  };
+  return names[status] || (status || "Unknown outcome").replaceAll("_"," ");
+}
+function setStatus(id, value, error=false) {
+  $(id).textContent = value;
+  $(id).style.color = error ? "#f9b19c" : "";
+}
+function appendStep(title, text) {
+  const row = node("div","step");
+  row.append(node("span","",title),node("strong","",text));
+  $("steps").append(row);
+}
+function metric(title, value, improved) {
+  const cell=node("div","metric"), name=node("div","name",title), n=node("div","value"+(improved?" green":""),value);
+  cell.append(name,n);
+  $("metrics").append(cell);
+}
+async function showRun(id) {
+  clearTimeout(timer); timer=null;
+  selected = id;
+  document.querySelectorAll(".example").forEach(el=>el.classList.toggle("active",el.dataset.id===id));
+  $("metrics").replaceChildren(); $("steps").replaceChildren();
+  $("recordTitle").textContent="Loading run…"; $("sandboxDetail").classList.add("hidden");
+  setStatus("runStatus","");
+  try {
+    const r=await json("/api/runs/"+encodeURIComponent(id));
+    $("recordTitle").textContent= r.domain==="refund" ? "Customer refunds" : r.domain==="deployment" ? "Deployment recovery" : "Agent migration";
+    $("recordModels").textContent= r.source+"  →  "+r.target+" · "+(r.mode==="recorded"?"Recorded Vultr run":r.mode==="live_diagnostic"?"Live isolated diagnostic":"Live migration");
+    $("recordStatus").textContent=statusMessage(r.status);
+    $("recordStatus").classList.toggle("neutral",r.status!=="verified_adaptation"&&r.status!=="diagnostic_verified");
+    const report = r.report && typeof r.report==="object" ? r.report : {};
+    metric("Source agent",val(report.source_training),false);
+    metric("Replacement model",val(report.target_training),false);
+    metric("Repaired holdout",val(report.repaired_holdout),!!report.repaired_holdout);
+    for(const [name,key] of [["Source evaluation","source_training"],["Unmodified target","target_training"],["Independent validation","validation"],["Original holdout","original_holdout"],["Repaired holdout","repaired_holdout"]]) {
+      if(report[key]) appendStep(name,val(report[key]));
+    }
+    if(report.target_training?.failed?.length) appendStep("Regression cases",report.target_training.failed.join(", "));
+    $("recordCaveat").textContent= r.caveat || (r.mode==="live_diagnostic"?"Isolated diagnosis of previously recorded migration results.":r.status==="compatible_on_sample"?"No repair proposed: the replacement model passed the evaluated scenarios.":"Scores describe a bounded test sample, not a universal reliability guarantee.");
+    $("reportText").textContent=JSON.stringify(r,null,2);
+    const ev = $("evidenceLink");
+    const safeUrl = typeof r.evidence_url==="string" && /^https:\/\/github\.com\//.test(r.evidence_url);
+    ev.classList.toggle("hidden",!safeUrl);
+    if(safeUrl) ev.href=r.evidence_url;
+    $("artifactButton").classList.toggle("hidden",r.status!=="verified_adaptation");
+    const canDiagnose=Boolean(capabilities?.live_runs_enabled&&capabilities?.sandbox?.generated_python_diagnostics_enabled&&r.mode==="recorded");
+    $("diagnoseButton").disabled=!canDiagnose;
+    $("diagnoseHint").textContent=canDiagnose
+      ?"Operator token required. One Vultr inference request per diagnostic."
+      :"Live sandbox diagnostics are disabled here; explore the recorded evidence above.";
+    if(r.sandbox_diagnostic) {
+      $("sandboxDetail").classList.remove("hidden");
+      $("sandboxText").textContent=JSON.stringify(r.sandbox_diagnostic,null,2);
+      setStatus("runStatus",r.sandbox_diagnostic.verified?"Independent diagnostic verified.":"Diagnostic did not pass verification.",!r.sandbox_diagnostic.verified);
+    }
+    if(["queued","running"].includes(r.status)) {
+      timer=setTimeout(()=>showRun(id),2500);
+    }
+  } catch(err) { $("recordTitle").textContent="Couldn't load this run";setStatus("runStatus",err.message,true); }
+}
+function renderRuns() {
+  $("runList").replaceChildren();
+  runs.forEach(r=>{
+    const b=node("button","example");
+    b.type="button";b.dataset.id=r.id;
+    b.append(node("strong","",r.domain==="refund"?"Customer refund agent":r.domain==="deployment"?"Deployment responder":"Isolated diagnosis"),node("span","",statusMessage(r.status)+" · "+r.source+" → "+r.target));
+    b.addEventListener("click",()=>showRun(r.id));
+    $("runList").append(b);
+  });
+  if(!runs.length) $("runList").append(node("p","muted","No saved evaluations found."));
+}
+$("intentForm").addEventListener("submit",async e=>{
+  e.preventDefault();intent=null;
+  $("interpretButton").disabled=true;
+  setStatus("intentResult","Interpreting request…");
+  $("runActions").classList.add("hidden");
+  try {
+    intent=await json("/api/interpret",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:$("intentText").value})});
+    const missing=intent.missing?.length ? " · Choose: "+intent.missing.join(", ") : "";
+    setStatus("intentResult",(intent.ready_for_review?"Ready for review: ":"Needs details: ")+(intent.domain||"unknown workflow")+" · "+(intent.source_model||"source unknown")+" → "+(intent.target_model||"target unknown")+missing);
+    if(intent.ready_for_review) {
+      const match=runs.find(r=>r.domain===intent.domain&&r.source===intent.source_model&&r.target===intent.target_model);
+      if(match) await showRun(match.id);
+      $("runActions").classList.toggle("hidden",!capabilities?.live_runs_enabled);
+    }
+  } catch(err) {setStatus("intentResult",err.message,true);}
+  finally{$("interpretButton").disabled=false;}
+});
+async function begin(path, payload, button) {
+  const token=$("accessToken").value;
+  if(!token){setStatus("runStatus","Enter an operator token to start a paid live action.",true);return;}
+  button.disabled=true;setStatus("runStatus","Submitting authenticated request…");
+  try {
+    const result=await json(path,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify(payload)});
+    runs=await json("/api/runs").then(data=>data.runs);
+    renderRuns();await showRun(result.id);
+  } catch(err){setStatus("runStatus",err.message,true);}
+  finally {button.disabled=false;}
+}
+$("startLive").addEventListener("click",()=>{
+  if(!intent?.ready_for_review)return;
+  begin("/api/runs",{domain:intent.domain,source_model:intent.source_model,target_model:intent.target_model},$("startLive"));
+});
+$("diagnoseButton").addEventListener("click",()=>{
+  if(!selected)return;
+  begin("/api/runs/"+encodeURIComponent(selected)+"/diagnose",{},$("diagnoseButton"));
+});
+$("artifactButton").addEventListener("click",async()=>{
+  if(!selected)return;
+  try{
+    const artifact=await json("/api/runs/"+encodeURIComponent(selected)+"/artifact");
+    const blob=new Blob([JSON.stringify(artifact,null,2)+"\n"],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement("a");link.href=url;link.download="refit-compatibility.json";
+    document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(err){setStatus("runStatus",err.message,true);}
+});
+(async()=>{
+  try{
+    [capabilities, {runs}]=await Promise.all([json("/api/capabilities"),json("/api/runs")]);
+    renderRuns();
+    const preferred=runs.find(r=>r.status==="verified_adaptation")||runs[0];
+    if(preferred) await showRun(preferred.id);
+  }catch(err){
+    $("runList").replaceChildren(node("p","muted","Backend unavailable: "+err.message));
+    $("recordTitle").textContent="Waiting for the backend";
+  }
+})();
+})();
+</script>
+</body>
+</html>
