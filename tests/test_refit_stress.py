@@ -145,6 +145,19 @@ class StressProtocolTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["trace"][0]["tool"], "get_order")
 
+    def test_tool_choice_hint_does_not_override_observed_agent_behavior(self):
+        class IgnoresForcedChoice:
+            def complete(self, *args, **kwargs):
+                return {"role": "assistant", "content": "Cannot process"}
+        scenario = stress.stress_cases(27111, "train")[0]
+        result = stress.execute_stress(
+            IgnoresForcedChoice(), "target",
+            core.AgentConfig(force_initial_lookup=True), scenario
+        )
+        self.assertFalse(result["passed"])
+        self.assertFalse(result["lookup_verified"])
+        self.assertEqual(result["trace"], [])
+
     def test_target_model_must_differ(self):
         with self.assertRaisesRegex(ValueError, "source model"):
             stress.discover_and_repair(StubAgent(),"source",["source"],"repair")
