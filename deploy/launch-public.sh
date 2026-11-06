@@ -191,15 +191,26 @@ systemctl enable --now nginx
 systemctl reload nginx
 
 # Confirm the actual public-facing reverse-proxy path, not just Python.
-CHECK_HOST="${HOSTNAME_OPTION:-localhost}"
-if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/api/health     | grep -F '"status": "ok"' >/dev/null; then
-  echo "Nginx /api/health reverse proxy failed" >&2
+# Nginx chooses the virtual host by request Host, not just default_server.
+# Existing sites may explicitly claim "localhost", returning their own 404.
+# Query the precise Refit server_name (the literal '_' fallback) instead.
+CHECK_HOST="${HOSTNAME_OPTION:-_}"
+echo "Checking Nginx route for Host: ${CHECK_HOST}"
+if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/api/health \
+    | grep -F '"status": "ok"' >/dev/null; then
+  echo "Nginx API proxy failed for the Refit virtual host. Active sites:" >&2
+  ls -l /etc/nginx/sites-enabled/ >&2
+  echo "Request diagnostics:" >&2
+  curl -sS -i --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/api/health | head -n 20 >&2 || true
   exit 5
 fi
-if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/demo     | grep -F 'Change the model.' >/dev/null; then
-  echo "Nginx /demo reverse proxy failed" >&2
+if ! curl -fsS --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/demo \
+    | grep -F 'Change the model.' >/dev/null; then
+  echo "Nginx demo proxy failed for Host: ${CHECK_HOST}" >&2
+  curl -sS -i --max-time 6 -H "Host: ${CHECK_HOST}" http://127.0.0.1/demo | head -n 20 >&2 || true
   exit 5
 fi
+echo "PASS: Nginx serves Refit API and demo for Host: ${CHECK_HOST}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
   ufw allow 80/tcp
 fi
