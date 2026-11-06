@@ -30,8 +30,14 @@ next cross-domain falsification test, read the
 [core thesis and proof plan](docs/core-thesis-and-proof-plan.md).
 
 The accepted adaptation combined an **AI-generated instruction rewrite** with
-an evidence-triggered runtime guard requiring the target model to call
-`get_order` first. The independent SQLite gateway and verifier did not change.
+an evidence-triggered first-tool selection request for `get_order`.
+The independent SQLite gateway and verifier did not change.
+
+**Follow-up causal ablations on two fresh seeds found that the generated
+instructions alone passed 8/8 in both runs, whereas the lookup setting alone
+passed 5/8.** The provider sometimes returned no tool call despite the
+requested named tool; it is not an enforcement guarantee. See
+[the two-run ablation evidence](docs/causal-ablation-evidence-2026-11-06.md).
 
 **This is a successful experiment on one synthetic tool-using agent, not proof
 of general agent-migration reliability.** Repeated trials, wider agent support,
