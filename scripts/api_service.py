@@ -502,6 +502,17 @@ class RunService:
                     client, source, target, source, seed=seed,
                     progress=progress,
                 )
+            # A migration verdict is not releasable if its requested sandbox
+            # boundary was missing or cleanup could not be independently checked.
+            if os.getenv("REFIT_USE_TOOL_SANDBOX") == "1":
+                boundary = result.get("execution_boundary") or {}
+                if (boundary.get("runtime") !=
+                        os.getenv("REFIT_SANDBOX_RUNTIME", "runsc") or
+                        boundary.get("business_tools_isolated") is not True or
+                        boundary.get("all_containers_removed") is not True or
+                        type(boundary.get("worker_runs")) is not int or
+                        boundary["worker_runs"] < 1):
+                    raise RuntimeError("sandbox containment evidence incomplete")
             accepted = (
                 create_receipt(
                     result, DOMAINS[domain].CONTRACT,
