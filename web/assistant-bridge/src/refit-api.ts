@@ -105,7 +105,7 @@ export function assertRun(value: unknown): asserts value is RecordedRun {
 }
 export class RefitApi {
   constructor(
-    private readonly transport: typeof fetch = fetch,
+    private readonly transport: typeof fetch = (input, init) => globalThis.fetch(input, init),
     private readonly prefix: string = "/api",
   ) {
     if (!/^\/api$/.test(prefix)) {
