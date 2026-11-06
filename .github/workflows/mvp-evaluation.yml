@@ -1,0 +1,83 @@
+name: Refit paired deployment evaluation
+
+on:
+  push:
+    branches: [main]
+    paths: ['experiments/mvp-run.json']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-mvp-evaluation
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify engine before inference
+        run: python -m unittest discover -s tests -p 'test_refit*.py' -q
+      - name: Execute the declared bounded experiment
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys
+          config = json.load(open('experiments/mvp-run.json'))
+          if config.get('run_live') is not True:
+              print('Live evaluation disabled; no inference requests.')
+              sys.exit(0)
+          if not os.getenv('VULTR_INFERENCE_API_KEY'):
+              sys.exit('Configured inference secret is unavailable; no requests made.')
+          budget = config['max_requests']
+          assert type(budget) is int and 1 <= budget <= 320
+          assert config['domain'] == 'deployment'
+          assert type(config['seed']) is int
+          subprocess.run([
+              sys.executable, '-m', 'scripts.refit_cli',
+              '--domain', config['domain'], '--source', config['source'],
+              '--target', config['target'], '--repair', config['repair'],
+              '--seed', str(config['seed']), '--max-requests', str(budget),
+              '--output', '/tmp/refit-mvp-report.json',
+              '--export-patch', '/tmp/refit-mvp-patch.json',
+          ], check=True)
+          PY
+      - name: Preserve all synthetic execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-mvp-paired-deployment
+          path: |
+            /tmp/refit-mvp-report.json
+            /tmp/refit-mvp-patch.json
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: Publish verdict without transcripts
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('/tmp/refit-mvp-report.json')
+          if not path.exists():
+              print('No execution report produced.')
+          else:
+              data = json.loads(path.read_text())
+              report = data['report']
+              summary = {key: report.get(key) for key in (
+                  'status', 'source_training', 'target_training',
+                  'source_validation', 'original_validation', 'validation',
+                  'source_holdout', 'original_holdout', 'repaired_holdout')}
+              summary['model_requests'] = data['model_requests']
+              print(json.dumps(summary, indent=2))
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+                  output.write('## Paired deployment evaluation\n\n```json\n')
+                  output.write(json.dumps(summary, indent=2) + '\n```\n')
+          PY

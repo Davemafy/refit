@@ -47,7 +47,8 @@ Live inference credentials and Docker are not available in the local development
 environment used for this pass. Offline responders verify harness behavior only.
 No new live repair evidence is established by these changes.
 
-Paired evaluation requires more calls than the earlier protocol. Existing request
-caps are unchanged; a run may exhaust its budget before reaching a verdict. Budget
-exhaustion cannot justify reducing verification or exporting a patch. Plan the
-request budget explicitly before executing billable evaluations.
+Paired evaluation requires more calls than the earlier protocol. The trusted CLI
+accepts an explicit request cap up to 400; its default remains 160. Public API and
+operator caps are unchanged. The one-shot paired deployment workflow caps its
+experiment at 320 requests. A run may exhaust its budget before reaching a
+verdict; that cannot justify reducing verification or exporting a patch.

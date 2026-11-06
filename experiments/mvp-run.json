@@ -1,0 +1,10 @@
+{
+  "run_live": true,
+  "domain": "deployment",
+  "source": "deepseek-v4.1-flash-1017",
+  "target": "muse-glimmer-30b",
+  "repair": "deepseek-v4.1-flash-1017",
+  "seed": 61062731,
+  "max_requests": 320,
+  "purpose": "One paired second-domain experiment; preserve unsuccessful results."
+}

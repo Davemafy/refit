@@ -78,8 +78,8 @@ def main():
     p.add_argument("--output", type=Path, default=Path("refit-migration-report.json"))
     p.add_argument("--export-patch", type=Path, default=Path("refit-compatibility.json"))
     args = p.parse_args()
-    if not 1 <= args.max_requests <= 200:
-        p.error("--max-requests must be between 1 and 200")
+    if not 1 <= args.max_requests <= 400:
+        p.error("--max-requests must be between 1 and 400")
     if args.source == args.target:
         p.error("--source and --target must differ")
     # Import adapter before loading any sensitive credential. This supports
