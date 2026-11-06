@@ -1,6 +1,6 @@
 {
   "run_live": true,
-  "run_id": "deployment-incident-04-outcome-contract",
-  "purpose": "Run source-target migration with protected business outcomes and recoverable errors classified separately",
+  "run_id": "deployment-incident-05-raon-migration",
+  "purpose": "Compare deepseek source to Raon target on independent deployment stateful workflow and attempt bounded repair if it genuinely regresses",
   "model_request_cap": 160
 }
