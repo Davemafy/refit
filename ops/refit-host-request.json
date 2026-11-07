@@ -1,0 +1,4 @@
+{
+  "action": "deploy",
+  "reason": "Deploy verified Refit Evidence inspector after passing browser and engine CI"
+}
