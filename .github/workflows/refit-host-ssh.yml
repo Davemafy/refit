@@ -1,0 +1,88 @@
+name: Refit host bridge (5-hour authorized access)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Approved host operation
+        type: choice
+        required: true
+        default: status
+        options:
+          - status
+          - deploy
+  push:
+    branches: [main]
+    paths:
+      - 'ops/refit-host-request.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-host-ssh
+  cancel-in-progress: false
+
+jobs:
+  host:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate request and repository revision
+        id: request
+        env:
+          DISPATCH_ACTION: ${{ inputs.action }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          if os.environ['EVENT_NAME']=='workflow_dispatch':
+              action=os.environ['DISPATCH_ACTION']
+          else:
+              obj=json.loads(Path('ops/refit-host-request.json').read_text())
+              if not isinstance(obj,dict) or set(obj) != {'action','reason'}:
+                  raise SystemExit('Unexpected request fields')
+              if not isinstance(obj['reason'],str) or len(obj['reason'])>200:
+                  raise SystemExit('Invalid request reason')
+              action=obj['action']
+          if action not in ('status','deploy'):
+              raise SystemExit('Only status and deploy are supported')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write(f'action={action}\n')
+          print('Approved host operation:',action)
+          PY
+      - name: Connect to pinned Vultr host using GitHub Actions secret
+        env:
+          PRIVATE_KEY: ${{ secrets.REFIT_HOST_SSH_PRIVATE_KEY }}
+          PINNED_HOST: ${{ secrets.REFIT_HOST_KNOWN_HOSTS }}
+          ACTION: ${{ steps.request.outputs.action }}
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$PRIVATE_KEY" || -z "$PINNED_HOST" ]]; then
+            echo 'Missing REFIT_HOST_SSH_PRIVATE_KEY or REFIT_HOST_KNOWN_HOSTS.' >&2
+            echo 'Provision with the host setup script and GitHub Actions secrets.' >&2
+            exit 1
+          fi
+          umask 077
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$PRIVATE_KEY" > "$HOME/.ssh/refit_host_ed25519"
+          printf '%s\n' "$PINNED_HOST" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/refit_host_ed25519" "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -f "$HOME/.ssh/refit_host_ed25519" > /dev/null
+          if [[ "$ACTION" == deploy ]]; then
+            COMMAND="deploy $REVISION"
+          else
+            COMMAND=status
+          fi
+          timeout 23m ssh -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes -o ConnectTimeout=12 \
+            -o ServerAliveInterval=12 -o ServerAliveCountMax=3 \
+            -i "$HOME/.ssh/refit_host_ed25519" \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            root@80.240.30.92 "$COMMAND"
