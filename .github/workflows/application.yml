@@ -13,6 +13,7 @@ on:
       - 'web/application/**'
       - 'tests/browser_application*.mjs'
       - 'tests/browser_saas.mjs'
+      - 'tests/browser_ui_polish.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - 'tests/saas_fixture_server.py'
@@ -26,6 +27,7 @@ on:
     paths:
       - 'web/application/**'
       - 'tests/browser_saas.mjs'
+      - 'tests/browser_ui_polish.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - '.github/workflows/application.yml'
@@ -77,6 +79,8 @@ jobs:
         run: node tests/run_outcome.test.mjs
       - name: Verify SaaS routes and review in Firefox without inference
         run: node tests/browser_saas.mjs
+      - name: Verify responsive investigation UI, mobile search and error recovery in Firefox
+        run: node tests/browser_ui_polish.mjs
       - name: Archive zero-inference SaaS browser captures
         if: always()
         uses: actions/upload-artifact@v4
