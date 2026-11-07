@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      expected_application_revision:
+        description: Full Git SHA of the deployed HTTPS application
+        type: string
+        required: false
 
 concurrency:
   group: public-vultr-acceptance-main
@@ -30,10 +35,13 @@ jobs:
             --expected-revision e53feebd8f6d1d08595d23d3b0794aa814c60841 \
             --require-live-rejection \
             --output /tmp/refit-public-smoke.json
-      - name: Verify public HTTPS sign-in boundary without inference
+      - name: Verify the deployed HTTPS application without inference
+        env:
+          EXPECTED_APPLICATION_REVISION: ${{ inputs.expected_application_revision || '57d9a1262120f3f7eca2c47b6e69365512b7a3b2' }}
         run: |
           python -m scripts.smoke_platform_https \
             --url https://80.240.30.92 \
+            --expected-revision "$EXPECTED_APPLICATION_REVISION" \
             --output /tmp/refit-https-smoke.json
       - name: Preserve external observations
         if: always()

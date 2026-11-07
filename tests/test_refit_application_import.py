@@ -8,7 +8,7 @@ import unittest
 import zipfile
 
 from scripts.application_cli import local_zip
-from scripts.application_import import ImportProblem, source_snapshot
+from scripts.application_import import ARCHIVE_LIMIT, ImportProblem, source_snapshot
 
 
 def archive(entries):
@@ -27,6 +27,13 @@ class ApplicationImportTests(unittest.TestCase):
         for name in ["../agent.py", "/agent.py", ".env", link]:
             with self.subTest(name=name), self.assertRaises(ImportProblem):
                 source_snapshot(archive([(name, b"example")]))
+
+    def test_oversized_archives_have_source_specific_guidance(self):
+        oversized = bytes(ARCHIVE_LIMIT + 1)
+        with self.assertRaisesRegex(ImportProblem, r"GitHub archive.*4 MiB.*Switch to Upload ZIP"):
+            source_snapshot(oversized, "owner/repository", "a" * 40)
+        with self.assertRaisesRegex(ImportProblem, r"uploaded ZIP.*4 MiB"):
+            source_snapshot(oversized)
 
     def test_typescript_is_inspect_only(self):
         snapshot = source_snapshot(archive([("src/agent.ts", b"export const x = 1")]))

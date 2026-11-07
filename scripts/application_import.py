@@ -115,8 +115,15 @@ def sensitive(path):
 
 
 def unpack(archive, *, github=False):
-    if not 1 <= len(archive) <= ARCHIVE_LIMIT:
-        raise ImportProblem("Upload a ZIP no larger than 4 MiB, or select a smaller source snapshot.")
+    if not archive:
+        raise ImportProblem("GitHub returned an empty archive." if github else "The uploaded ZIP is empty.")
+    if len(archive) > ARCHIVE_LIMIT:
+        if github:
+            raise ImportProblem(
+                "The GitHub archive for this commit is larger than 4 MiB. "
+                "Switch to Upload ZIP and include only the agent code and files it needs to run."
+            )
+        raise ImportProblem("The uploaded ZIP is larger than 4 MiB. Remove files the agent does not need and try again.")
     files = {}
     try:
         with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
