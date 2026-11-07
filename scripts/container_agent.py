@@ -94,9 +94,35 @@ def validate_completion(value, models):
         raise ValueError('invalid completion tool schemas')
 
 
+def validate_result(result, description, config):
+    if result['status'] not in ('verified_adaptation', 'compatible_on_sample'):
+        raise ValueError('migration did not pass shared engine gates')
+    if result['export']['model'] != config['target'] or result['export']['revision'] != config['revision']:
+        raise ValueError('export target identity mismatch')
+    check = result['original_runner_verification']
+    expected_names = {row['case_name'] for row in description['metadata']['splits']['holdout']}
+    if (check.get('passed') is not True or not check.get('uses_exported_configuration') or
+            {c['case'] for c in check['cases']} != expected_names or
+            len(check['cases']) != len(expected_names) or not all(c['passed'] for c in check['cases'])):
+        raise ValueError('export lacks complete independent native-runner verification')
+    expected = {row['case_name']: row for rows in description['metadata']['splits'].values() for row in rows}
+    cases = [c for phase in result['report']['evaluations'].values() for c in phase['cases']]
+    cases.extend(check['cases'])
+    for case in cases:
+        row = expected[case['case']]
+        if (case['initial_db_hash'] != row['initial_db_hash'] or
+                (case['passed'] and case['final_db_hash'] != row['expected_db_hash'])):
+            raise ValueError('native state fingerprint mismatch')
+
+
 def run(config, image, output, execute=False):
     validate_config(config)
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
+    root = Path(__file__).resolve().parents[1]
+    helper = (root / config['application_helper']).resolve()
+    if not helper.is_relative_to(root / 'integrations') or helper.suffix != '.py':
+        raise ValueError('Application helper must be reviewed integration source')
+    helper_source = helper.read_text()
     client = VultrInference(load_key(Path('/etc/refit/inference.env')),
                             max_requests=config['max_requests']) if execute else None
     docker_env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin')}
@@ -106,7 +132,7 @@ def run(config, image, output, execute=False):
     record = {'format': 'refit.external-agent-run.v1', 'config': config,
               'engine_revision': capture_revision(Path(__file__).resolve().parents[1]),
               'image_id': image_info['Id'], 'container_name': name,
-              'execute': execute, 'completions': [], 'events': []}
+              'execute': execute, 'completions': [], 'events': [], 'native_cases': []}
     proc = None
     result = None
     buffer = bytearray()
@@ -136,10 +162,12 @@ def run(config, image, output, execute=False):
                                'request_sha256': hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest(),
                                'status': 'requested'}
                     record['completions'].append(receipt)
+                    record['last_request'] = value
                     save()
                     try:
                         response = client.complete(value['model'], value['messages'], value.get('tools'), max_tokens=2500)
                         receipt['status'] = 'completed'
+                        receipt['response'] = response
                         send(proc, {'type': 'completion_result', 'message': response},
                              min(deadline, time.monotonic() + 15))
                     except Exception as error:
@@ -159,6 +187,9 @@ def run(config, image, output, execute=False):
                     record['events'].append(value)
                     save()
                     print(json.dumps(value), flush=True)
+                elif kind == 'case_result':
+                    record['native_cases'].append(value['case'])
+                    save()
                 elif kind == 'result':
                     result = value
                 else:
@@ -184,14 +215,12 @@ def run(config, image, output, execute=False):
                         result.get('model_requests') == record['model_requests'] and
                         cleanup['verified'] and not record.get('error_type'))
         if verified:
-            expected = {row['case_name']: row for rows in record['description']['metadata']['splits'].values() for row in rows}
-            cases = [c for phase in result['report']['evaluations'].values() for c in phase['cases']]
-            cases.extend(result['original_runner_verification']['cases'])
-            for case in cases:
-                row = expected[case['case']]
-                if (case['initial_db_hash'] != row['initial_db_hash'] or
-                        (case['passed'] and case['final_db_hash'] != row['expected_db_hash'])):
-                    verified = False
+            try:
+                validate_result(result, record['description'], config)
+            except (KeyError, TypeError, ValueError) as error:
+                verified = False
+                record['error_type'] = type(error).__name__
+                record['error_message'] = str(error)[:250]
         record['verified'] = verified
         if not verified and result:
             result['export'] = None
@@ -199,11 +228,7 @@ def run(config, image, output, execute=False):
         if verified:
             (output / 'agent-config.json').write_text(json.dumps(result['export'], indent=2))
             # Plain source to copy into the developer checkout, never imported here.
-            root = Path(__file__).resolve().parents[1]
-            helper = (root / config['application_helper']).resolve()
-            if not helper.is_relative_to(root / 'integrations') or helper.suffix != '.py':
-                raise ValueError('Application helper must be reviewed integration source')
-            (output / 'apply_config.py').write_text(helper.read_text())
+            (output / 'apply_config.py').write_text(helper_source)
     print(json.dumps({'verified': verified, 'status': result.get('status') if result else 'execution_error',
                       'model_requests': record['model_requests'], 'cleanup_verified': cleanup['verified'],
                       'output': str(output)}), flush=True)

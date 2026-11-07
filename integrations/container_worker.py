@@ -29,6 +29,9 @@ class BrokerClient:
             raise RuntimeError(reply["error"])
         return reply["message"]
 
+    def record_case(self, result):
+        emit({"type": "case_result", "case": result})
+
 
 def main():
     config = json.loads(sys.stdin.readline())

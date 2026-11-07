@@ -37,6 +37,14 @@ def describe(config):
     env = get_environment()
     contract = AgentContract('tau2_retail_original', tuple(t.openai_schema for t in env.get_tools()),
                              (env.get_policy(),))
+    baseline = AgentProfile(llm_agent.AGENT_INSTRUCTION)
+    configured = build_agent(env, config['source'], {
+        'instructions': baseline.instructions, 'tool_descriptions': {}})
+    original = llm_agent.LLMAgent(tools=env.get_tools(), domain_policy=env.get_policy(), llm=config['source'])
+    if configured.system_prompt != original.system_prompt:
+        raise ValueError('Adapter changed original baseline system prompt')
+    if [t.openai_schema for t in configured.tools] != [t.openai_schema for t in original.tools]:
+        raise ValueError('Adapter changed original baseline tool schemas')
     metadata = {'upstream_revision': actual, 'original_model_default': 'upstream CLI configurable',
                 'policy_sha256': fingerprint(env.get_policy()), 'splits': {}}
     for split, names in config['splits'].items():
@@ -61,7 +69,7 @@ def describe(config):
                          'initial_db_hash': env.get_db_hash(),
                          'expected_db_hash': reference.get_db_hash()})
         metadata['splits'][split] = rows
-    return contract, AgentProfile(llm_agent.AGENT_INSTRUCTION), metadata
+    return contract, baseline, metadata
 
 
 def cases(config, split):
@@ -112,7 +120,7 @@ def run_case(client, model, profile, task, config, exported=None):
     messages = simulation.messages if simulation else []
     tool_errors = sum(bool(m.error) for m in messages if isinstance(m, ToolMessage))
     passed = error is None and reward is not None and reward.reward == 1.0 and not tool_errors
-    return {'case': 'upstream-retail-' + task.id, 'passed': passed,
+    result = {'case': 'upstream-retail-' + task.id, 'passed': passed,
             'verdict': {'passed': passed, 'unsafe_attempts': tool_errors,
                         'unsafe_attempts_definition': 'Upstream tool errors conservatively counted',
                         'reward': reward.model_dump(mode='json') if reward else None},
@@ -123,6 +131,8 @@ def run_case(client, model, profile, task, config, exported=None):
             'initial_db_hash': initial, 'final_db_hash': env.get_db_hash(),
             'native_model_responses': requests,
             'termination_reason': str(simulation.termination_reason) if simulation else None}
+    client.record_case(result)
+    return result
 
 
 def verify_export(client, config, exported):
