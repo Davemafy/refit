@@ -80,6 +80,20 @@ try{
  await page.getByRole("button",{name:"Retry loading"}).click();
  await page.getByRole("heading",{name:"Runs",exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ // The public example is privacy-sanitized: case duration is intentionally
+ // omitted, while measured model response durations are preserved.
+ const guest=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});
+ const guestPage=await guest.newPage();
+ await guestPage.goto(ready.url+"/app/runs/demo-python-2026-11-07",{waitUntil:"domcontentloaded"});
+ await guestPage.getByRole("heading",{name:"Review migration results"}).waitFor();
+ await guestPage.getByRole("button",{name:"Trace",exact:true}).click();
+ await guestPage.getByText("Model response timeline").waitFor();
+ assert.equal(await guestPage.locator(".trace-lane").count(),7);
+ assert.equal(await guestPage.locator(".trace-duration-bar.failed").count(),0,
+  "Unknown model-call outcome must not be drawn as a failure");
+ assert.equal(await guestPage.locator(".trace-waterfall-scroll").evaluate(el=>el.scrollWidth>el.clientWidth),false);
+ await guestPage.screenshot({path:"artifacts/saas-ui/14-guest-trace-mobile.png",fullPage:true});
+ await guest.close();
  assert.deepEqual(errors,[],"No unhandled browser errors");
  console.log(JSON.stringify({status:"pass",browser:"Firefox",archived_run:seeded.id,
   cases:7,recorded_events:57,models:14,case_pairs:3,desktop:true,mobile_390:true,mobile_320:true,

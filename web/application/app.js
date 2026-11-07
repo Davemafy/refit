@@ -573,28 +573,38 @@ function traceElapsed(events){
  return {first,last,total:Math.max(last-first,1)};
 }
 function traceWaterfall(events){
- const records=events.filter(e=>e.type==="case_completed"&&
-  Number.isFinite(Number(e.details?.elapsed_seconds))&&Number(e.details?.elapsed_seconds)>0 &&
-  Number.isFinite(Date.parse(e.time||""))).slice(-18);
- if(!records.length)return '<p class="trace-no-timing">No measured case durations have been recorded.</p>';
+ const timed=e=>Number.isFinite(Date.parse(e.time||""));
+ const caseRecords=events.filter(e=>e.type==="case_completed"&&
+  Number.isFinite(Number(e.details?.elapsed_seconds))&&Number(e.details?.elapsed_seconds)>0 &&timed(e));
+ // Public examples intentionally omit sandbox-case timing. Their model response
+ // durations remain recorded, so show those instead of inventing case spans.
+ const usingCases=caseRecords.length>0;
+ const modelRecords=usingCases?[]:events.filter(e=>e.type==="inference_completed"&&
+  Number.isFinite(Number(e.details?.seconds))&&Number(e.details?.seconds)>0 &&timed(e));
+ const records=(usingCases?caseRecords:modelRecords).slice(-18);
+ if(!records.length)return '<p class="trace-no-timing">No measured execution durations have been recorded. Select an event below to inspect its observations.</p>';
  const time=traceElapsed(events);
- return '<div class="trace-overview"><div class="trace-overview-head"><strong>Case execution timeline</strong>'+
-  '<span>Measured elapsed time · '+records.length+' '+(records.length===1?"case":"cases")+'</span></div>'+
+ const heading=usingCases?"Case execution timeline":"Model response timeline";
+ const caption=usingCases?"Measured elapsed time":"Recorded model latency";
+ return '<div class="trace-overview"><div class="trace-overview-head"><strong>'+heading+'</strong>'+
+  '<span>'+caption+' · '+records.length+' '+(usingCases?(records.length===1?"case":"cases"):(records.length===1?"response":"responses"))+'</span></div>'+
   '<div class="trace-waterfall-scroll"><div class="trace-waterfall"><div class="trace-ruler"><span></span>'+
    '<span>0 s</span><span>'+safe((time.total/1000).toFixed(1))+' s</span></div>'+
   records.map(e=>{
-   const d=e.details||{},duration=Number(d.elapsed_seconds)*1000,end=Date.parse(e.time);
+   const d=e.details||{},duration=Number(usingCases?d.elapsed_seconds:d.seconds)*1000,end=Date.parse(e.time);
    const left=Math.max(0,Math.min(100,100*(end-duration-time.first)/time.total));
    const width=Math.max(.7,Math.min(100-left,100*duration/time.total));
-   const passed=d.passed===true;
+   const outcome=d.passed===true?"passed":d.passed===false?"failed":"";
+   const label=usingCases?(d.case||"Case"):"Request "+(d.number??e.seq);
    return '<button type="button" class="trace-lane" data-action="trace-select" data-seq="'+safe(e.seq)+
-    '" aria-label="'+safe((d.case||"Case")+" · "+(d.model||"model")+" · "+(duration/1000).toFixed(1)+" seconds")+'">'+
-    '<span class="trace-lane-title"><span>'+safe(d.case||"Case")+'</span><small>'+safe(d.model||"Unknown model")+'</small></span>'+
-    '<span class="trace-lane-track"><span class="trace-duration-bar '+(passed?"passed":"failed")+
+    '" aria-label="'+safe(label+" · "+(d.model||"model")+" · "+(duration/1000).toFixed(1)+" seconds")+'">'+
+    '<span class="trace-lane-title"><span>'+safe(label)+'</span><small>'+safe(d.model||"Unknown model")+'</small></span>'+
+    '<span class="trace-lane-track"><span class="trace-duration-bar '+outcome+
     '" style="left:'+left.toFixed(2)+'%;width:'+width.toFixed(2)+'%"></span></span>'+
     '<span class="trace-lane-time mono">'+safe((duration/1000).toFixed(1))+'s</span></button>';
   }).join("")+'</div></div></div>';
 }
+
 const traceGroups={
  all:()=>true,models:e=>e.type==="inference_requested"||e.type==="inference_completed",
  cases:e=>e.type==="case_completed",sandbox:e=>e.type.startsWith("sandbox_")
