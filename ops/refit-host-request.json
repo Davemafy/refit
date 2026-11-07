@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Promote CI-verified evidence review, paid TypeScript adapter and shared connector release"
+  "reason": "Deploy verified Refit main after 48-hour host authorization and refreshed GitHub Actions SSH credentials"
 }
