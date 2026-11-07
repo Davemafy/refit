@@ -1,0 +1,58 @@
+{
+  "mode": "recorded_transport_recovery",
+  "execute": false,
+  "image_id": "sha256:270d573a705cc498a2d683169b0047b512f9b7bbe7dc28597f709757d5402008",
+  "engine_revision": {
+    "commit": "fedf91a3be4b65fab084d48a6226e5b76ca67a3d",
+    "tracked_files_clean": true,
+    "captured_at": "2026-11-07T00:25:54.587829+00:00"
+  },
+  "error_type": "TimeoutError",
+  "error_message": "external worker response deadline exceeded",
+  "incomplete_frame_bytes": 65536,
+  "incomplete_frame_sha256": "0cdc9e79f08d4dee201e2f500e8c2602cbbf781828fb6875b85ab27a0455015a",
+  "container_state": {
+    "Status": "running",
+    "Running": true,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 8933,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-11-07T00:25:54.625718336Z",
+    "FinishedAt": "0001-01-01T00:00:00Z"
+  },
+  "actual_runtime": "runsc",
+  "logical_requests": 208,
+  "model_requests": 0,
+  "cleanup": {
+    "version": 1,
+    "container_name": "refit-external-be8001c808f1bb7dafc5",
+    "verified": true,
+    "reason": "verified_absent",
+    "observed_at": "2026-11-07T00:28:11.163164+00:00",
+    "removal": {
+      "returncode": 0,
+      "stdout": "refit-external-be8001c808f1bb7dafc5\n",
+      "stderr": "",
+      "error": null
+    },
+    "inspection": {
+      "returncode": 1,
+      "stdout": "[]\n",
+      "stderr": "Error response from daemon: No such container: refit-external-be8001c808f1bb7dafc5\n",
+      "error": null
+    },
+    "daemon_health": {
+      "returncode": 0,
+      "stdout": "\"aeba5083-36f4-4ab3-a6cd-5185eccc7a63\"\n",
+      "stderr": "",
+      "error": null
+    },
+    "daemon_id": "aeba5083-36f4-4ab3-a6cd-5185eccc7a63"
+  },
+  "workflow_run": "https://github.com/Davemafy/refit/actions/runs/42317905432",
+  "artifact_id": 13551767353
+}

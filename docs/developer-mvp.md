@@ -82,6 +82,18 @@ Fresh seeds and request wrapping do not imply unseen workflow-family coverage.
 
 ## Connect an existing agent runtime
 
+For the independently developed agent's **own business workflow**, use the
+[original retail integration](../integrations/retail/README.md), not the older
+runner-only bridge below. It executes the upstream retail policy, database,
+tools, customer scenarios and full Orchestrator inside gVisor. The host keeps
+the Vultr key and enforces the request budget. The output includes a usable
+configuration and independent application helper, and is tested again inside
+the original runner. [Real evidence](original-retail-agent-evidence-2026-11-07.md).
+
+This is a reviewed adapter for one external agent, not automatic support for
+arbitrary repository URLs. Its guide defines the reusable adapter contract and
+the fixtures, state checks and application helper needed for another agent.
+
 The [tau2 integration](../integrations/tau2/README.md) executes the unmodified
 upstream `LLMAgent` runner with the exported profile. Both the migration and
 frozen-verification commands accept `--runner tau2` after installing that

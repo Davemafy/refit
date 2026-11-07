@@ -12,6 +12,15 @@ Use the [developer MVP guide](docs/developer-mvp.md) for the live migration CLI,
 patch application, fixed-patch verification, optional external agent runner,
 and the public evidence API. UI replacement is independent of these interfaces.
 
+For an independently developed agent, use the
+[original retail-agent integration](integrations/retail/README.md). It runs the
+upstream agent, customer simulator, tools, database and evaluator inside gVisor,
+then exports configuration that can be loaded in its original framework.
+The [real comparison and exported-runner evidence](docs/original-retail-agent-evidence-2026-11-07.md)
+shows source **6/6**, replacement GLM **6/6**, and a fresh exported-configuration
+check **2/2**. This model pair needed no instruction repair. The complete effort
+used **241 real Vultr requests**, below its declared 400-request ceiling.
+
 The exported refund patch has now been applied through the original external
 τ-bench agent runner and tested on three predeclared fresh seeds: source 24/24,
 unchanged Muse 13/24, patched Muse 24/24, with zero unsafe attempts. The run also
@@ -69,7 +78,9 @@ unprivileged public API without enabling browser-side inference.
 
 The public site remains read-only until HTTPS and properly authenticated
 server-side job submission exist. These reviewed synthetic business agents
-are not imported third-party agents.
+are built-in demonstration agents. The separate
+[external CLI](integrations/retail/README.md) supports the reviewed original
+retail agent; the public site does not accept arbitrary agent uploads.
 
 ## Current engine — one implementation, two independent agent domains
 
@@ -146,7 +157,8 @@ The exact endpoint shapes, error codes and integration smoke tests are in
 [the authoritative frontend API contract](docs/api-contract.md).
 
 **Boundaries:** natural-language parsing is limited to the two built-in
-agents; external-agent imports remain unsupported. Built-in refund and
+agents; public external-agent imports remain unsupported. The isolated
+external-agent CLI is documented separately. Built-in refund and
 deployment tools now have an **opt-in isolated Docker/gVisor execution path**
 using one disposable worker per scenario. A separate path runs real
 Vultr-model-generated migration diagnostic Python in another worker.

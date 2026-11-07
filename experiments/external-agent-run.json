@@ -1,6 +1,8 @@
 {
-  "execute": true,
+  "execute": false,
   "mode": "verify_export",
   "run_id": "retail-export-001",
-  "max_requests": 64
+  "max_requests": 64,
+  "actual_requests_used": 241,
+  "mission_request_ceiling": 400
 }

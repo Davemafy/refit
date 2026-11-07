@@ -133,6 +133,22 @@ the retail deployment helper; another integration needs its corresponding
 state binding and application helper. This is a reusable execution boundary
 and runner contract, not automatic support for every framework.
 
+The wire contract uses these concrete fields:
+
+| Object | Required data |
+| --- | --- |
+| Description metadata | `upstream_revision`; `splits` mapping split names to rows |
+| Each task row | `case_name`, input fingerprint, `initial_db_hash`, `expected_db_hash` |
+| Native case result | `case`, `passed`, `verdict` with integer error counts, `error`, `trace`, `transcript`, `model_requests`, `elapsed_seconds`, `initial_db_hash`, `final_db_hash` |
+| Export verification | `passed`, `uses_exported_configuration`, complete holdout `cases`, actual `model_requests` |
+
+State hashes can describe another agent's business state; they need not come
+from SQL. Call `client.record_case(result)` after each native case to preserve
+completed evidence even if final delivery fails. The client exposes only
+`complete(model, messages, tools)`, a request counter and that checkpoint method.
+Set `application_helper` in the manifest to reviewed Python source under
+`integrations/`; the host copies it into the export without importing it.
+
 The image and adapter must be reviewed before trusting their oracle. Isolation
 protects the host from imported code; it cannot establish that an arbitrary
 customer-supplied evaluator tells the truth.

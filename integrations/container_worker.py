@@ -66,7 +66,8 @@ def main():
     if config.get('verify_export') is not None:
         exported = config['verify_export']
         verification = adapter.verify_export(client, config, exported)
-        emit({'type': 'result', 'status': 'export_verified_original_runner',
+        emit({'type': 'result', 'status': ('export_verified_original_runner' if verification['passed']
+                                         else 'export_failed_original_runner_verification'),
               'verified': verification['passed'], 'report': {'evaluations': {}},
               'export': exported if verification['passed'] else None,
               'original_runner_verification': verification, 'metadata': metadata,
