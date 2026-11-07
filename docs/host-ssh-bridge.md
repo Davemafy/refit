@@ -1,6 +1,6 @@
-# Refit: durable five-hour host access
+# Refit: durable 48-hour host access
 
-This GitHub Actions bridge replaces the old **dev-MCP workspace-held SSH private key**. GitHub Actions keeps the client key in an encrypted repository secret, and Vultr only accepts that key for **five hours** after each authorization. No permanent interactive root key, public password, or reusable key in ChatGPT is needed.
+This GitHub Actions bridge replaces the old **dev-MCP workspace-held SSH private key**. GitHub Actions keeps the client key in an encrypted repository secret, and Vultr only accepts that key for **48 hours** after each authorization. No permanent interactive root key, public password, or reusable key in ChatGPT is needed.
 
 The SSH key is forced to execute only `status` or `deploy <exact-main-SHA>`; it cannot open a shell, forward ports, or run arbitrary commands. The public key's `expiry-time` is enforced by OpenSSH; the same key can be reauthorized by rerunning the host setup command. The setup preserves other `authorized_keys` entries.
 
@@ -27,13 +27,13 @@ Then open [Refit host bridge workflow](https://github.com/Davemafy/refit/actions
 
 In GitHub Actions choose **Run workflow → deploy**. The runner executes only the revision associated with that workflow, verifies `origin/main` matches it, fast-forwards a clean checkout, rebuilds the original gVisor runtime, reinstalls/restarts the application and runs independent HTTPS revision acceptance. The SSH session itself is limited to 23 minutes. A repository-controlled `ops/refit-host-request.json` change also supports a GitHub-connector-controlled `status` or `deploy` request without needing a new assistant workspace.
 
-The host authorization expires five hours after the last setup. To renew it for another five hours (the GitHub secrets do **not** need replacing):
+The host authorization expires 48 hours after the last setup. To renew it for another 48 hours (the GitHub secrets do **not** need replacing):
 
 ```bash
 cd /opt/refit-app
 sudo bash deploy/setup-github-ssh-access.sh
 ```
 
-If the secret is lost, pass `--show-key` to print the private key in the trusted Vultr console; never paste it into a chat. Since the SSH key is a restricted root authorization, keep repository admin and Actions permissions limited to trusted operators. The bridge is for deployments and health checks, **not** a general interactive root shell.
+To replace the private key, run `bash deploy/setup-github-ssh-access.sh --rotate-key` on Vultr. The script generates a new key pair, replaces only this bridge's authorized-key entry, and prints the new private key and pinned host-key line. Update both GitHub Actions secrets. If the key is merely hard to copy, `--show-key` reprints the existing key without rotating it. Never paste the private key into a chat. Since the SSH key is a restricted root authorization, keep repository admin and Actions permissions limited to trusted operators. The bridge is for deployments and health checks, **not** a general interactive root shell.
 
 For deliberate budget changes, edit the root-only `/etc/refit/host-ssh/budgets.env`, rather than allowing workflow inputs to set arbitrary values. Missing files, mismatched SHA, dirty repository, expired key, failed gVisor checks, missing auth secrets or failed HTTPS acceptance cause the deployment to fail rather than report success.
