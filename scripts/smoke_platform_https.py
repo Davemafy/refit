@@ -1,0 +1,102 @@
+"""Read-only, zero-inference smoke test of Refit's public HTTPS account ingress.
+
+Intentionally never registers, authenticates, imports, starts jobs or consumes inference.
+The existing HTTP evidence acceptance is a separate test.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import ipaddress
+import json
+from pathlib import Path
+import socket
+import ssl
+import sys
+from urllib.error import HTTPError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+
+
+def check(origin: str) -> dict:
+    address = urlsplit(origin)
+    if address.scheme != "https" or not address.hostname or address.username or address.password or address.query or address.fragment or address.path not in ("", "/"):
+        raise ValueError("Supply a bare HTTPS origin with no credentials, path or query.")
+    host = address.hostname
+    port = address.port or 443
+    # The standard TLS context verifies both chain and the IP-address SAN.
+    context = ssl.create_default_context()
+    with socket.create_connection((host, port), timeout=10) as raw:
+        with context.wrap_socket(raw, server_hostname=host) as conn:
+            certificate = conn.getpeercert()
+    expires = datetime.fromtimestamp(ssl.cert_time_to_seconds(certificate["notAfter"]), timezone.utc)
+    remaining = int((expires - datetime.now(timezone.utc)).total_seconds())
+    if remaining < 24 * 3600:
+        raise AssertionError("The public TLS certificate expires within 24 hours.")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        if ("IP Address", host) not in certificate.get("subjectAltName", ()):
+            raise AssertionError("The HTTPS certificate does not cover the public IP address.")
+
+    observations = []
+
+    def get(path: str, extra_headers: dict | None = None):
+        request = Request(origin.rstrip("/") + path, headers=extra_headers or {})
+        try:
+            response = urlopen(request, timeout=12, context=context)
+        except HTTPError as exc:
+            response = exc
+        with response:
+            raw = response.read(65_537)
+            if len(raw) > 65_536:
+                raise AssertionError("Unexpectedly large response")
+            return response.status, response.headers, raw.decode("utf-8")
+
+    status, headers, page = get("/bring")
+    assert status == 200 and "Bring your agent" in page and "Sign in" in page
+    assert headers.get("Cache-Control") == "no-store"
+    assert "frame-ancestors 'none'" in headers.get("Content-Security-Policy", "")
+    assert "max-age=" in headers.get("Strict-Transport-Security", "")
+    observations.append({"check": "public_application", "status": status})
+
+    status, _, response = get("/api/application/session")
+    session = json.loads(response)
+    assert status == 200 and session == {"mode": "account", "username": None}
+    observations.append({"check": "anonymous_session", "status": status, "mode": session["mode"]})
+
+    for path, extra_headers, label in (
+        ("/api/application/projects", None, "projects_blocked"),
+        ("/api/application/runs/app-6706a75ba00f0277/evidence", None, "run_evidence_blocked"),
+        ("/api/application/projects", {"Authorization": "Bearer invalid-operator-token"}, "operator_bypass_blocked"),
+    ):
+        status, _, response = get(path, extra_headers)
+        body = json.loads(response)
+        assert status == 401 and body.get("error", {}).get("code") == "sign_in_required", (label, status, body)
+        observations.append({"check": label, "status": status})
+
+    return {"status": "pass", "origin": origin.rstrip("/"), "tls_expires_at": expires.isoformat(),
+            "tls_seconds_remaining": remaining, "zero_inference": True,
+            "observations": observations}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--url", default="https://80.240.30.92")
+    parser.add_argument("--output", type=Path, default=Path("/tmp/refit-platform-smoke.json"))
+    args = parser.parse_args()
+    try:
+        result = check(args.url)
+    except Exception as exc:
+        result = {"status": "fail", "origin": args.url, "zero_inference": True,
+                  "error": f"{type(exc).__name__}: {exc}"[:400]}
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(result, indent=2) + "\n")
+    print(json.dumps(result))
+    return 0 if result["status"] == "pass" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

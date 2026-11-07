@@ -30,11 +30,18 @@ jobs:
             --expected-revision e53feebd8f6d1d08595d23d3b0794aa814c60841 \
             --require-live-rejection \
             --output /tmp/refit-public-smoke.json
+      - name: Verify public HTTPS sign-in boundary without inference
+        run: |
+          python -m scripts.smoke_platform_https \
+            --url https://80.240.30.92 \
+            --output /tmp/refit-https-smoke.json
       - name: Preserve external observations
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: refit-public-vultr-smoke
-          path: /tmp/refit-public-smoke.json
+          path: |
+            /tmp/refit-public-smoke.json
+            /tmp/refit-https-smoke.json
           retention-days: 7
           if-no-files-found: ignore
