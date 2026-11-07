@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time durable GitHub Actions SSH key; each authorization lasts five hours.
+# Durable GitHub Actions SSH key; each authorization lasts 48 hours.
 # Run as root from the checked-out Refit repository on the Vultr VM.
 set -euo pipefail
 
@@ -16,6 +16,7 @@ PRIVATE="$DIRECTORY/identity_ed25519"
 PUBLIC="$PRIVATE.pub"
 CONFIG="$DIRECTORY/budgets.env"
 COMMAND=/usr/local/sbin/refit-host-ssh-command
+# Preserve this legacy marker so rotation removes the previous authorized key.
 KEY_COMMENT=refit-github-five-hour-bridge
 AUTHORIZED=/root/.ssh/authorized_keys
 
@@ -25,8 +26,21 @@ install -o root -g root -m 0750 "$REPO/deploy/refit-host-ssh-command.sh" "$COMMA
 touch "$AUTHORIZED"
 chmod 0600 "$AUTHORIZED"
 
+case "${1:-}" in
+  ""|--show-key|--rotate-key) ;;
+  *) echo "Usage: bash deploy/setup-github-ssh-access.sh [--show-key|--rotate-key]" >&2; exit 2 ;;
+esac
+
 FIRST_SETUP=0
-if [[ ! -s "$PUBLIC" ]]; then
+if [[ "${1:-}" == --rotate-key ]]; then
+  # Generate a new key pair in a root-only staging directory before replacing the old one.
+  STAGING="$(mktemp -d "$DIRECTORY/.rotate.XXXXXXXX")"
+  trap 'rm -rf "$STAGING"' EXIT
+  ssh-keygen -q -t ed25519 -N '' -f "$STAGING/identity_ed25519" -C "$KEY_COMMENT"
+  install -o root -g root -m 0600 "$STAGING/identity_ed25519" "$PRIVATE"
+  install -o root -g root -m 0644 "$STAGING/identity_ed25519.pub" "$PUBLIC"
+  FIRST_SETUP=1
+elif [[ ! -s "$PUBLIC" ]]; then
   [[ ! -e "$PRIVATE" ]] || { echo 'Private key exists without a public key: inspect manually.' >&2; exit 2; }
   ssh-keygen -q -t ed25519 -N '' -f "$PRIVATE" -C "$KEY_COMMENT"
   chmod 0600 "$PRIVATE"
@@ -51,7 +65,7 @@ if [[ ! -e "$CONFIG" ]]; then
     "$DAILY" "$ACCOUNT" > "$CONFIG" )
 fi
 
-EXPIRY="$(date -u -d '+5 hours' '+%Y%m%d%H%M%SZ')"
+EXPIRY="$(date -u -d '+48 hours' '+%Y%m%d%H%M%SZ')"
 PUB_KEY="$(awk '{print $1 " " $2}' "$PUBLIC")"
 TEMP="$(mktemp /root/.ssh/refit-keys.XXXXXXXX)"
 chmod 0600 "$TEMP"
@@ -79,6 +93,6 @@ fi
 printf '\n--- BEGIN PINNED HOST ENTRY: paste into GitHub Actions secret ---\n'
 printf '80.240.30.92 %s\n' "$(awk '{print $1 " " $2}' /etc/ssh/ssh_host_ed25519_key.pub)"
 printf '%s\n' '--- END PINNED HOST ENTRY ---'
-printf '\nNever commit either credential. To renew access for another five hours, rerun:\n'
+printf '\nNever commit either credential. To renew access for another 48 hours, rerun:\n'
 printf '  cd /opt/refit-app && sudo bash deploy/setup-github-ssh-access.sh\n'
-printf 'The same private key is reused; GitHub secrets need not be updated.\n'
+printf 'The same private key is reused unless --rotate-key is used. Update GitHub secrets after rotation.\n'
