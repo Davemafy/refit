@@ -5,11 +5,28 @@ import { firefox } from "playwright";
 
 const origin = process.env.REFIT_APPLICATION_URL || "http://127.0.0.1:8098";
 const token = process.env.REFIT_APPLICATION_TOKEN;
-const oldRun = "app-3df57a3a263249eb";
+const oldRun = process.env.REFIT_BROWSER_REOPEN || "app-3df57a3a263249eb";
 const revision = "b9786a2daa44a995ff7719c655c5338bf685d551";
 const source = "deepseek-v4.1-flash-1017";
 const target = "glm-5.2";
-const startLive = process.argv.includes("--execute");
+const generic = process.argv.includes("--execute-generic");
+const startLive = generic || process.argv.includes("--execute");
+const cap = generic ? 8 : 16;
+const genericArchive = process.env.REFIT_GENERIC_ZIP;
+const genericSetup = {
+  module: "src.qa", args: ["{prompt}"],
+  cases: [
+    { name: "gauss", split: "train",
+      prompt: "请从知识库逐字复制高斯定律的积分公式（不要添加 Markdown 或解释）。第一行只写公式，第二行只写来源页标题，格式 [[页面标题]]。",
+      stdout: "∮ E · dS = Q_enc / epsilon_0\n[[高斯定律与电通量]]" },
+    { name: "magnetic-divergence", split: "validation",
+      prompt: "请从麦克斯韦方程组页面逐字复制磁场无源的公式，不改记号。第一行只写原文公式，第二行只写来源页标题，格式 [[页面标题]]。不要添加其他内容。",
+      stdout: "nabla · B = 0\n[[麦克斯韦方程组与统一图景]]" },
+    { name: "line-current", split: "holdout",
+      prompt: "请逐字复制知识库中传输线电流 I 沿 x 变化的偏微分方程。第一行只写原文公式，第二行只写来源页标题，格式 [[页面标题]]。不要使用 LaTeX 或添加解释。",
+      stdout: "partial I / partial x = -G V - C partial V / partial t\n[[传输线、驻波与波导]]" }
+  ]
+};
 const output = process.env.REFIT_BROWSER_OUTPUT || "artifacts/application-browser";
 assert(token, "Set the operator token in the environment");
 await mkdir(output, { recursive: true });
@@ -32,7 +49,7 @@ try {
   await page.getByText(/python -m llm/).waitFor();
   await page.getByLabel("Source model").selectOption(source);
   await page.getByLabel("Replacement model").selectOption(target);
-  await page.getByLabel("Maximum Vultr requests").fill("16");
+  await page.getByLabel("Maximum Vultr requests").fill(String(cap));
   const start = page.getByRole("button", { name: "Run migration" });
   let starts = 0;
   page.on("request", request => {
@@ -59,18 +76,21 @@ try {
     return JSON.parse(contents);
   }
 
-  async function verify(id) {
-    await page.getByRole("heading", { name: /Compatible on evaluated cases|Verified compatibility/ }).waitFor();
+  async function verify(id, expectedRevision = revision) {
+    await page.waitForFunction(() => {
+      const outcome = document.querySelector("#outcome").textContent;
+      return !["Opening run", "Migration", "running", "cancelling"].includes(outcome);
+    }, null, { timeout: 120_000 });
+    const proof = await download("Download evidence", id, "evidence");
+    assert.equal(proof.run.status, "compatible_on_sample");
     await page.getByText(/Fresh verification 1\/1/).waitFor();
     await page.getByText("gVisor container removed and verified").waitFor();
     const config = await download("Download verified configuration", id, "artifact");
-    const proof = await download("Download evidence", id, "evidence");
     assert.equal(proof.run.id, id);
-    assert.equal(proof.run.status, "compatible_on_sample");
     assert.equal(proof.run.source, source);
     assert.equal(proof.run.target, target);
     assert.deepEqual(config, proof.run.export);
-    assert.equal(config.revision, revision);
+    assert.equal(config.revision, expectedRevision);
     assert.equal(config.model, target);
     assert.ok(proof.run.verification[0].passed);
     const cleanups = proof.events.filter(e => e.type === "sandbox_cleanup");
@@ -85,6 +105,16 @@ try {
   await verify(oldRun);
   let live = null;
   if (startLive) {
+    if (generic) {
+      assert(genericArchive, "Set REFIT_GENERIC_ZIP to the pinned QA runtime snapshot");
+      await page.getByLabel("Source", { exact: true }).selectOption("zip");
+      await page.getByLabel(/Project ZIP/).setInputFiles(genericArchive);
+      await page.getByRole("button", { name: "Inspect source" }).click();
+      await page.getByText(/Provide a Python module/).waitFor();
+      await page.getByText("Python entry and verification cases").click();
+      await page.getByLabel("Application contract JSON").fill(JSON.stringify(genericSetup));
+      await page.getByLabel("Maximum Vultr requests").fill(String(cap));
+    }
     await page.getByLabel("I authorize this inference budget.").check();
     const pending = page.waitForResponse(response =>
       response.request().method() === "POST" && new URL(response.url()).pathname === "/api/application/runs");
@@ -93,21 +123,27 @@ try {
     const response = await pending;
     assert.equal(response.status(), 202, await response.text());
     const accepted = await response.json();
-    assert.equal(accepted.budget, 16);
+    assert.equal(accepted.budget, cap);
     assert.equal(accepted.status, "running");
     assert.equal(starts, 1);
     console.log(JSON.stringify({ accepted: accepted.id, authorizedRequests: accepted.budget }));
     assert.equal((await streaming).status(), 200);
-    const proof = await verify(accepted.id);
-    assert.ok(proof.run.model_requests > 0 && proof.run.model_requests <= 16);
-    assert.ok(proof.events.some(e => e.type === "inference_completed" && e.details.tools_called?.includes("llm_version")));
+    const proof = await verify(accepted.id, generic ? null : revision);
+    assert.ok(proof.run.model_requests > 0 && proof.run.model_requests <= cap);
+    if (generic) {
+      assert.equal(proof.run.import.discovery.preset, null);
+      assert.equal(proof.run.export.seam, "openai-env");
+      assert.equal(proof.run.export.environment.OPENAI_MODEL, target);
+    } else {
+      assert.ok(proof.events.some(e => e.type === "inference_completed" && e.details.tools_called?.includes("llm_version")));
+    }
     live = { id: accepted.id, requests: proof.run.model_requests,
       importSeconds: proof.run.import.import_seconds, executionSeconds: proof.run.execution_seconds };
     await page.reload();
     await page.getByLabel("Operator access token").fill(token);
     assert.equal(await page.getByLabel("Run ID").inputValue(), accepted.id);
     await open(accepted.id);
-    await page.getByRole("heading", { name: "Compatible on evaluated cases" }).waitFor();
+    await page.locator("#outcome").filter({ hasText: "Compatible on evaluated cases" }).waitFor();
   }
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ browser: "Firefox", reopened: oldRun, live, requestsStarted: starts }));

@@ -7,6 +7,7 @@ on:
       - 'scripts/smoke_application.py'
       - 'integrations/application/**'
       - 'web/application/**'
+      - 'tests/browser_application*.mjs'
       - '.github/workflows/application.yml'
 permissions:
   contents: read
@@ -38,3 +39,8 @@ jobs:
           done
           python -m scripts.smoke_application
           python -m scripts.verify_application_sandbox
+      - name: Verify Firefox cancellation, restart recovery and quota without inference
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps firefox
+          node tests/browser_application_controls.mjs

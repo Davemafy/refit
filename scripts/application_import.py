@@ -132,9 +132,23 @@ def inspect(files):
         setup = "TypeScript execution is unavailable. Supply a Python command-line boundary that uses an OpenAI-compatible endpoint, or keep this project in inspection only."
     else:
         setup = "Provide a Python module, its arguments, and train, validation, and holdout cases with exact expected stdout. The agent must use OPENAI_BASE_URL and OPENAI_MODEL, with streaming disabled."
-    return {"runtime": runtime, "setup": setup, "preset": None, "provider": None,
-            "entry": None, "evaluation_files": sorted(p for p in files if
-                p.startswith(("test/", "tests/")) and p.endswith((".py", ".ts")))[:12]}
+    candidates = []
+    if runtime == "python":
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            module = name[:-3].removesuffix("/__main__").replace("/", ".")
+            if not all(part.isidentifier() for part in module.split(".")):
+                continue
+            content = read(name)
+            if all(marker in content for marker in ("__main__", "OPENAI_BASE_URL", "OPENAI_MODEL")):
+                candidates.append(module)
+    entry = f"python -m {candidates[0]}" if len(candidates) == 1 else None
+    return {"runtime": runtime, "setup": setup, "preset": None,
+            "provider": "OpenAI environment variables detected" if entry else None,
+            "entry": entry, "evaluation_files": sorted(p for p in files if
+                (p.startswith(("test/", "tests/")) or PurePosixPath(p).name.startswith("test_"))
+                and p.endswith((".py", ".ts")))[:12]}
 
 
 def source_snapshot(archive, repository=None, revision=None):

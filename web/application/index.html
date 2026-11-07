@@ -40,6 +40,7 @@
 <label>Replacement model<select id="target"></select></label>
 </div>
 <details id="setupPanel"><summary>Python entry and verification cases</summary>
+<p>Use the app’s module and arguments, with one case each for train, validation, and holdout. Include the expected stdout for each case.</p>
 <label>Application contract JSON<textarea id="setup" rows="7" spellcheck="false" placeholder='{"module":"agent","args":["{prompt}"],"cases":[...]}'></textarea></label>
 </details>
 <label>Maximum Vultr requests<input id="budget" type="number" min="1" max="24" value="24" required></label>
@@ -115,7 +116,9 @@ $("importForm").onsubmit=async event=>{
     $("inspection").hidden=false;
     const d=imported.discovery;
     $("inspection").textContent=`${imported.file_count} files inspected in ${imported.import_seconds}s. `+
-      (d.preset ? `${d.entry} · ${d.provider}. ${d.evaluation}.` : d.setup);
+      (d.preset ? `${d.entry} · ${d.provider}. ${d.evaluation}.` :
+        [d.entry ? `Possible entry point: ${d.entry}. ${d.provider}.` : "", d.setup,
+          d.evaluation_files?.length ? `Test files: ${d.evaluation_files.join(", ")}.` : ""].filter(Boolean).join(" "));
     for(const id of ["source","target"]) {
       $(id).replaceChildren(...capabilities.models.map(model=>new Option(model,model)));
     }

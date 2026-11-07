@@ -43,3 +43,13 @@ class ApplicationImportTests(unittest.TestCase):
             (root / ".env").write_text("PRIVATE=1")
             snapshot = source_snapshot(base64.b64decode(local_zip(root, setup.resolve())))
             self.assertEqual(list(snapshot["files"]), ["agent.py"])
+
+    def test_detects_a_generic_candidate_without_selecting_a_preset(self):
+        snapshot = source_snapshot(archive([
+            ("src/qa.py", b'if __name__ == "__main__": pass\nOPENAI_BASE_URL = OPENAI_MODEL = ""'),
+            ("test_qa.py", b"pass"),
+        ]))
+        discovery = snapshot["discovery"]
+        self.assertEqual(discovery["entry"], "python -m src.qa")
+        self.assertIsNone(discovery["preset"])
+        self.assertEqual(discovery["evaluation_files"], ["test_qa.py"])
