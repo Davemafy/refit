@@ -21,7 +21,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 
 from .api_service import ApiProblem
-from .application_accounts import Accounts, SESSION_TTL
+from .application_accounts import Accounts, SESSION_TTL, TOKEN, digest
 from .application_import import (
     ARCHIVE_LIMIT, ZIP_UPLOAD_LIMIT, ImportProblem, github_snapshot, resolve_default_revision,
     source_snapshot, unpack_zip,
@@ -39,6 +39,8 @@ EXECUTING = {"running", "cancelling"}
 ACTIVE = EXECUTING | {"queued"}
 QUEUE_LIMIT = 8
 OWNER_QUEUE_LIMIT = 2
+REVIEW_BUDGET = 16
+REVIEW_PREFIX = "review-"
 DEFAULT_ACCOUNT_BUDGET = 16
 COOKIE = "__Host-refit-session"
 
@@ -123,7 +125,7 @@ def public_example():
 
 class ApplicationService:
     def __init__(self, directory, token, image, daily_budget=24, public_origin=None,
-                 account_budget=DEFAULT_ACCOUNT_BUDGET, max_active=1):
+                 account_budget=DEFAULT_ACCOUNT_BUDGET, max_active=1, review_passes=None):
         if len(token) < 32:
             raise ValueError("Set a private REFIT_APPLICATION_TOKEN of at least 32 characters.")
         if (type(daily_budget) is not int or not 1 <= daily_budget <= 2048
@@ -139,6 +141,7 @@ class ApplicationService:
         self.token = token
         self.public_origin = public_origin
         self.accounts = Accounts(directory) if public_origin else None
+        self.review_passes = {REVIEW_PREFIX + key: expires for key, expires in (review_passes or {}).items()}
         self.account_slots = threading.BoundedSemaphore(2)
         self.image = image
         self.daily_budget = daily_budget
@@ -169,9 +172,19 @@ class ApplicationService:
         with self.lock:
             self.dispatch()
 
+    def review_session(self, code):
+        if not isinstance(code, str) or not TOKEN.fullmatch(code):
+            raise ApiProblem(401, "invalid_review_pass", "Open a valid Refit review link.")
+        owner = REVIEW_PREFIX + digest(code)
+        expires = self.review_passes.get(owner, 0)
+        if expires <= time.time():
+            raise ApiProblem(401, "invalid_review_pass", "This Refit review link is invalid or expired.")
+        return self.accounts.review_session(owner, expires)
+
     def reserved(self, day, owner=None):
         return sum(reserved_requests(run) for run, _ in self.runs.values()
-                   if (owner is None or run.get("owner", "operator") == owner)
+                   if (not run.get("owner", "").startswith(REVIEW_PREFIX) if owner is None
+                       else run.get("owner", "operator") == owner)
                    and (run["started_at"][:10] == day
                         or run["status"] in EXECUTING
                         or run.get("finished_at", "")[:10] == day))
@@ -196,14 +209,17 @@ class ApplicationService:
         running = [run for run, _ in self.runs.values() if run["status"] in EXECUTING]
         active_owners = {run.get("owner", "operator") for run in running}
         queued = sorted((run for run, _ in self.runs.values() if run["status"] == "queued"),
-                        key=lambda run: (run["started_at"], run["id"]))
+                        key=lambda run: (not run["owner"].startswith(REVIEW_PREFIX), run["started_at"], run["id"]))
         day = now()[:10]
         for run in queued:
             owner = run["owner"]
             if self.quarantined:
                 self.finish_queued(run, "failed", "operator_review_required")
                 continue
-            if run["started_at"][:10] != day:
+            if owner.startswith(REVIEW_PREFIX) and self.review_passes.get(owner, 0) <= time.time():
+                self.finish_queued(run, "failed", "review_pass_expired")
+                continue
+            if not owner.startswith(REVIEW_PREFIX) and run["started_at"][:10] != day:
                 self.finish_queued(run, "failed", "reservation_expired")
                 continue
             if owner in active_owners or len(running) >= self.max_active:
@@ -318,14 +334,22 @@ class ApplicationService:
             if owner == "operator" and (len(running) >= self.max_active or
                                         any(run.get("owner", "operator") == owner for run in running)):
                 raise ApiProblem(409, "run_in_progress", "An operator migration slot is unavailable.")
-            if owner != "operator" and (len(queued) >= QUEUE_LIMIT or
+            is_review = owner.startswith(REVIEW_PREFIX)
+            if not is_review and owner != "operator" and (len(queued) >= QUEUE_LIMIT or
                                         sum(run["owner"] == owner for run in queued) >= OWNER_QUEUE_LIMIT):
                 raise ApiProblem(429, "run_queue_full", "Wait for a queued migration to start, or cancel one of your queued runs.")
             submitted_at = now()
             day = submitted_at[:10]
-            if owner != "operator" and self.reserved(day, owner) + budget > self.account_budget:
+            if is_review:
+                if self.review_passes.get(owner, 0) <= time.time():
+                    raise ApiProblem(401, "invalid_review_pass", "This Refit review link is invalid or expired.")
+                if budget > REVIEW_BUDGET:
+                    raise ApiProblem(422, "review_budget_limit", f"This review link can authorize up to {REVIEW_BUDGET} requests.")
+                if any(run.get("owner") == owner for run in jobs):
+                    raise ApiProblem(409, "review_run_used", "This review link has already submitted its live migration. Open Runs to review it.")
+            elif owner != "operator" and self.reserved(day, owner) + budget > self.account_budget:
                 raise ApiProblem(429, "account_budget_exhausted", "Your daily request allowance is reserved.")
-            if self.reserved(day) + budget > self.daily_budget:
+            if not is_review and self.reserved(day) + budget > self.daily_budget:
                 raise ApiProblem(429, "daily_budget_exhausted", "This operator's daily request allowance is reserved.")
             try:
                 broker = self.broker(budget)
@@ -491,6 +515,12 @@ class ApplicationHandler(RefitHandler):
             if self.public():
                 if self.headers.get("Origin") != self.service.public_origin:
                     raise ApiProblem(403, "origin_rejected", "Open the HTTPS Refit workspace to make changes.")
+                if path == "/api/application/review-session":
+                    data = self.body(limit=256)
+                    secret = self.service.review_session(data.get("code") if isinstance(data, dict) else None)
+                    self._session_cookie = (f"{COOKIE}={secret}; Path=/; Secure; HttpOnly; SameSite=Strict; "
+                                            f"Max-Age={SESSION_TTL}")
+                    return self._send(200, {"signed_in": True})
                 if path in ("/api/application/register", "/api/application/login", "/api/application/logout"):
                     return self.account_action(path)
             owner = self.authorize()
@@ -587,13 +617,18 @@ class ApplicationHandler(RefitHandler):
                 if not self.public():
                     return self._send(200, {"mode": "operator"})
                 session = self.service.accounts.resolve(self.session_secret())
-                return self._send(200, {"mode": "account", "username": session[1] if session else None})
+                username = session[1] if session else None
+                if session and session[0].startswith(REVIEW_PREFIX):
+                    username = "Review workspace"
+                return self._send(200, {"mode": "account", "username": username})
             owner = self.authorize()
             if url.path == "/api/application":
                 with self.service.lock:
                     date = now()[:10]
                     reserved = self.service.reserved(date, owner)
                 allowance = self.service.account_budget if owner != "operator" else self.service.daily_budget
+                if owner.startswith(REVIEW_PREFIX):
+                    allowance = REVIEW_BUDGET
                 return self._send(200, {
                     "models": MODELS, "max_requests": min(BUDGET_LIMIT, allowance),
                     "account_daily_allowance": allowance, "account_reserved_today": reserved,
@@ -679,9 +714,15 @@ def main():
     args = parser.parse_args()
     if args.public_origin and not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::[0-9]+)?", args.public_origin):
         parser.error("Public origin must be an exact HTTPS origin.")
+    passes_path = ROOT / "ops" / "refit-review-passes.json"
+    review_passes = json.loads(passes_path.read_text()) if passes_path.is_file() else {}
+    if not isinstance(review_passes, dict) or len(review_passes) > 8 or any(
+            not re.fullmatch(r"[a-f0-9]{64}", key) or type(expires) is not int
+            for key, expires in review_passes.items()):
+        parser.error("Invalid review-pass configuration.")
     service = ApplicationService(args.state, os.getenv("REFIT_APPLICATION_TOKEN", ""),
                                  args.image, args.daily_budget, args.public_origin,
-                                 args.account_daily_budget, args.max_active)
+                                 args.account_daily_budget, args.max_active, review_passes)
     revision = os.getenv("REFIT_DEPLOYED_REVISION", "")
     if revision and not re.fullmatch(r"[0-9a-f]{40}", revision):
         parser.error("REFIT_DEPLOYED_REVISION must be a full Git commit SHA.")

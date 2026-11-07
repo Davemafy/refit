@@ -799,6 +799,11 @@ document.addEventListener("keydown",event=>{
 window.addEventListener("popstate",()=>show().catch(e=>notify(e.message)));
 (async()=>{
  try{
+  const reviewCode=new URLSearchParams(location.hash.slice(1)).get("review");
+  if(reviewCode!==null){
+    history.replaceState(null,"",location.pathname+location.search);
+    try{await req("/review-session",{code:reviewCode});}catch(error){notify(error.message);}
+  }
   const session=await req("/session");
   if(session.mode!=="account"){throw Error("Account session endpoint unavailable.");}
   state.username=session.username||null;

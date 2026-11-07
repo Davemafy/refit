@@ -33,6 +33,18 @@ try {
     const page = await context.newPage();
     page.setDefaultTimeout(25_000);
     page.on("pageerror", error => errors.push(error.message));
+    if (index === 0 && process.env.REFIT_REVIEW_TOKEN) {
+      const activated = page.waitForResponse(r => r.url().endsWith("/review-session"));
+      await page.goto(origin + "/app#review=" + process.env.REFIT_REVIEW_TOKEN);
+      assert.equal((await activated).status(), 200);
+      await page.getByRole("heading", {name: "Your workspace"}).waitFor();
+      assert.equal(new URL(page.url()).hash, "");
+      await page.goto(origin + "/app/agents/new");
+      await page.getByRole("heading", {name: "Bring your agent"}).waitFor();
+      pages.push(page);
+      credentials.push(null);
+      continue;
+    }
     const status = await page.goto(origin + "/signup");
     assert.equal(status.status(), 200);
     await page.getByRole("heading", { name: "Create your account" }).waitFor();

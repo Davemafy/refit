@@ -89,12 +89,19 @@ class Accounts:
             raise ValueError("Invalid username or password.")
         return self.session(owner)
 
-    def session(self, owner):
+    def review_session(self, owner, expires):
+        # This identity cannot be used with public username/password authentication.
+        with self.db() as db:
+            db.execute("INSERT OR IGNORE INTO users VALUES (?,?,?,?)",
+                       (owner, "!" + owner, b"", b""))
+        return self.session(owner, expires)
+
+    def session(self, owner, expires=None):
         secret = secrets.token_urlsafe(32)
         now = int(time.time())
         with self.db() as db:
             db.execute("DELETE FROM sessions WHERE expires<=?", (now,))
-            db.execute("INSERT INTO sessions VALUES (?,?,?)", (digest(secret), owner, now + SESSION_TTL))
+            db.execute("INSERT INTO sessions VALUES (?,?,?)", (digest(secret), owner, min(now + SESSION_TTL, expires) if expires else now + SESSION_TTL))
         return secret
 
     def resolve(self, secret):

@@ -1,12 +1,14 @@
 """Exercise durable scheduling and authorization without sending model requests."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import time
 from threading import Barrier, Thread
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
 from scripts.api_service import ApiProblem
+from scripts.application_accounts import digest
 from scripts.application_http import ApplicationService
 
 ORIGIN = "https://refit.example"
@@ -89,6 +91,28 @@ class ApplicationQueueTests(TestCase):
         service.runs["app-1234567890abcdef"] = ({"status": "interrupted"}, [])
         self.assertFalse(service.remove_project(bob, request["import_id"]))
         self.assertTrue(service.remove_project(alice, request["import_id"]))
+
+    def test_review_pass_has_one_run_outside_the_public_pool(self):
+        code = "a" * 43
+        service = self.service(daily_budget=1, account_budget=1,
+                               review_passes={digest(code): int(time.time()) + 3600})
+        with self.assertRaises(ApiProblem):
+            service.review_session("b" * 43)
+        secret = service.review_session(code)
+        owner, username = service.accounts.resolve(secret)
+        with self.assertRaises(ValueError):
+            service.accounts.login(username, "test-only password")
+        summary = service.save_import(SNAPSHOT, owner, 0)
+        request = {**REQUEST, "import_id": summary["id"]}
+        with self.assertRaises(ApiProblem) as too_large:
+            service.start({**request, "budget": 17}, owner)
+        self.assertEqual(too_large.exception.code, "review_budget_limit")
+        self.assertEqual(service.start(request, owner)["status"], "running")
+        with self.assertRaises(ApiProblem) as spent:
+            service.start(request, owner)
+        self.assertEqual(spent.exception.code, "review_run_used")
+        alice, ordinary = self.project(service, "alice")
+        self.assertEqual(service.start({**ordinary, "budget": 1}, alice)["status"], "queued")
 
     def test_simultaneous_submissions_cannot_oversubscribe(self):
         service = self.service(daily_budget=2, max_active=2)
