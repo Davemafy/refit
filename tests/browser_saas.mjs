@@ -177,15 +177,17 @@ try{
  assert.equal(await page.locator(".decision-surface").getByText("Verified artifact available").count(),1);
  await page.screenshot({path:"artifacts/saas-ui/04-review.png",fullPage:true});
  await page.setViewportSize({width:390,height:844});
- const comparison = await page.locator(".comparison-scroll").evaluate(table => ({
+ const comparison = await page.evaluate(() => ({
    pageFits: document.documentElement.scrollWidth <= innerWidth,
-   tableScrolls: table.scrollWidth > table.clientWidth,
+   tableHidden: getComputedStyle(document.querySelector(".comparison-scroll")).display === "none",
+   mobilePairs: document.querySelectorAll(".comparison-mobile-case").length,
  }));
- assert.deepEqual(comparison, {pageFits:true, tableScrolls:true});
+ assert.deepEqual(comparison, {pageFits:true, tableHidden:true, mobilePairs:3});
  await page.screenshot({path:"artifacts/saas-ui/11-comparison-mobile.png",fullPage:true});
  await page.setViewportSize({width:1440,height:900});
  await page.getByRole("button",{name:"Trace",exact:true}).click();
- await page.locator(".log").waitFor();
+ await page.locator(".trace-explorer").waitFor();
+ assert.equal(await page.locator(".trace-lane").count(),7,"All measured cases have a trace span");
  await page.getByRole("button",{name:"Evidence",exact:true}).last().click();
  await page.getByRole("navigation",{name:"Run evidence"}).waitFor();
  await page.locator(".evidence-entry").first().click();
@@ -210,7 +212,7 @@ try{
  const failedSeed=(await (await context.request.get(url+"/__fixture__/seed-failure")).json()).id;
  await page.goto(url+"/app/runs/"+failedSeed);
  await page.getByRole("heading",{name:"Migration not verified"}).waitFor();
- await page.getByText("Replacement regression").waitFor();
+ await page.locator(".decision-findings").getByText("Replacement regression").waitFor();
  assert.equal(await page.locator(".decision-surface.blocked").count(),1);
  assert.equal(await page.locator("#pageError").count(),0,"Rejected run must render without errors");
  assert.equal(await page.getByRole("button",{name:/Export verified configuration/}).count(),0,
