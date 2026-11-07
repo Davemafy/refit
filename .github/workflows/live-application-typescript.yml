@@ -33,8 +33,11 @@ jobs:
           import json, os
           from pathlib import Path
           request=json.loads(Path("experiments/ai-sdk-file-agent/live-acceptance-request.json").read_text())
-          valid=(request=={"run_live":True,"source":"deepseek-v4.1-flash-1017",
-                          "target":"glm-5.2","max_requests":48})
+          valid=(set(request)=={"run_live","source","target","max_requests"}
+                 and request["run_live"] is True
+                 and request["max_requests"]==48
+                 and {request["source"],request["target"]} ==
+                     {"deepseek-v4.1-flash-1017","glm-5.2"})
           permitted=valid and bool(os.getenv("VULTR_INFERENCE_API_KEY"))
           with open(os.environ["GITHUB_OUTPUT"],"a",encoding="utf8") as stream:
               stream.write("enabled="+("true" if permitted else "false")+"\n")

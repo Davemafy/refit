@@ -336,3 +336,21 @@ execution is **external runner evidence**, not proof the production Vultr
 service has deployed this Git revision. It must not be represented as a
 successful paid TypeScript migration unless the recorded source, target,
 original-runner fresh export and all cleanup checks actually pass.
+
+
+### First paid external AI SDK acceptance: November 7, 2026
+
+[GitHub Actions run 42404568194](https://github.com/Davemafy/refit/actions/runs/42404568194)
+executed DeepSeek as source and GLM as replacement through the original
+TypeScript AI SDK application. The **source baseline failed after one
+paid request**: the first \`order\` case did not call the required
+\`read_file\` tool. File-state checks and the single sandbox cleanup
+passed; the export was correctly withheld. The GLM replacement was
+**not evaluated**. This is a genuine source-baseline failure, not a
+quota exhaustion or a successful TypeScript migration.
+
+The next acceptance request switches the model order to GLM → DeepSeek.
+That isolates whether a fifth original-agent step can complete after
+the previously observed four repeated GLM file reads. Its outcome must
+be evaluated independently and cannot be inferred from the earlier
+zero-inference test.
