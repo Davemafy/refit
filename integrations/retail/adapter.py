@@ -3,6 +3,7 @@
 Import ONLY in the isolated image. The host never imports this module.
 """
 import json
+import gc
 import subprocess
 import time
 from pathlib import Path
@@ -82,6 +83,7 @@ def cases(config, split):
 
 
 def run_case(client, model, profile, task, config, exported=None):
+    gc.collect()
     env = get_environment()
     initial = env.get_db_hash()
     count = client.requests

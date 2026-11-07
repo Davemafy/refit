@@ -52,6 +52,13 @@ jobs:
               '--manifest', 'integrations/retail/manifest.json', '--image', 'refit-original-retail',
               '--output', '/tmp/retail-live', '--execute'], check=True)
           PY
+      - name: Recover final packaging from exact recorded real responses without inference
+        run: |
+          if test -f data/evaluations/retail-native-001-partial.json.gz; then
+            python -m scripts.container_agent --manifest integrations/retail/manifest.json \
+              --image refit-original-retail --output /tmp/retail-recovery \
+              --recorded data/evaluations/retail-native-001-partial.json.gz
+          fi
       - name: Preserve inspect, failed or successful live evidence and exported configuration
         if: always()
         uses: actions/upload-artifact@v4
@@ -60,4 +67,5 @@ jobs:
           path: |
             /tmp/retail-inspect
             /tmp/retail-live
+            /tmp/retail-recovery
           retention-days: 30

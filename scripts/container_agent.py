@@ -4,6 +4,7 @@ No imported repository or adapter is ever imported into this host process.
 """
 import argparse
 import hashlib
+import gzip
 import json
 import os
 from pathlib import Path
@@ -24,7 +25,7 @@ def command(image, name):
     return ['docker', 'run', '-i', '--name', name, '--runtime', 'runsc',
             '--network', 'none', '--read-only', '--user', '65534:65534',
             '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
-            '--pids-limit', '128', '--memory', '2g', '--memory-swap', '2g',
+            '--pids-limit', '128', '--memory', '4g', '--memory-swap', '4g',
             '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=128m',
             '--log-driver', 'none', image]
 
@@ -115,8 +116,10 @@ def validate_result(result, description, config):
             raise ValueError('native state fingerprint mismatch')
 
 
-def run(config, image, output, execute=False):
+def run(config, image, output, execute=False, recorded=None):
     validate_config(config)
+    if execute and recorded is not None:
+        raise ValueError('Recorded transport recovery cannot make new inference calls')
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     root = Path(__file__).resolve().parents[1]
     helper = (root / config['application_helper']).resolve()
@@ -125,6 +128,11 @@ def run(config, image, output, execute=False):
     helper_source = helper.read_text()
     client = VultrInference(load_key(Path('/etc/refit/inference.env')),
                             max_requests=config['max_requests']) if execute else None
+    prior = None
+    if recorded is not None:
+        prior = json.loads(gzip.decompress(recorded.read_bytes()))
+        if prior['config'] != config or any(c['status'] != 'completed' for c in prior['completions']):
+            raise ValueError('Recorded run does not match this manifest')
     docker_env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin')}
     image_info = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image],
                                                     text=True, env=docker_env))[0]
@@ -132,7 +140,9 @@ def run(config, image, output, execute=False):
     record = {'format': 'refit.external-agent-run.v1', 'config': config,
               'engine_revision': capture_revision(Path(__file__).resolve().parents[1]),
               'image_id': image_info['Id'], 'container_name': name,
-              'execute': execute, 'completions': [], 'events': [], 'native_cases': []}
+              'execute': execute, 'completions': [], 'events': [], 'native_cases': [],
+              'mode': 'recorded_transport_recovery' if prior else ('live' if execute else 'inspect'),
+              'recorded_source_sha256': hashlib.sha256(recorded.read_bytes()).hexdigest() if prior else None}
     proc = None
     result = None
     buffer = bytearray()
@@ -150,12 +160,12 @@ def run(config, image, output, execute=False):
                                     env=docker_env)
             os.set_blocking(proc.stdin.fileno(), False)
             os.set_blocking(proc.stdout.fileno(), False)
-            send(proc, {**config, 'inspect_only': not execute}, min(deadline, time.monotonic() + 15))
+            send(proc, {**config, 'inspect_only': not (execute or prior)}, min(deadline, time.monotonic() + 15))
             while result is None:
                 value = frame(proc, buffer, min(deadline, time.monotonic() + 120))
                 kind = value.get('type')
                 if kind == 'completion':
-                    if client is None:
+                    if client is None and prior is None:
                         raise ValueError('inspection must not request inference')
                     validate_completion(value, {config['source'], config['target'], config['user_model']})
                     receipt = {'sequence': len(record['completions']) + 1, 'model': value['model'],
@@ -164,6 +174,16 @@ def run(config, image, output, execute=False):
                     record['completions'].append(receipt)
                     record['last_request'] = value
                     save()
+                    if prior is not None:
+                        index = len(record['completions']) - 1
+                        if index >= len(prior['completions']) or receipt['request_sha256'] != prior['completions'][index]['request_sha256']:
+                            raise ValueError('Recorded provider request differs; no inference fallback')
+                        receipt['status'] = 'replayed'
+                        receipt['response'] = prior['completions'][index]['response']
+                        send(proc, {'type': 'completion_result', 'message': receipt['response']},
+                             min(deadline, time.monotonic() + 15))
+                        save()
+                        continue
                     try:
                         response = client.complete(value['model'], value['messages'], value.get('tools'), max_tokens=2500)
                         receipt['status'] = 'completed'
@@ -207,12 +227,22 @@ def run(config, image, output, execute=False):
             proc.wait(timeout=10)
             proc.stdin.close()
             proc.stdout.close()
+            record['docker_cli_exit_code'] = proc.returncode
+        try:
+            info = json.loads(subprocess.check_output(['docker', 'inspect', name], text=True,
+                                                     env=docker_env, timeout=10))[0]
+            record['container_state'] = info['State']
+            record['actual_runtime'] = info['HostConfig']['Runtime']
+        except (subprocess.SubprocessError, OSError, ValueError, KeyError):
+            record['container_state'] = None
         cleanup = remove_and_verify('docker', name, env={'PATH': os.environ.get('PATH', '/usr/bin:/bin')})
         record['cleanup'] = cleanup
         record['model_requests'] = client.requests if client else 0
         record['result'] = result
-        verified = bool(execute and result and result.get('verified') is True and
-                        result.get('model_requests') == record['model_requests'] and
+        record['logical_requests'] = len(record['completions'])
+        verified = bool((execute or prior) and result and result.get('verified') is True and
+                        result.get('model_requests') == record['logical_requests'] and
+                        record.get('actual_runtime') == 'runsc' and
                         cleanup['verified'] and not record.get('error_type'))
         if verified:
             try:
@@ -232,7 +262,7 @@ def run(config, image, output, execute=False):
     print(json.dumps({'verified': verified, 'status': result.get('status') if result else 'execution_error',
                       'model_requests': record['model_requests'], 'cleanup_verified': cleanup['verified'],
                       'output': str(output)}), flush=True)
-    if execute and not verified:
+    if (execute or prior) and not verified:
         raise RuntimeError('migration not verified; evidence retained, export withheld')
     if not cleanup['verified'] or record.get('error_type'):
         raise RuntimeError('external execution failed; evidence retained')
@@ -244,10 +274,11 @@ def main():
     parser.add_argument('--image', required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--recorded', type=Path, help='Exact-request replay of saved real responses; never bills')
     args = parser.parse_args()
     previous = os.umask(0o077)
     try:
-        run(json.loads(args.manifest.read_text()), args.image, args.output, args.execute)
+        run(json.loads(args.manifest.read_text()), args.image, args.output, args.execute, args.recorded)
     finally:
         os.umask(previous)
 
