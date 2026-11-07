@@ -2,7 +2,7 @@
 # Add the authenticated platform on :443 beside the existing HTTP evidence site.
 set -euo pipefail
 test "$(id -u)" -eq 0
-IP="${REFIT_PUBLIC_IP:?Set REFIT_PUBLIC_IP to this VM's public IPv4 address}"
+IP="${REFIT_PUBLIC_IP:?Set REFIT_PUBLIC_IP to the public IPv4 address of this VM}"
 python3 -c 'import ipaddress,sys; assert ipaddress.IPv4Address(sys.argv[1]).is_global' "$IP"
 CERTBOT="${REFIT_CERTBOT:-/opt/refit-certbot/bin/certbot}"
 test -x "$CERTBOT"

@@ -11,6 +11,8 @@ on:
       - 'scripts/refit_vultr_probe.py'
       - 'web/application/**'
       - 'tests/browser_application*.mjs'
+      - 'deploy/launch-application.sh'
+      - 'deploy/launch-platform-https.sh'
       - '.github/workflows/application.yml'
 permissions:
   contents: read
@@ -27,6 +29,8 @@ jobs:
           python-version: '3.12'
       - name: Build the application sandbox
         run: |
+          bash -n deploy/launch-application.sh
+          bash -n deploy/launch-platform-https.sh
           sudo bash deploy/install-gvisor.sh
           docker build -f integrations/application/Dockerfile -t refit-application .
       - name: Verify upstream TypeScript tool loop and fresh export with a zero-inference test broker
