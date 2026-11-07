@@ -1,0 +1,66 @@
+name: Verify original mini-SWE-agent migration
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/mini_swe/**'
+      - 'experiments/mini-swe-run.json'
+      - 'experiments/mini-swe-reference.patch'
+      - '.github/workflows/mini-swe.yml'
+permissions:
+  contents: read
+concurrency:
+  group: refit-mini-swe
+  cancel-in-progress: false
+jobs:
+  mini-swe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build pinned mini-SWE-agent and genuine Requests issue
+        run: |
+          sudo bash deploy/install-gvisor.sh
+          docker build -f integrations/mini_swe/Dockerfile -t refit-mini-swe .
+      - name: Zero-inference preflight, original bug red and upstream fix green
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.container_agent import run
+          config = json.loads(Path('integrations/mini_swe/manifest.json').read_text())
+          config['_preflight_patch'] = Path('experiments/mini-swe-reference.patch').read_text()
+          run(config, 'refit-mini-swe', Path('/tmp/mini-inspect'))
+          PY
+      - name: One explicit bounded live migration, never an automatic paid retry
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          plan = json.loads(Path('experiments/mini-swe-run.json').read_text())
+          changed = subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines()
+          if 'experiments/mini-swe-run.json' not in changed or plan['execute'] is not True:
+              print('No new paid mini-SWE plan. Zero inference calls.')
+              sys.exit(0)
+          config = json.loads(Path('integrations/mini_swe/manifest.json').read_text())
+          assert plan['max_requests'] == config['max_requests'] == 96
+          subprocess.run([sys.executable,'-m','scripts.container_agent',
+              '--manifest','integrations/mini_swe/manifest.json','--image','refit-mini-swe',
+              '--output','/tmp/mini-live','--execute'],check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: refit-mini-swe-agent
+          path: |
+            /tmp/mini-inspect
+            /tmp/mini-live
+          retention-days: 30

@@ -268,6 +268,9 @@ def run(config, image, output, execute=False, recorded=None, verify_export=None)
             (output / 'agent-config.json').write_text(json.dumps(result['export'], indent=2))
             # Plain source to copy into the developer checkout, never imported here.
             (output / 'apply_config.py').write_text(helper_source)
+            native_yaml = result['original_runner_verification'].get('configuration_yaml')
+            if isinstance(native_yaml, str):
+                (output / 'agent-config.yaml').write_text(native_yaml)
     print(json.dumps({'verified': verified, 'status': result.get('status') if result else 'execution_error',
                       'model_requests': record['model_requests'], 'cleanup_verified': cleanup['verified'],
                       'output': str(output)}), flush=True)

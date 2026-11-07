@@ -1,0 +1,28 @@
+{
+  "format": "refit.container-agent.v1",
+  "repository": "https://github.com/SWE-agent/mini-swe-agent",
+  "revision": "04d809ceab9df28f9adaed044884180159172930",
+  "adapter": "integrations.mini_swe.adapter",
+  "application_helper": "integrations/mini_swe/apply_config.py",
+  "domain": "mini_swe_requests_2316",
+  "source": "deepseek-v4.1-flash-1017",
+  "target": "glm-5.2",
+  "user_model": "deepseek-v4.1-flash-1017",
+  "max_requests": 96,
+  "step_limit": 12,
+  "task_repository": "https://github.com/psf/requests",
+  "task_revision": "091991be0da19de9108dbe5e3752917fea3d7fdc",
+  "issue": "https://github.com/psf/requests/issues/2316",
+  "splits": {
+    "train": [
+      "training"
+    ],
+    "validation": [
+      "validation"
+    ],
+    "holdout": [
+      "holdout"
+    ]
+  },
+  "problem_statement": "Requests issue #2316: In requests/sessions.py, method = builtin_str(method) converts a method such as b'GET' into the literal string \"b'GET'\" on Python 3, resulting in an invalid HTTP method. A caller such as python-neutronclient passes byte-valued methods. Fix Requests so byte-valued HTTP methods work correctly while preserving normal string method behavior. Work in the current checkout. You may run the protected offline reproduction with: python /opt/refit/integrations/mini_swe/verify.py . training. Submit the code change using the original mini-SWE-agent completion command. Do not change the protected evaluator or unrelated behavior."
+}
