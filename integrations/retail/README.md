@@ -76,6 +76,46 @@ configuration; conversation and tool execution use the original framework.
 The integration reruns the complete original Orchestrator on holdout tasks
 using this exact exported configuration before releasing it.
 
+For tau2's own LiteLLM transport rather than Refit's credential-isolating
+broker, configure the OpenAI-compatible provider explicitly in the original
+trusted deployment:
+
+```python
+import os
+agent.llm = "openai/" + configuration["model"]
+agent.llm_args.update({
+    "api_base": "https://api.vultrinference.com/v1",
+    "api_key": os.environ["VULTR_INFERENCE_API_KEY"],
+    "temperature": 0,
+})
+```
+
+The provider prefix selects LiteLLM's transport; the served model remains the
+one named in the export. Refit's verified execution keeps this credential on
+the broker host instead of injecting it into imported agent code.
+
+To verify an existing export through the complete original runner, without
+another repair search:
+
+```bash
+python -m scripts.container_agent --manifest integrations/retail/manifest.json \
+  --image refit-original-retail --output ./retail-export-check \
+  --verify-export ./retail-live/agent-config.json --max-requests 64 --execute
+```
+
+This has its own explicit request cap and retains both success and failure
+records. It does not reuse cached responses or automatically retry a failed run.
+
+## Components considered
+
+We reviewed [Promptfoo's custom evaluation providers](https://www.promptfoo.dev/docs/getting-started/)
+and [Inspect's agent bridge](https://inspect.aisi.org.uk/agent-bridge.html), along
+with the smaller Swarm shopping and Pydantic bank examples. This integration
+reuses tau2's original conversational runner and state evaluator, and Refit's
+existing migration gates. The added boundary handles isolated adapter loading,
+bounded credential-free IPC, and host-side billing; it does not replace the
+original agent or implement a new business evaluator.
+
 ## Reuse for another agent
 
 The host protocol in `scripts/container_agent.py` does not import adapters.

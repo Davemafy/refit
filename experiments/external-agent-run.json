@@ -1,1 +1,6 @@
-{"execute": false, "run_id": "retail-native-001", "max_requests": 400}
+{
+  "execute": true,
+  "mode": "verify_export",
+  "run_id": "retail-export-001",
+  "max_requests": 64
+}
