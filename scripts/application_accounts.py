@@ -68,21 +68,13 @@ class Accounts:
                 or not isinstance(password, str) or not 12 <= len(password) <= 128):
             raise ValueError("Use a 3–40 character lowercase username and a 12–128 character password.")
 
-    def register(self, username, password, invite):
+    def register(self, username, password):
+        """Public signup; preserve strong passwords, transactional uniqueness and session isolation."""
         self.credentials(username, password)
-        if not isinstance(invite, str) or not TOKEN.fullmatch(invite):
-            raise ValueError("A valid, unexpired invitation is required.")
-        now = int(time.time())
-        with self.db() as db:
-            if not db.execute("SELECT 1 FROM invites WHERE hash=? AND expires>?", (digest(invite), now)).fetchone():
-                raise ValueError("A valid, unexpired invitation is required.")
         owner, salt = secrets.token_hex(16), secrets.token_bytes(16)
         hashed = password_hash(password, salt)
         try:
             with self.db() as db:
-                if db.execute("DELETE FROM invites WHERE hash=? AND expires>?",
-                              (digest(invite), now)).rowcount != 1:
-                    raise ValueError("A valid, unexpired invitation is required.")
                 db.execute("INSERT INTO users VALUES (?,?,?,?)", (owner, username, salt, hashed))
         except sqlite3.IntegrityError:
             raise ValueError("That username is unavailable.") from None

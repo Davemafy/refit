@@ -328,7 +328,7 @@ class ApplicationHandler(RefitHandler):
         try:
             data = self.body(limit=2048)
             registering = path.endswith("/register")
-            fields = {"username", "password", "invite"} if registering else {"username", "password"}
+            fields = {"username", "password"}
             if not isinstance(data, dict) or set(data) != fields:
                 raise ValueError("Provide the required account fields.")
             secret = accounts.register(**data) if registering else accounts.login(**data)

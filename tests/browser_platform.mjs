@@ -8,13 +8,12 @@ const origin = process.env.REFIT_PLATFORM_URL || "https://80.240.30.92";
 const archive = process.env.REFIT_PLATFORM_ARCHIVE;
 const setupFile = process.env.REFIT_PLATFORM_SETUP;
 const output = process.env.REFIT_PLATFORM_OUTPUT || "artifacts/platform-browser";
-const invites = [process.env.REFIT_PLATFORM_INVITE_A, process.env.REFIT_PLATFORM_INVITE_B];
 const paid = process.argv.includes("--execute");
 const path = "/api/application";
 const runtime = process.env.REFIT_PLATFORM_RUNTIME || "typescript";
 const cap = runtime === "python" ? 8 : 16;
 assert(new URL(origin).protocol === "https:");
-assert(archive && setupFile && invites.every(Boolean));
+assert(archive && setupFile);
 await mkdir(output, { recursive: true });
 const browser = await firefox.launch();
 const errors = [];
@@ -25,7 +24,7 @@ const { model: source, replacement: target } = {
 try {
   const credentials = [];
   const pages = [];
-  for (const [index, invite] of invites.entries()) {
+  for (const index of [0, 1]) {
     const context = await browser.newContext({ viewport: { width: 1150, height: 900 }, acceptDownloads: true });
     const page = await context.newPage();
     page.setDefaultTimeout(25_000);
@@ -38,7 +37,6 @@ try {
     credentials.push(user);
     await page.locator("#username").fill(user.username);
     await page.locator("#password").fill(user.password);
-    await page.locator("#invite").fill(invite);
     await page.getByRole("button", { name: /Continue/ }).click();
     await page.waitForURL(origin + "/app");
     await page.goto(origin + "/app/agents/new");

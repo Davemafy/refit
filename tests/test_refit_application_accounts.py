@@ -36,17 +36,17 @@ class ApplicationAccountTests(unittest.TestCase):
                         client.close()
 
                 try:
-                    invite = service.accounts.invite()
-                    payload = {"username": "alice", "password": PASSWORD, "invite": invite}
+                    payload = {"username": "alice", "password": PASSWORD}
                     self.assertEqual(request("POST", "/register", payload, origin="https://other.example")[0], 403)
                     status, _, cookie = request("POST", "/register", payload)
                     self.assertEqual(status, 201)
                     for flag in ("Secure", "HttpOnly", "SameSite=Strict"):
                         self.assertIn(flag, cookie)
                     alice = cookie.split(";", 1)[0]
-                    self.assertEqual(request("POST", "/register", {**payload, "username": "reuse"})[0], 400)
+                    self.assertEqual(request("POST", "/register", payload)[0], 400)
+                    self.assertEqual(request("POST", "/register", {**payload, "username": "extra", "invite": "unused"})[0], 400)
                     status, _, cookie = request("POST", "/register", {
-                        **payload, "username": "bob", "invite": service.accounts.invite()})
+                        **payload, "username": "bob"})
                     self.assertEqual(status, 201)
                     bob = cookie.split(";", 1)[0]
                     self.assertEqual(request("GET", "/projects")[0], 401)

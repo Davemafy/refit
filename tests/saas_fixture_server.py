@@ -55,8 +55,7 @@ def main():
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(certfile=str(cert), keyfile=str(key))
         server.socket = context.wrap_socket(server.socket, server_side=True)
-        print("REFIT_FIXTURE_READY=" + json.dumps({"url":"https://localhost:8873",
-              "invite":service.accounts.invite()}), flush=True)
+        print("REFIT_FIXTURE_READY=" + json.dumps({"url":"https://localhost:8873"}), flush=True)
         try:
             server.serve_forever()
         finally:

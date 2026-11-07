@@ -18,27 +18,20 @@ Runs or Evidence, compare the original and replacement cases, and inspect
 the published export without creating an account. This is a recorded run,
 not a fresh execution or a claim of unrestricted compatibility.
 
-**For an invited developer wishing to execute a new migration:** use
-https://80.240.30.92/signup in a normal browser, register using a
-one-time invite, sign in and import a pinned public GitHub repository or
-ZIP. Confirm the agent invocation and three independent evaluation cases,
-choose the source and replacement models, authorize a capped run, then
-inspect live evidence and download a verified artifact or an explicit
-failure report. No SSH tunnel or shared operator token is needed.
+**For any developer wishing to execute a new migration:** open
+https://80.240.30.92/signup in a normal browser, choose a username and
+password, and sign in. **No invitation is required.** Import a pinned GitHub
+repository or ZIP, confirm independent evaluation cases and the original
+application entry point, select models and authorize a bounded migration.
 
-**For the host operator only:** generate a short-lived one-time invite
-from the deployed checkout under /opt, running the command as the
-`refit-application` service user:
+New accounts are subject to the same authentication, project isolation,
+per-account daily inference allowance (16 reserved requests) and global
+daily ceiling (operator-configured, currently 48 requests). New accounts
+do not receive unlimited inference. Login and registration remain
+rate-limited by the HTTPS reverse proxy. Anonymous visitors can inspect
+only the explicitly published example; they cannot view private runs,
+evidence, credentials, or exports.
 
-```bash
-sudo -u refit-application python3 -m scripts.application_accounts \
-  --state /var/lib/refit-application
-```
-
-Give each judge their own invite privately; never commit invite or
-session tokens. Anonymous visitors can inspect only the explicitly
-published example. They cannot read another account's project, run,
-event stream, evidence, or private export.
 The HTTPS TLS certificate is a short-lived Let's Encrypt IP-address
 certificate with an automatic renewal timer.
 
@@ -47,13 +40,13 @@ The externally executed zero-inference check
 validates TLS, the public sign-in page, anonymous session mode and access rejection,
 operator-token bypass rejection and certificate freshness on each main push.
 The browser sign-in-to-export acceptance was separately performed by the
-operator on November 7 with two invited accounts and a Python application,
+operator on November 7 with two registered accounts and a Python application,
 using seven real inference requests; that account-run browser artifact
 has not yet been independently archived in this repository.
 
 ## Judge-facing live walkthrough
 
-The following is the **legacy operator-only tunnel option**. Invited judges
+The following is the **legacy operator-only tunnel option**. Judges
 should use the public HTTPS account path above; they do not need SSH or the
 operator access token.
 

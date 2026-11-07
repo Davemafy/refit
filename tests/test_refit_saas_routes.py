@@ -71,14 +71,14 @@ class SaaSRoutes(unittest.TestCase):
                     status, _, _, body = call("GET", route)
                     self.assertEqual(status, 200)
                     self.assertIn('id="authForm"', body)
+                    self.assertNotIn('id="invite"', body)
                 for route in ("/assets/ui.css", "/assets/app.js", "/assets/auth.js"):
                     status, _, _, body = call("GET", route)
                     self.assertEqual(status, 200)
                     self.assertGreater(len(body), 100)
 
-                invite = service.accounts.invite()
                 status, _, cookie, _ = call("POST", "/api/application/register", {
-                    "username": "ui-test", "password": "test-long-secret-12345", "invite": invite
+                    "username": "ui-test", "password": "test-long-secret-12345"
                 })
                 self.assertEqual(status, 201)
                 self.assertIn("__Host-refit-session=", cookie)

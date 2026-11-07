@@ -29,7 +29,7 @@ const zip=execFileSync("python3",["-c",zipMaker]);
 const runRequests=[];
 await mkdir("artifacts/saas-ui", {recursive:true});
 try{
- const {url,invite}=await waitReady();
+ const {url}=await waitReady();
  browser=await firefox.launch();
  const context=await browser.newContext({ignoreHTTPSErrors:true,acceptDownloads:true,viewport:{width:1440,height:900}});
  const page=await context.newPage();page.setDefaultTimeout(12_000);
@@ -65,7 +65,6 @@ try{
  await page.getByRole("heading",{name:"Create your account"}).waitFor();
  await page.locator("#username").fill("qa-developer");
  await page.locator("#password").fill("refit-browser-ui-test-password");
- await page.locator("#invite").fill(invite);
  await page.getByRole("button",{name:/Continue/}).click();
  await page.waitForURL(url+"/app");
  await page.getByRole("heading",{name:"Your workspace"}).waitFor();
