@@ -32,7 +32,7 @@ const symbols={
 };
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
-const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[]};
+const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[]};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -79,6 +79,12 @@ function header(label,step=0,crumb){
  }
  document.title=label+" · Refit";
 }
+function pageFailure(error){
+ const message=error instanceof Error?error.message:"The request did not complete.";
+ page.innerHTML='<section class="request-failure" role="alert"><h2>Unable to load this view</h2>'+
+  '<p>'+safe(message)+'</p><button type="button" class="btn primary" data-action="retry-page">'+
+  'Retry loading</button></section>';
+}
 function stopStream(){
  if(state.stream){state.stream.close();state.stream=null;}
  state.streamId=null;state.streamCursor=0;
@@ -87,7 +93,7 @@ function stopStream(){
 function navigate(to,replace=false){
  if(!/^\/app(?:\/|$)/.test(to))return;
  if(replace)history.replaceState({},"",to);else history.pushState({},"",to);
- show().catch(e=>notify(e.message));
+ show().catch(pageFailure);
 }
 async function refreshWorkspace(){
  if(state.guest){
@@ -101,7 +107,7 @@ async function refreshWorkspace(){
  state.runs=runs.runs||[];
 }
 const lead=(title,subtitle,right="")=>'<div class="page-lead"><div><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
-const empty=(title,desc,button)=>'<div class="empty"><div class="empty-icon">'+ico("layers")+'</div><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
+const empty=(title,desc,button)=>'<div class="empty"><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
 const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
 const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Explore a recorded, verified November 7 Vultr migration. No inference runs while browsing.</span><a href="/login?next=/app/agents/new">Sign in to import your own agent</a></div>';
 async function overview(){
@@ -381,7 +387,23 @@ function renderComparison(cases,source,target,report){
    '<td>'+cell(row.source)+'</td><td>'+cell(row.target)+'</td>'+(repair?'<td>'+cell(row.adapted)+'</td>':'')+
    '<td><span class="comparison-result '+(["regression","source_failed","target_failed"].includes(row.status)?"is-failed":"")+'">'+safe(description)+'</span>'+
    (inspection?'<button class="evidence-jump" type="button" data-action="inspect-evidence" data-key="case-'+safe(inspection.seq)+'">Inspect evidence '+ico("arrow")+'</button>':'')+'</td></tr>';
- }).join("")+'</tbody></table></div>';
+ }).join("")+'</tbody></table></div>'+
+ '<div class="comparison-mobile">'+rows.map(row=>{
+  const inspection=row.status==="source_failed"?row.source:row.target||row.source;
+  const status=row.status==="both_passed"?"Both models passed":
+   row.status==="regression"?"Replacement regression":
+   row.status==="source_failed"?"Original baseline failed":
+   row.status==="target_failed"?"Replacement checks failed":"Awaiting comparison";
+  const outcome=(name,model,item)=>'<div class="comparison-mobile-result"><div><span>'+safe(name)+'</span>'+
+   '<small class="mono">'+safe(model)+'</small></div>'+cell(item)+'</div>';
+  return '<section class="comparison-mobile-case"><div class="comparison-mobile-head"><div><strong>'+
+   safe(row.name)+'</strong><span>'+safe(RefitOutcomes.phaseName(row.phase))+'</span></div>'+
+   '<span class="comparison-mobile-verdict '+(row.status==="both_passed"?"is-good":"")+'">'+safe(status)+'</span></div>'+
+   outcome("Original",source,row.source)+outcome("Replacement",target,row.target)+
+   (repair?outcome("Adapted replacement",target,row.adapted):"")+
+   (inspection?'<button type="button" class="evidence-jump" data-action="inspect-evidence" data-key="case-'+
+    safe(inspection.seq)+'">Inspect the observation '+ico("arrow")+'</button>':"")+'</section>';
+ }).join("")+'</div>';
 }
 
 // Evidence navigation only exposes observations returned by the run API.
@@ -542,6 +564,100 @@ function restoreRunView(view){
  if(log)log.scrollTop=view.logScroll;
  window.scrollTo(view.scrollX,view.scrollY);
 }
+
+// Recorded event times and run durations drive these diagrams; no simulated spans.
+function traceElapsed(events){
+ const times=events.map(e=>Date.parse(e.time||"")).filter(Number.isFinite);
+ const first=times.length?Math.min(...times):0;
+ const last=times.length?Math.max(...times):first;
+ return {first,last,total:Math.max(last-first,1)};
+}
+function traceWaterfall(events){
+ const records=events.filter(e=>e.type==="case_completed"&&
+  Number.isFinite(Number(e.details?.elapsed_seconds))&&Number(e.details?.elapsed_seconds)>0 &&
+  Number.isFinite(Date.parse(e.time||""))).slice(-18);
+ if(!records.length)return '<p class="trace-no-timing">No measured case durations have been recorded.</p>';
+ const time=traceElapsed(events);
+ return '<div class="trace-overview"><div class="trace-overview-head"><strong>Case execution timeline</strong>'+
+  '<span>Measured elapsed time · '+records.length+' '+(records.length===1?"case":"cases")+'</span></div>'+
+  '<div class="trace-waterfall-scroll"><div class="trace-waterfall"><div class="trace-ruler"><span></span>'+
+   '<span>0 s</span><span>'+safe((time.total/1000).toFixed(1))+' s</span></div>'+
+  records.map(e=>{
+   const d=e.details||{},duration=Number(d.elapsed_seconds)*1000,end=Date.parse(e.time);
+   const left=Math.max(0,Math.min(100,100*(end-duration-time.first)/time.total));
+   const width=Math.max(.7,Math.min(100-left,100*duration/time.total));
+   const passed=d.passed===true;
+   return '<button type="button" class="trace-lane" data-action="trace-select" data-seq="'+safe(e.seq)+
+    '" aria-label="'+safe((d.case||"Case")+" · "+(d.model||"model")+" · "+(duration/1000).toFixed(1)+" seconds")+'">'+
+    '<span class="trace-lane-title"><span>'+safe(d.case||"Case")+'</span><small>'+safe(d.model||"Unknown model")+'</small></span>'+
+    '<span class="trace-lane-track"><span class="trace-duration-bar '+(passed?"passed":"failed")+
+    '" style="left:'+left.toFixed(2)+'%;width:'+width.toFixed(2)+'%"></span></span>'+
+    '<span class="trace-lane-time mono">'+safe((duration/1000).toFixed(1))+'s</span></button>';
+  }).join("")+'</div></div></div>';
+}
+const traceGroups={
+ all:()=>true,models:e=>e.type==="inference_requested"||e.type==="inference_completed",
+ cases:e=>e.type==="case_completed",sandbox:e=>e.type.startsWith("sandbox_")
+};
+function traceDetails(e){
+ if(!e)return '<div class="trace-nothing">Select a recorded event to inspect its details.</div>';
+ const d=e.details||{};
+ const line=(label,value)=>'<div class="trace-field"><dt>'+safe(label)+'</dt><dd>'+safe(value===null||value===undefined||value===""?"Not recorded":value)+'</dd></div>';
+ const fields=[
+  line("Sequence",e.seq),line("Recorded time",(e.time||"").slice(11,19)+" UTC"),
+  line("Phase",d.phase),line("Case",d.case),line("Model",d.model)
+ ];
+ if(typeof d.passed==="boolean")fields.push(line("Outcome",d.passed?"Passed":"Failed"));
+ if(Number.isFinite(d.seconds))fields.push(line("Model duration",d.seconds+" s"));
+ if(Number.isFinite(d.elapsed_seconds))fields.push(line("Case duration",d.elapsed_seconds+" s"));
+ if(Number.isInteger(d.model_requests))fields.push(line("Model requests",d.model_requests));
+ if(d.receipt)fields.push(line("Sandbox cleanup",d.receipt.verified===true?"Verified":d.receipt.verified===false?"Unverified":"Not recorded"),
+  line("Cleanup reason",d.receipt.reason),line("Container",d.receipt.container_name));
+ const tools=[...(Array.isArray(d.tools_called)?d.tools_called:[]),
+  ...(Array.isArray(d.trace)?d.trace.flatMap(t=>Array.isArray(t.tools_called)?t.tools_called:[]):[])];
+ const unique=[...new Set(tools)];
+ let extra=unique.length?'<h4>Observed tool calls</h4><div class="trace-tools">'+unique.map(t=>
+  '<code>'+safe(t)+'</code>').join("")+'</div>':"";
+ const checks=Object.entries(d.verdict||{}).filter(([,v])=>typeof v==="boolean");
+ if(checks.length)extra+='<h4>Evaluation checks</h4><div class="trace-checks">'+checks.map(([key,value])=>
+  '<span class="'+(value?"passed":"failed")+'">'+safe(key.replaceAll("_"," "))+
+  ' · '+(value?"passed":"failed")+'</span>').join("")+'</div>';
+ if(d.error)extra+='<div class="notice">'+safe(String(d.error))+'</div>';
+ return '<div class="trace-detail-head"><div><span class="trace-sequence mono">Event '+safe(e.seq)+'</span>'+
+  '<h3>'+safe(RefitOutcomes.eventLabel(e.type))+'</h3></div></div>'+
+  '<dl class="trace-details">'+fields.join("")+'</dl>'+extra+
+  '<details class="trace-raw"><summary>Original event payload</summary>'+
+  '<pre class="log">'+safe(JSON.stringify({seq:e.seq,type:e.type,time:e.time,details:d},null,2))+'</pre></details>';
+}
+function traceExplorer(run,events){
+ state.traceEvents=events;
+ const filter=traceGroups[state.traceFilter]||traceGroups.all;
+ const visible=events.filter(filter).slice(-150);
+ if(!visible.some(e=>String(e.seq)===String(state.traceSelected)))
+  state.traceSelected=visible.at(-1)?.seq??null;
+ const selected=visible.find(e=>String(e.seq)===String(state.traceSelected));
+ const filterButtons=[["all","All events"],["models","Model calls"],["cases","Cases"],["sandbox","Sandboxes"]]
+  .map(([name,label])=>'<button type="button" class="trace-filter'+(name===state.traceFilter?" selected":"")+
+   '" data-action="trace-filter" data-filter="'+name+'" aria-pressed="'+(name===state.traceFilter)+'">'+label+'</button>').join("");
+ const items=visible.slice().reverse().map(e=>{
+  const d=e.details||{},passed=d.passed===true||d.receipt?.verified===true;
+  const failed=d.passed===false||d.receipt?.verified===false||!!d.error;
+  const title=RefitOutcomes.eventLabel(e.type);
+  return '<button type="button" class="trace-entry'+(String(e.seq)===String(state.traceSelected)?" selected":"")+
+   '" data-action="trace-select" data-seq="'+safe(e.seq)+'" aria-pressed="'+(String(e.seq)===String(state.traceSelected))+'">'+
+   '<span class="trace-event-dot '+(failed?"failed":passed?"passed":"")+'"></span>'+
+   '<span class="trace-entry-copy"><strong>'+safe(title)+'</strong><small>'+
+   safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</small></span>'+
+   '<time class="mono">'+safe((e.time||"").slice(11,19))+'</time></button>';
+ }).join("");
+ return traceWaterfall(events)+
+ '<div class="trace-toolbar"><div class="trace-filters" role="group" aria-label="Filter trace events">'+filterButtons+'</div>'+
+ '<span class="trace-count">'+visible.length+' / '+events.length+' events'+(events.filter(filter).length>visible.length?" · latest shown":"")+'</span></div>'+
+ '<div class="trace-explorer"><div class="trace-events" aria-label="Recorded events">'+
+ (items||'<p class="trace-nothing">No matching recorded events.</p>')+
+ '</div><section id="traceInspector" class="trace-inspector" aria-live="polite">'+traceDetails(selected)+'</section></div>';
+}
+
 function runLog(events){if(!events.length)return "No events received yet.";
  return events.slice(-75).map(e=>{
   const d=e.details||{},time=(e.time||"").slice(11,19);
@@ -570,7 +686,7 @@ async function showRun(id,refreshOnly=false){
    safe(report.accepted_patch?.instructions||report.proposal.instructions||"No instruction change")+
    '</pre><p class="small">'+(run.export_available?"The adaptation passed fresh original-runtime verification.":"The adaptation has no verified export.")+
    '</p></div>':
-  currentTab==="traces"?'<pre class="log">'+safe(runLog(events))+'</pre>':
+  currentTab==="traces"?traceExplorer(run,events):
   evidenceExplorer(run,events);
  page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration review")+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
  (active?'<button data-action="cancel-run" data-id="'+safe(id)+'" class="btn">Cancel</button>':"")+
@@ -620,9 +736,19 @@ async function download(id,type){
  link.href=url;link.download=id+"-"+type+".json";document.body.appendChild(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+function closeSearch(){
+ const overlay=el("searchOverlay");
+ if(!overlay)return;
+ const restore=overlay._restoreFocus;
+ overlay.remove();
+ restore?.focus?.();
+}
 function searchOverlay(){
+ if(el("searchOverlay")){el("searchInput")?.focus();return;}
+ const previousFocus=document.activeElement;
  const overlay=document.createElement("div");
- overlay.id="searchOverlay";overlay.setAttribute("role","dialog");overlay.setAttribute("aria-modal","true");
+ overlay._restoreFocus=previousFocus;
+ overlay.id="searchOverlay";overlay.setAttribute("role","dialog");overlay.setAttribute("aria-modal","true");overlay.setAttribute("aria-label","Search agents and runs");
  overlay.style.cssText="position:fixed;inset:0;background:#000b;z-index:90;display:flex;align-items:flex-start;justify-content:center;padding:13vh 14px";
  overlay.innerHTML='<div class="card inner" style="width:100%;max-width:600px;background:#1a1b1f;max-height:70vh;overflow:auto"><div class="hstack">'+ico("search")+'<input id="searchInput" class="control" autofocus placeholder="Search your agents and runs…" aria-label="Search your agents and runs"><button class="btn compact" id="searchClose" aria-label="Close search">'+ico("close")+'</button></div><div id="searchResults" style="margin-top:15px"></div></div>';
  document.body.appendChild(overlay);
@@ -636,12 +762,29 @@ function searchOverlay(){
    results.innerHTML=candidates.length?candidates.map(x=>'<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:8px" data-search-action="'+x.action+'" data-search-id="'+safe(x.id)+'"><span>'+safe(x.title)+'</span><span class="muted small" style="margin-left:auto">'+safe(x.sub)+'</span></button>').join(""):'<div class="small muted" style="padding:16px">No matching agents or runs.</div>';
  }
  input.addEventListener("input",update);update();input.focus();
- overlay.querySelector("#searchClose").onclick=()=>overlay.remove();
- overlay.onclick=event=>{if(event.target===overlay)overlay.remove();};
+ // Deep links can open a run before overview/agents has loaded the workspace index.
+ // Refresh asynchronously so search works without navigating away or dropping input.
+ refreshWorkspace().then(()=>{if(overlay.isConnected)update();}).catch(error=>{
+  if(overlay.isConnected && !state.runs.length && !state.projects.length){
+   results.innerHTML='<p class="small muted" style="padding:14px">'+
+    safe(error.message||"Search is temporarily unavailable.")+'</p>';
+  }
+ });
+ overlay.querySelector("#searchClose").onclick=closeSearch;
+ overlay.onclick=event=>{if(event.target===overlay)closeSearch();};
+ overlay.addEventListener("keydown",event=>{
+  if(event.key==="Escape"){event.preventDefault();closeSearch();return;}
+  if(event.key!=="Tab")return;
+  const controls=[...overlay.querySelectorAll("input,button")].filter(x=>!x.disabled);
+  if(!controls.length)return;
+  const first=controls[0],last=controls.at(-1);
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+ });
  overlay.addEventListener("click",event=>{
   const action=event.target.closest("[data-search-action]");
   if(!action)return;
-  const id=action.dataset.searchId,kind=action.dataset.searchAction;overlay.remove();
+  const id=action.dataset.searchId,kind=action.dataset.searchAction;closeSearch();
   if(kind==="project"){chooseProject(id).catch(e=>notify(e.message));}else navigate("/app/runs/"+id);
  });
 }
@@ -766,6 +909,24 @@ document.addEventListener("click",async event=>{
     entry.setAttribute("aria-pressed",String(selected));
    });
   }
+  else if(action==="trace-filter"){
+   state.traceFilter=button.dataset.filter;
+   const panel=el("runPanel");
+   if(panel)panel.innerHTML=traceExplorer(null,state.traceEvents);
+  }
+  else if(action==="trace-select"){
+   const entry=state.traceEvents.find(e=>String(e.seq)===String(button.dataset.seq));
+   if(!entry)return;
+   state.traceSelected=entry.seq;
+   const details=el("traceInspector");
+   if(details)details.innerHTML=traceDetails(entry);
+   page.querySelectorAll(".trace-entry").forEach(item=>{
+    const chosen=item.dataset.seq===String(entry.seq);
+    item.classList.toggle("selected",chosen);
+    item.setAttribute("aria-pressed",String(chosen));
+   });
+  }
+  else if(action==="retry-page")await show();
   else if(action==="evidence-download"||action==="artifact-download")await download(id,action==="evidence-download"?"evidence":"artifact");
   else if(action==="inspect-evidence"){state.tab="evidence";state.evidenceSelected=button.dataset.key;await showRun(location.pathname.split("/").pop());page.querySelector("#runPanel")?.scrollIntoView({block:"start",behavior:"smooth"});}
   else if(action==="tab"){state.tab=button.dataset.tab;const runId=location.pathname.split("/").pop();await showRun(runId);}
@@ -794,9 +955,9 @@ document.addEventListener("submit",async event=>{
 el("search").addEventListener("click",searchOverlay);
 document.addEventListener("keydown",event=>{
  if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();searchOverlay();}
- if(event.key==="Escape")el("searchOverlay")?.remove();
+ if(event.key==="Escape")closeSearch();
 });
-window.addEventListener("popstate",()=>show().catch(e=>notify(e.message)));
+window.addEventListener("popstate",()=>show().catch(pageFailure));
 (async()=>{
  try{
   const session=await req("/session");
@@ -811,5 +972,5 @@ window.addEventListener("popstate",()=>show().catch(e=>notify(e.message)));
     await refreshWorkspace();
   }else el("avatar").textContent=state.username.charAt(0).toUpperCase();
   await show();
- }catch(e){notify(e.message);}
+ }catch(e){pageFailure(e);}
 })();
