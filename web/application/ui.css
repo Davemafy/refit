@@ -269,3 +269,29 @@ textarea.control { font-family: "Geist Mono", monospace; }
 .setup-case-body { display: grid; gap: 10px; margin-top: 12px; }
 .case-options summary { cursor: pointer; font-size: 13px; }
 .case-options[open] > label { margin-top: 10px; }
+
+/* Evidence explorer — compact Inngest-inspired investigation, backed by actual run records. */
+.evidence-workspace{display:grid;grid-template-columns:minmax(185px,.8fr) minmax(0,1.35fr);border:1px solid var(--line);border-radius:9px;background:#111316;min-height:390px;overflow:hidden}
+.evidence-index{border-right:1px solid var(--line2);padding:11px 8px;max-height:590px;overflow:auto}
+.evidence-group{padding:13px 12px 6px;color:var(--muted);font-size:11px;font-weight:560}
+.evidence-entry{width:100%;display:flex;flex-direction:column;gap:4px;text-align:left;padding:11px 12px;margin:2px 0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);cursor:pointer}
+.evidence-entry:hover{background:#1b1d21}
+.evidence-entry.selected{background:#24262b;border-color:#35383e}
+.evidence-entry-title{font-size:12px;font-weight:540;overflow-wrap:anywhere}
+.evidence-entry-sub{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.evidence-inspector{min-width:0;padding:23px 24px;overflow:auto}
+.evidence-detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:16px;border-bottom:1px solid var(--line2)}
+.evidence-detail-head h3{font-size:15px}
+.evidence-detail-head p{margin-top:4px}
+.evidence-detail-head .chip{white-space:nowrap}
+.evidence-fields{display:grid;gap:0;margin:7px 0 20px}
+.evidence-field{display:grid;grid-template-columns:minmax(105px,.7fr) minmax(0,1fr);gap:12px;align-items:start;border-bottom:1px solid var(--line2);padding:12px 0;font-size:12px}
+.evidence-field dt{color:var(--muted)}
+.evidence-field dd{margin:0;color:#d9dadd;font-family:"Geist Mono",ui-monospace,monospace;overflow-wrap:anywhere;font-size:11px}
+.evidence-inspector h4{font-size:12px;font-weight:570;margin:18px 0 10px}
+.evidence-checks{display:grid;gap:7px}
+.evidence-checks>div{display:flex;gap:12px;align-items:center;font-size:12px;color:#b4b7bf}
+.evidence-checks>div>span:first-child{min-width:55px}
+.evidence-tools{padding:0;list-style:none}
+.evidence-tools li{display:flex;gap:12px;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line2)}
+@media(max-width:760px){.evidence-workspace{grid-template-columns:minmax(0,1fr)}.evidence-index{border-right:0;border-bottom:1px solid var(--line2);max-height:230px}.evidence-inspector{padding:18px}.evidence-field{grid-template-columns:minmax(96px,.65fr) minmax(0,1fr)}}

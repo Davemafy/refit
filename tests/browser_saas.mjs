@@ -169,7 +169,18 @@ try{
  await page.getByRole("button",{name:"Trace",exact:true}).click();
  await page.locator(".log").waitFor();
  await page.getByRole("button",{name:"Evidence",exact:true}).last().click();
- await page.getByText(/recorded containers verified cleaned up/).waitFor();
+ await page.getByRole("navigation",{name:"Run evidence"}).waitFor();
+ await page.locator(".evidence-entry").first().click();
+ await page.locator("#evidenceInspector").getByText("Fresh export check").first().waitFor();
+ await page.getByRole("button",{name:/magnetic-divergence/}).first().click();
+ await page.locator("#evidenceInspector").getByText("Tool observations").waitFor();
+ await page.locator(".evidence-entry").filter({hasText:"Cleanup receipt"}).first().click();
+ await page.locator("#evidenceInspector").getByText("Cleanup reason").waitFor();
+ await page.screenshot({path:"artifacts/saas-ui/09-evidence-desktop.png",fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,"Evidence inspector must fit mobile viewport");
+ await page.screenshot({path:"artifacts/saas-ui/10-evidence-mobile.png",fullPage:true});
+ await page.setViewportSize({width:1440,height:900});
 
  const waiting=page.waitForEvent("download");
  await page.getByRole("button",{name:/Export verified configuration/}).first().click();
