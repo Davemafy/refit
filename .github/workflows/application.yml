@@ -12,11 +12,19 @@ on:
       - 'web/application/**'
       - 'tests/browser_application*.mjs'
       - 'tests/browser_saas.mjs'
+      - 'tests/evidence_ui.test.mjs'
       - 'tests/saas_fixture_server.py'
       - 'tests/test_refit_saas_routes.py'
       - 'tests/test_refit_github_pin.py'
       - 'deploy/launch-application.sh'
       - 'deploy/launch-platform-https.sh'
+      - '.github/workflows/application.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'web/application/**'
+      - 'tests/browser_saas.mjs'
+      - 'tests/evidence_ui.test.mjs'
       - '.github/workflows/application.yml'
 permissions:
   contents: read
@@ -60,6 +68,8 @@ jobs:
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps firefox
           node tests/browser_application_controls.mjs
+      - name: Verify evidence view against recorded migration without inference
+        run: node tests/evidence_ui.test.mjs
       - name: Verify SaaS routes and review in Firefox without inference
         run: node tests/browser_saas.mjs
       - name: Archive zero-inference SaaS browser captures
