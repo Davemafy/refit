@@ -50,6 +50,7 @@
 </section>
 <section id="live" hidden>
 <h2 id="outcome" role="status">Migration</h2>
+<p id="provenance"></p>
 <p id="summary"></p>
 <p id="scope" hidden></p>
 <button id="reconnect" class="secondary" hidden>Reconnect to run</button>
@@ -92,6 +93,7 @@ function openRun(id) {
   $("sandbox").textContent="";
   $("outcome").textContent="Opening run";
   $("summary").textContent=id;
+  $("provenance").textContent="";
   for(const control of ["cancel","artifact","evidence","scope","reconnect"]) $(control).hidden=true;
   $("live").hidden=false;
   return session;
@@ -133,7 +135,11 @@ function update(run) {
   $("outcome").textContent=labels[run.status]||run.status.replaceAll("_"," ");
   const verification=run.verification||[];
   const extra=verification.length ? ` · Fresh verification ${verification.filter(x=>x.passed).length}/${verification.length}` : "";
-  $("summary").textContent=`${run.id} · ${run.source} → ${run.target} · ${run.model_requests}/${run.budget} requests`+
+  $("provenance").textContent=terminal(run.status) ? "Saved evidence from a live run" : "Live execution";
+  const counts=!terminal(run.status) || run.status==="interrupted"
+    ? `${run.request_attempts_logged || 0}/${run.budget} request attempts logged`
+    : `${run.model_requests}/${run.budget} requests`;
+  $("summary").textContent=`${run.id} · ${run.source} → ${run.target} · ${counts}`+
     extra+(run.error ? " · "+run.error.replaceAll("_"," ") : "");
   $("cancel").disabled=run.status==="cancelling"; $("cancel").hidden=terminal(run.status);
   $("artifact").hidden=!run.export_available;
@@ -155,33 +161,33 @@ async function observe(session) {
         const problem=await response.json();
         throw Error(problem.error?.message || "Event stream unavailable.");
       }
-    const reader=response.body.getReader(), decoder=new TextDecoder(); let buffer="";
-    for (;;) {
-      const {value,done}=await reader.read(); if(done) break;
-      buffer+=decoder.decode(value,{stream:true}); let end;
-      while((end=buffer.indexOf("\n\n"))!==-1) {
-        if(signal.aborted) return;
-        const message=buffer.slice(0,end); buffer=buffer.slice(end+2);
-        const line=message.split("\n").find(line=>line.startsWith("data: "));
-        if(!line) continue;
-        const e=JSON.parse(line.slice(6)); session.cursor=e.seq;
-        const d=e.details;
-        $("events").textContent+=`${e.seq}. ${e.type.replaceAll("_"," ")} `+
-          [d.phase,d.case,d.model,d.receipt ? (d.receipt.verified ? "cleanup verified" : "cleanup unverified") : "",d.status].filter(Boolean).join(" · ")+"\n";
-        if(e.type==="phase_completed") {
-          const row=document.createElement("li");
-          row.textContent=d.phase.replaceAll("_"," ")+" · "+d.model+" · "+d.passed+"/"+d.total+" passed";
-          $("phases").append(row);
+      const reader=response.body.getReader(), decoder=new TextDecoder(); let buffer="";
+      for (;;) {
+        const {value,done}=await reader.read(); if(done) break;
+        buffer+=decoder.decode(value,{stream:true}); let end;
+        while((end=buffer.indexOf("\n\n"))!==-1) {
+          if(signal.aborted) return;
+          const message=buffer.slice(0,end); buffer=buffer.slice(end+2);
+          const line=message.split("\n").find(line=>line.startsWith("data: "));
+          if(!line) continue;
+          const e=JSON.parse(line.slice(6)); session.cursor=e.seq;
+          const d=e.details;
+          $("events").textContent+=`${e.seq}. ${e.type.replaceAll("_"," ")} `+
+            [d.phase,d.case,d.model,d.receipt ? (d.receipt.verified ? "cleanup verified" : "cleanup unverified") : "",d.status].filter(Boolean).join(" · ")+"\n";
+          if(e.type==="phase_completed") {
+            const row=document.createElement("li");
+            row.textContent=d.phase.replaceAll("_"," ")+" · "+d.model+" · "+d.passed+"/"+d.total+" passed";
+            $("phases").append(row);
+          }
+          if(e.type==="sandbox_started") $("sandbox").textContent="gVisor container running · "+d.case;
+          if(e.type==="sandbox_cleanup") $("sandbox").textContent=d.receipt.verified
+            ? "gVisor container removed and verified" : "Container cleanup unverified";
+          if(e.type==="inference_completed" && d.tools_called?.length) {
+            $("sandbox").textContent="Agent called "+d.tools_called.join(", ");
+          }
+          if(e.type==="inference_requested") $("summary").textContent=`${session.id} · Request ${d.number} · ${d.model}`;
         }
-        if(e.type==="sandbox_started") $("sandbox").textContent="gVisor container running · "+d.case;
-        if(e.type==="sandbox_cleanup") $("sandbox").textContent=d.receipt.verified
-          ? "gVisor container removed and verified" : "Container cleanup unverified";
-        if(e.type==="inference_completed" && d.tools_called?.length) {
-          $("sandbox").textContent="Agent called "+d.tools_called.join(", ");
-        }
-        if(e.type==="inference_requested") $("summary").textContent=`${session.id} · Request ${d.number} · ${d.model}`;
       }
-    }
       const status=await api(url,undefined,signal);
       if(signal.aborted) return;
       update(status);

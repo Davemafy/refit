@@ -72,6 +72,8 @@ class ApplicationService:
             run, events = self.runs[ident]
             if kind == "sandbox_cleanup" and not details["receipt"]["verified"]:
                 self.quarantined = True
+            if kind == "inference_requested":
+                run["request_attempts_logged"] = details["number"]
             events.append({"seq": len(events) + 1, "type": kind, "message": kind,
                            "time": now(), "details": details})
             self.store.save(ident, run, events)

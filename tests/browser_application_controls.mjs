@@ -58,11 +58,11 @@ try {
   page.setDefaultTimeout(20_000);
   await page.goto(origin + "/bring");
   await page.getByLabel("Operator access token").fill(token);
-  await page.getByLabel("Source", { exact: true }).selectOption("zip");
+  await page.locator("#method").selectOption("zip");
 
   async function inspect(buffer) {
-    await page.getByLabel("Source", { exact: true }).selectOption("zip");
-    await page.getByLabel(/Project ZIP/).setInputFiles({ name: "agent.zip", mimeType: "application/zip", buffer });
+    await page.locator("#method").selectOption("zip");
+    await page.locator("#zip").setInputFiles({ name: "agent.zip", mimeType: "application/zip", buffer });
     const received = page.waitForResponse(r => r.url().endsWith("/api/application/imports"));
     await page.getByRole("button", { name: "Inspect source" }).click();
     assert.equal((await received).status(), 201);

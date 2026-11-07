@@ -118,8 +118,68 @@ The deployed ZIP path accepted a one-file TypeScript fixture
 `setup_required` with the Python and OpenAI-compatible boundary requirement.
 It used zero model requests.
 
-The browser UI ships on `/bring` as an operator surface for the separate
-product frontend. Its JavaScript syntax passed. The end-to-end browser
-automation could not create a Chromium page in DevMCP, so the deployed
-HTTP acceptance is the live start-to-export proof. The product Figma file
-was unavailable during implementation.
+## Browser acceptance · November 7, 2026
+
+Firefox 142 ran against the deployed Vultr service through an authenticated
+SSH tunnel on revision `6dbadb06a05e007e5565198b3f438ec22959f1cf`.
+It rejected an invalid operator token, inspected the pinned LLM GitHub
+repository and prevented a start while the authorization checkbox was clear.
+Both live starts were single POSTs initiated by the browser Run button.
+
+| Run | Input | Import | Execution | Inference | Verification |
+| --- | --- | ---: | ---: | ---: | --- |
+| `app-6706a75ba00f0277` | `simonw/llm`, GitHub at `b9786a2daa44a995ff7719c655c5338bf685d551` | 1.005 s | 22.271 s | 14 / 16 | Source 3/3, target 3/3, fresh native export 1/1 |
+| `app-4556b7ce134da13c` | Independent electromagnetics knowledge-base CLI, uploaded ZIP, `src.qa` and no preset | 0.001 s | 18.981 s | 7 / 8 | Source 3/3, target 3/3, fresh native export 1/1 |
+
+Both runs used `deepseek-v4.1-flash-1017` → `glm-5.2`, returned
+`compatible_on_sample`, and verified cleanup for all seven gVisor
+containers per run. These are model-only exports. The LLM browser observed
+live tool and inference events. Its original 20-second test timeout fired
+before the 22-second run finished. Firefox reopened that same run and
+downloaded both outputs. The generic browser test ran start to download
+with a longer deadline, then reloaded and reopened its run from the URL.
+The two attempts used 21 requests against 24 authorized. The two prior
+read-only browser checks did not start inference.
+
+[LLM evidence](../data/evaluations/application-browser-llm-2026-11-07.json.gz) ·
+[Generic evidence](../data/evaluations/application-browser-generic-2026-11-07.json.gz) ·
+[Captured Firefox outcome](../data/evaluations/application-browser-generic-2026-11-07.jpg)
+
+The generic ZIP contains unmodified application source and wiki files from
+[`rma67274-boop/wulianwang_zuoye_mrp` at `78e234c09412cabf6a1d6f901329c5b66360d946`](https://github.com/rma67274-boop/wulianwang_zuoye_mrp/tree/78e234c09412cabf6a1d6f901329c5b66360d946).
+The full repository includes a 5.1 MB PDF and exceeds the 4 MiB import cap.
+A runtime-only ZIP preserves the original entry point and data. The
+browser supplies three operator-owned checks for different source formulas
+and page citations. The application archive excludes those checks and
+runs with no app-specific adapter. Its native export sets `OPENAI_BASE_URL`
+and `OPENAI_MODEL` for the original `python -m src.qa` command. Use your
+own API key when applying it locally. The deployed live broker used isolated
+loopback endpoints for the original-runtime check.
+
+Reproduce the archive without touching production state:
+
+```bash
+git init qa-source
+git -C qa-source fetch --depth=1 https://github.com/rma67274-boop/wulianwang_zuoye_mrp.git 78e234c09412cabf6a1d6f901329c5b66360d946
+git -C qa-source archive --format=zip FETCH_HEAD src/qa.py wiki test_all_features.py > qa-agent.zip
+```
+
+The tested ZIP SHA-256 is
+`ff329acccdc47917ab9e951fb39d88762d0a31bd58fae6694f2724905a26d980`.
+The normalized source digest is
+`sha256:d5245d53b14cb6fcff6ac47992b5b069861033b8d1d4f210cf265c8b2c1488a3`.
+
+With the private tunnel open, the recorded walkthrough can use either run
+ID above without spending inference. The [browser harness](../tests/browser_application.mjs)
+repeats the LLM import, checks authorization and downloads the saved run by
+default. Set `REFIT_APPLICATION_TOKEN` locally. Use
+`REFIT_BROWSER_REOPEN=app-6706a75ba00f0277` for the browser-started LLM run.
+Only pass `--execute` (16 requests) or `--execute-generic` with
+`REFIT_GENERIC_ZIP=/path/to/qa-agent.zip` (8 requests) after reserving the
+budget. The verified deployment uses a private tunnel for operator
+demonstrations. Public evidence and authenticated execution remain separate.
+
+The [Figma architecture](https://www.figma.com/design/jh0XDbYZzwv90vAOnWw0Zu/Untitled?node-id=56-2)
+guided the persistent run ID and outcome/evidence separation. The recorded-only
+board predates this live service. Both verified compatibility and verified
+repair may export when fresh native verification passes.

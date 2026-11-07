@@ -107,8 +107,8 @@ try {
   if (startLive) {
     if (generic) {
       assert(genericArchive, "Set REFIT_GENERIC_ZIP to the pinned QA runtime snapshot");
-      await page.getByLabel("Source", { exact: true }).selectOption("zip");
-      await page.getByLabel(/Project ZIP/).setInputFiles(genericArchive);
+      await page.locator("#method").selectOption("zip");
+      await page.locator("#zip").setInputFiles(genericArchive);
       await page.getByRole("button", { name: "Inspect source" }).click();
       await page.getByText(/Provide a Python module/).waitFor();
       await page.getByText("Python entry and verification cases").click();
