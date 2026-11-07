@@ -1,0 +1,125 @@
+# Bring your agent
+
+The private Vultr operator service imports application source, runs the original
+application with two Vultr models and verifies a portable export in a fresh
+native process. The public evidence site is a separate service.
+
+## Judge-facing live walkthrough
+
+1. Using an SSH account authorized to forward ports to the Vultr VM, open
+   `ssh -N -L 8098:127.0.0.1:8098 root@80.240.30.92`.
+2. Open [Bring your agent](http://127.0.0.1:8098/bring). Obtain the operator token
+   privately on the host from `/etc/refit/application.env`. Paste it into the
+   page. The token stays in the page for this session.
+3. Inspect GitHub repository `simonw/llm` at
+   `b9786a2daa44a995ff7719c655c5338bf685d551`. Refit detects the Python
+   CLI, model configuration seam and original `llm_version` tool.
+4. Select `deepseek-v4.1-flash-1017` and `glm-5.2`. Approve the 24-request
+   ceiling and click **Run migration**. Follow the real model, case, tool and
+   cleanup events. Each terminal run can be reopened by its ID.
+5. Download the verified configuration when the fresh export check passes.
+   On failure, download the evidence and inspect the failed phase.
+
+The operator service requires authentication and binds to loopback. For a
+non-SSH deployment, put it behind an authenticated HTTPS ingress with SSE
+buffering disabled. Never expose port 8098 directly. The host installer is
+`bash deploy/launch-application.sh` from a checkout under `/opt`, with Docker,
+gVisor and `/etc/refit/inference.env` configured. It allows one active run,
+up to 24 requests per run and 48 request slots reserved per UTC day. There
+are no automatic paid retries.
+
+## Supported import and execution
+
+| Entry | Contract |
+| --- | --- |
+| GitHub | Public pinned commit. For a private repository, supply a scoped read token for the archive request. The service discards the token after the request and strips it on redirect to GitHub's signed archive URL. |
+| Project ZIP | At most 4 MiB compressed, 12 MiB expanded, 1,500 entries and 512 KiB per file. Traversal, symlinks, special files, known credential files and dependency caches are rejected. |
+| Local CLI | `python -m scripts.application_cli /path/to/project --port 8098` imports to a locally running operator service. Set its `REFIT_APPLICATION_TOKEN`. Supply `--authorize-requests 24` to start and `--export config.json` to save a verified result. Source can stay on the developer's machine with local Docker and the same gVisor image. |
+
+The supported runtime is Python 3.11, a Python module entry point and
+non-streaming OpenAI-compatible Chat Completions. The reviewed image includes
+LLM 0.37.1 and its dependencies. It does not install imported projects or
+execute build hooks. The LLM preset discovers the native CLI and uses its
+`extra-openai-models.yaml` seam. Other Python agents may supply
+`{"module":"agent","args":["{prompt}"],"cases":[...]}` in the form or through
+`--setup setup.json`. Each case includes a unique `name`, a `split` of
+`train`, `validation` or `holdout`, a `prompt` and expected `stdout`.
+Supply all three splits. Store evaluation files outside the source ZIP.
+The application must honor `OPENAI_BASE_URL` and `OPENAI_MODEL`. Native
+TypeScript, streaming, custom provider protocols, arbitrary dependencies,
+live external tools and persistent production services require additional
+runtime support.
+
+The app receives only the current case input. Other cases and expected
+outputs remain host-side. Fresh containers give each model a clean source
+snapshot and state directory. The broker sends model messages to Vultr and
+keeps its credential outside the sandbox. It enforces the selected model,
+request caps and a fixed inference envelope. Generic environment-seam
+applications can receive compatible exports. An instruction repair requires
+an explicit native instruction seam, currently available for the LLM preset.
+
+## Use the native export
+
+For the verified LLM run, with the original app installed at the pinned
+revision, create a clean native model configuration directory:
+
+```bash
+export LLM_USER_PATH="$(mktemp -d)"
+python -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["extra-openai-models.yaml"],indent=2))' app-3df57a3a263249eb-artifact.json > "$LLM_USER_PATH/extra-openai-models.yaml"
+llm keys set vultr
+llm prompt --no-stream --no-log --chain-limit 2 -m glm-5.2 --tool llm_version -- 'Use llm_version. Reply with only the version it returns.'
+```
+
+The configuration contains the provider URL and key alias. Supply your own
+key with the original app. The Refit fresh check loaded the exported model
+and arguments into the original runner with its endpoint routed through the
+isolated broker.
+
+## Live evidence · November 7, 2026
+
+Vultr run `app-3df57a3a263249eb` started through the deployed authenticated
+HTTP API at Refit revision `0d4d2bf2cf59a63eddab6b80727d8bae03090a59`.
+The deployed runtime image was
+`sha256:12f275f8989d1dcd68485e490f89de90d26e79436a3f1cddf92feab674c6bf92`.
+
+| Check | Observed |
+| --- | --- |
+| Import | 122 files in 0.279 s, source SHA-256 `597977e191dc7e02b35ead9879958d1502b79ecb17121ad9ed8283ee43393470` |
+| Runtime preparation | 0.024 s for pinned image lookup. First container start event to first inference request was 1.032 s. |
+| Execution | 25.797 s and 14 Vultr requests of 24 authorized |
+| Source and replacement | 3/3 each. Every partition independently matched stdout and observed the original `llm_version` tool result. |
+| Export | `compatible_on_sample`, fresh GLM verification 1/1 in 3.094 s and 2 requests. No repair was needed. |
+| Cleanup | All seven live gVisor containers verified absent. The separate hostile and runaway probes used zero inference, with 2/2 verified cleanup. |
+| Resources | One case container at a time. Network none, unprivileged UID, read-only root, 2 CPUs, 4 GiB memory ceiling, 128 PIDs and 128 MiB temporary filesystem. |
+
+[Live evidence](../data/evaluations/application-live-2026-11-07.json.gz) and
+[host containment receipts](../data/evaluations/application-containment-2026-11-07.json)
+are durable snapshots of the observed runs. The uncompressed live report
+SHA-256 is `56bb71e8c483671b318b4c810a683734c2d995e486f0f8c0f560399bd5e4f212`.
+
+The three evaluation partitions vary requests for one real tool behavior.
+They do not establish compatibility for unrelated application tools or
+business workflows. Igor's pinned `dev` revision
+`36b3e323e79a66af86b24fd149f93cc95e7a37b1` uses the TypeScript Vercel AI SDK
+ToolLoopAgent with provider routing and external services. Its execution
+requires a Node runtime and offline tool and state seams. The current release
+covers its source inspection, with execution blocked at setup. A repaired
+regression in an independent application and a private GitHub import using
+a real repository token remain unverified. The existing mini-SWE rejection
+remains recorded separately.
+
+[Engineering CI](https://github.com/Davemafy/refit/actions/runs/42352597082),
+[application CI](https://github.com/Davemafy/refit/actions/runs/42352597116)
+and [public acceptance](https://github.com/Davemafy/refit/actions/runs/42352597137)
+passed on deployment revision `eb369028c43cdf28480862f00ea59ff32857e089`.
+
+The deployed ZIP path accepted a one-file TypeScript fixture
+(`import-7cfad4f61d3a0029`). Starting it returned HTTP 422
+`setup_required` with the Python and OpenAI-compatible boundary requirement.
+It used zero model requests.
+
+The browser UI ships on `/bring` as an operator surface for the separate
+product frontend. Its JavaScript syntax passed. The end-to-end browser
+automation could not create a Chromium page in DevMCP, so the deployed
+HTTP acceptance is the live start-to-export proof. The product Figma file
+was unavailable during implementation.
