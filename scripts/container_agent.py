@@ -95,8 +95,9 @@ def validate_completion(value, models):
         raise ValueError('invalid completion tool schemas')
 
 
-def validate_result(result, description, config):
-    if result['status'] not in ('verified_adaptation', 'compatible_on_sample'):
+def validate_result(result, description, config, verification_only=False):
+    statuses = ('export_verified_original_runner',) if verification_only else ('verified_adaptation', 'compatible_on_sample')
+    if result['status'] not in statuses:
         raise ValueError('migration did not pass shared engine gates')
     if result['export']['model'] != config['target'] or result['export']['revision'] != config['revision']:
         raise ValueError('export target identity mismatch')
@@ -116,10 +117,12 @@ def validate_result(result, description, config):
             raise ValueError('native state fingerprint mismatch')
 
 
-def run(config, image, output, execute=False, recorded=None):
+def run(config, image, output, execute=False, recorded=None, verify_export=None):
     validate_config(config)
     if execute and recorded is not None:
         raise ValueError('Recorded transport recovery cannot make new inference calls')
+    if verify_export is not None and not execute:
+        raise ValueError('Fresh export verification requires explicit --execute')
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     root = Path(__file__).resolve().parents[1]
     helper = (root / config['application_helper']).resolve()
@@ -141,7 +144,7 @@ def run(config, image, output, execute=False, recorded=None):
               'engine_revision': capture_revision(Path(__file__).resolve().parents[1]),
               'image_id': image_info['Id'], 'container_name': name,
               'execute': execute, 'completions': [], 'events': [], 'native_cases': [],
-              'mode': 'recorded_transport_recovery' if prior else ('live' if execute else 'inspect'),
+              'mode': 'recorded_transport_recovery' if prior else ('fresh_export_verification' if verify_export else ('live' if execute else 'inspect')),
               'recorded_source_sha256': hashlib.sha256(recorded.read_bytes()).hexdigest() if prior else None}
     proc = None
     result = None
@@ -160,7 +163,10 @@ def run(config, image, output, execute=False, recorded=None):
                                     env=docker_env)
             os.set_blocking(proc.stdin.fileno(), False)
             os.set_blocking(proc.stdout.fileno(), False)
-            send(proc, {**config, 'inspect_only': not (execute or prior)}, min(deadline, time.monotonic() + 15))
+            message = {**config, 'inspect_only': not (execute or prior)}
+            if verify_export is not None:
+                message['verify_export'] = json.loads(verify_export.read_text())
+            send(proc, message, min(deadline, time.monotonic() + 15))
             while result is None:
                 value = frame(proc, buffer, min(deadline, time.monotonic() + 120))
                 kind = value.get('type')
@@ -212,6 +218,7 @@ def run(config, image, output, execute=False, recorded=None):
                     save()
                 elif kind == 'result':
                     result = value
+                    send(proc, {'type': 'result_ack'}, min(deadline, time.monotonic() + 15))
                 else:
                     raise ValueError('unknown external worker frame')
             proc.wait(timeout=15)
@@ -220,6 +227,8 @@ def run(config, image, output, execute=False, recorded=None):
     except Exception as error:
         record['error_type'] = type(error).__name__
         record['error_message'] = str(error)[:250]
+        record['incomplete_frame_bytes'] = len(buffer)
+        record['incomplete_frame_sha256'] = hashlib.sha256(buffer).hexdigest()
     finally:
         if proc is not None:
             if proc.poll() is None:
@@ -246,7 +255,7 @@ def run(config, image, output, execute=False, recorded=None):
                         cleanup['verified'] and not record.get('error_type'))
         if verified:
             try:
-                validate_result(result, record['description'], config)
+                validate_result(result, record['description'], config, verification_only=verify_export is not None)
             except (KeyError, TypeError, ValueError) as error:
                 verified = False
                 record['error_type'] = type(error).__name__
@@ -275,10 +284,17 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--recorded', type=Path, help='Exact-request replay of saved real responses; never bills')
+    parser.add_argument('--verify-export', type=Path, help='Verify an already exported config in its original runner')
+    parser.add_argument('--max-requests', type=int, help='Lower, never raise, the manifest request ceiling')
     args = parser.parse_args()
     previous = os.umask(0o077)
     try:
-        run(json.loads(args.manifest.read_text()), args.image, args.output, args.execute, args.recorded)
+        config = json.loads(args.manifest.read_text())
+        if args.max_requests is not None:
+            if not 1 <= args.max_requests <= config['max_requests']:
+                parser.error('request override must lower the manifest ceiling')
+            config['max_requests'] = args.max_requests
+        run(config, args.image, args.output, args.execute, args.recorded, args.verify_export)
     finally:
         os.umask(previous)
 

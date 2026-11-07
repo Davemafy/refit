@@ -2,12 +2,37 @@
 import json
 from pathlib import Path
 import unittest
+import os
+import subprocess
+import sys
+import time
 
-from scripts.container_agent import command, validate_completion, validate_config
+from scripts.container_agent import command, validate_completion, validate_config, frame, send
 from scripts.migration_engine import AgentContract, AgentProfile, ReplayCase, evaluate
 
 
 class ContainerAdapterTests(unittest.TestCase):
+    def test_large_final_result_stays_attached_until_acknowledged(self):
+        source = ("import sys\nfrom integrations.container_worker import emit\n"
+                  "sys.stdout=sys.stderr\nemit({'type':'result','payload':'x'*1000000})\n")
+        proc = subprocess.Popen([sys.executable, '-u', '-c', source], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+        try:
+            os.set_blocking(proc.stdin.fileno(), False)
+            os.set_blocking(proc.stdout.fileno(), False)
+            value = frame(proc, bytearray(), time.monotonic() + 5)
+            self.assertEqual(len(value['payload']), 1000000)
+            time.sleep(.05)
+            self.assertIsNone(proc.poll())
+            send(proc, {'type':'result_ack'}, time.monotonic() + 2)
+            self.assertEqual(proc.wait(timeout=3), 0)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=3)
+            proc.stdin.close()
+            proc.stdout.close()
+
     def test_no_host_mounts_credentials_network_or_privileges(self):
         args = command('sha256:pinned', 'refit-external-example')
         self.assertEqual(args[args.index('--runtime') + 1], 'runsc')

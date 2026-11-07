@@ -43,7 +43,8 @@ jobs:
           from pathlib import Path
           plan = json.loads(Path('experiments/external-agent-run.json').read_text())
           changed = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD^', 'HEAD'], text=True).splitlines()
-          if 'experiments/external-agent-run.json' not in changed or plan['execute'] is not True:
+          if ('experiments/external-agent-run.json' not in changed or plan['execute'] is not True
+              or plan.get('mode', 'migrate') != 'migrate'):
               print('No explicit new execution plan. Zero inference calls.')
               sys.exit(0)
           config = json.loads(Path('integrations/retail/manifest.json').read_text())
@@ -59,6 +60,28 @@ jobs:
               --image refit-original-retail --output /tmp/retail-recovery \
               --recorded data/evaluations/retail-native-001-partial.json.gz
           fi
+      - name: Explicit fresh verification of the recovered export, within remaining mission budget
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python - <<'PY'
+          import gzip, json, subprocess, sys
+          from pathlib import Path
+          plan = json.loads(Path('experiments/external-agent-run.json').read_text())
+          changed = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD^', 'HEAD'], text=True).splitlines()
+          if ('experiments/external-agent-run.json' not in changed or plan['execute'] is not True
+              or plan.get('mode') != 'verify_export'):
+              print('No explicit fresh-export verification plan. Zero new inference calls.')
+              sys.exit(0)
+          prior = json.loads(gzip.decompress(Path('data/evaluations/retail-native-001-partial.json.gz').read_bytes()))
+          cap = plan['max_requests']
+          assert type(cap) is int and 1 <= cap <= 64
+          assert prior['model_requests'] + cap <= 400
+          subprocess.run([sys.executable, '-m', 'scripts.container_agent',
+              '--manifest', 'integrations/retail/manifest.json', '--image', 'refit-original-retail',
+              '--output', '/tmp/retail-export-live', '--execute', '--max-requests', str(cap),
+              '--verify-export', '/tmp/retail-recovery/agent-config.json'], check=True)
+          PY
       - name: Preserve inspect, failed or successful live evidence and exported configuration
         if: always()
         uses: actions/upload-artifact@v4
@@ -68,4 +91,5 @@ jobs:
             /tmp/retail-inspect
             /tmp/retail-live
             /tmp/retail-recovery
+            /tmp/retail-export-live
           retention-days: 30

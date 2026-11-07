@@ -13,6 +13,12 @@ WIRE = sys.stdout
 def emit(value):
     WIRE.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
     WIRE.flush()
+    if value.get('type') == 'result':
+        # Keep the container's attached stream alive until the host has read
+        # the complete final frame, including large native transcripts.
+        acknowledgment = json.loads(sys.stdin.readline())
+        if acknowledgment.get('type') != 'result_ack':
+            raise RuntimeError('Host did not acknowledge complete result')
 
 
 class BrokerClient:
@@ -46,6 +52,15 @@ def main():
         emit({"type": "result", "status": "inspected", "metadata": metadata})
         return
     client = BrokerClient()
+    if config.get('verify_export') is not None:
+        exported = config['verify_export']
+        verification = adapter.verify_export(client, config, exported)
+        emit({'type': 'result', 'status': 'export_verified_original_runner',
+              'verified': verification['passed'], 'report': {'evaluations': {}},
+              'export': exported if verification['passed'] else None,
+              'original_runner_verification': verification, 'metadata': metadata,
+              'model_requests': client.requests})
+        return
     report = migrate(
         client, contract, config["source"], config["target"], config["source"], baseline,
         adapter.cases(config, "train"),
