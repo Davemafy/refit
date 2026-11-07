@@ -50,6 +50,48 @@ class ApplicationOracleTests(unittest.TestCase):
         self.assertEqual(result["seam"], "openai-env")
         self.assertNotIn("stdout", result["cases"][0])
 
+    def test_original_instruction_environment_and_native_export(self):
+        import base64
+        from scripts.application_run import configuration, native_export
+        from integrations.application.worker import instruction_environment
+        case = self.sample(stdout="OK")
+        cases = [{**case, "name": split, "split": split, "prompt": split}
+                 for split in ("train", "validation", "holdout")]
+        snapshot = {"discovery": {"runtime": "python", "preset": None, "setup": None},
+                    "files": {"agent.py": base64.b64encode(b"print(1)").decode()},
+                    "source_sha256": "a" * 64, "repository": None, "revision": None}
+        supplied = {"module": "agent", "args": ["{prompt}"], "cases": cases,
+                    "instruction_env": "SYSTEM_PROMPT", "instruction_base": "Keep original tool rules."}
+        setup = configuration(snapshot, supplied)
+        self.assertEqual(setup["seam"], "instruction-env")
+        self.assertEqual(instruction_environment({**setup, "instructions": ""}),
+                         {"SYSTEM_PROMPT": "Keep original tool rules."})
+        patch = "Be concise while preserving all tool rules."
+        exported = native_export(snapshot, setup, "glm-5.2", patch)
+        self.assertEqual(instruction_environment(exported)["SYSTEM_PROMPT"],
+                         "Keep original tool rules.\n\n" + patch)
+        self.assertEqual(exported["environment"]["SYSTEM_PROMPT"],
+                         "Keep original tool rules.\n\n" + patch)
+
+    def test_instruction_seam_cannot_override_system_runtime_variables(self):
+        import base64
+        from scripts.application_run import configuration
+        from integrations.application.worker import instruction_environment
+        snapshot = {"discovery": {"runtime": "python", "preset": None, "setup": None},
+                    "files": {"agent.py": base64.b64encode(b"print(1)").decode()}}
+        cases = [{**self.sample(stdout="OK"), "name": split, "split": split, "prompt": split}
+                 for split in ("train", "validation", "holdout")]
+        for key in ("OPENAI_API_KEY", "PYTHONPATH", "AGENT_RESET_DB", "NODE_OPTIONS"):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                configuration(snapshot, {"module": "agent", "args": ["{prompt}"], "cases": cases,
+                                         "instruction_env": key, "instruction_base": "Policy"})
+            with self.assertRaises(ValueError):
+                instruction_environment({"seam": "instruction-env", "instruction_env": key,
+                                         "instruction_base": "Policy", "instructions": "More"})
+        with self.assertRaises(ValueError):
+            configuration(snapshot, {"module": "agent", "args": ["{prompt}"], "cases": cases,
+                                     "instruction_env": "SYSTEM_PROMPT"})
+
     def test_boolean_is_not_number(self):
         case = self.sample(json_contains={"count": 1})
         self.assertFalse(evaluate(case, '{"count":true}', [], False)["passed"])

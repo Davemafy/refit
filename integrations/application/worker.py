@@ -15,6 +15,22 @@ def send(data):
     print(json.dumps(data, separators=(",", ":")), flush=True)
 
 
+def instruction_environment(cfg):
+    if cfg["seam"] != "instruction-env":
+        return {}
+    import re
+    key = cfg["instruction_env"]
+    if not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}_(?:PROMPT|INSTRUCTIONS)", key):
+        raise ValueError("Invalid instruction environment key")
+    base = cfg["instruction_base"]
+    extra = cfg.get("instructions", "")
+    if (not isinstance(base, str) or not 1 <= len(base) <= 4096 or
+            not isinstance(extra, str) or len(extra) > 4096 or
+            "\x00" in base or "\x00" in extra):
+        raise ValueError("Invalid native instruction text")
+    return {key: base + ("\n\n" + extra if extra else "")}
+
+
 def main():
     cfg = json.loads(sys.stdin.buffer.readline(20 * 1024 * 1024))
     with tempfile.TemporaryDirectory(prefix="application-") as tmp:
@@ -69,6 +85,7 @@ def main():
                "OPENAI_BASE_URL": endpoint, "OPENAI_MODEL": cfg["model"],
                "OPENAI_API_KEY": "refit-loopback", "OPENAI_MAX_RETRIES": "0",
                "LLM_USER_PATH": str(home)}
+        env.update(instruction_environment(cfg))
         if cfg["seam"] == "llm":
             (home / "extra-openai-models.yaml").write_text(json.dumps([{
                 "model_id": cfg["model"], "model_name": cfg["model"],

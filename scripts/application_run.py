@@ -50,8 +50,20 @@ def configuration(snapshot, supplied=None):
         return {**llm_setup(), "seam": "llm"}
     runtime = snapshot["discovery"]["runtime"]
     key = "entry" if runtime == "typescript" else "module"
-    if not isinstance(supplied, dict) or set(supplied) != {key, "args", "cases"}:
+    required = {key, "args", "cases"}
+    optional_seam = {"instruction_env", "instruction_base"}
+    supplied_keys = set(supplied) if isinstance(supplied, dict) else set()
+    if not required <= supplied_keys or supplied_keys - required not in (set(), optional_seam):
         raise ValueError(snapshot["discovery"]["setup"] or "Provide an entry, arguments and evaluation cases.")
+    if optional_seam <= supplied_keys:
+        instruction_env = supplied["instruction_env"]
+        instruction_base = supplied["instruction_base"]
+        if (not isinstance(instruction_env, str) or
+                not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}_(?:PROMPT|INSTRUCTIONS)", instruction_env)):
+            raise ValueError("Use an explicit, nonprivileged existing instruction environment variable.")
+        if (not isinstance(instruction_base, str) or not 1 <= len(instruction_base) <= 4096
+                or "\x00" in instruction_base):
+            raise ValueError("Provide the original application instruction text, without changes.")
     entry, args, cases = (supplied[name] for name in (key, "args", "cases"))
     if runtime == "typescript":
         if (not isinstance(entry, str) or entry not in snapshot["files"]
@@ -98,7 +110,7 @@ def configuration(snapshot, supplied=None):
         prompts.add(case["prompt"])
     if {case["split"] for case in cases} != {"train", "validation", "holdout"}:
         raise ValueError("Each split needs at least one independent case.")
-    return {**supplied, "seam": "openai-env"}
+    return {**supplied, "seam": "instruction-env" if optional_seam <= supplied_keys else "openai-env"}
 
 
 def native_export(snapshot, setup, model, instructions=""):
@@ -107,6 +119,9 @@ def native_export(snapshot, setup, model, instructions=""):
               "revision": snapshot["revision"], "args": setup["args"],
               **{key: setup[key] for key in ("entry", "module") if key in setup},
               "instructions": instructions, "seam": setup["seam"]}
+    if setup["seam"] == "instruction-env":
+        config["instruction_env"] = setup["instruction_env"]
+        config["instruction_base"] = setup["instruction_base"]
     if setup["seam"] == "llm":
         config["extra-openai-models.yaml"] = [{"model_id": model, "model_name": model,
             "api_base": ENDPOINT.removesuffix("/chat/completions"), "api_key_name": "vultr",
@@ -114,6 +129,10 @@ def native_export(snapshot, setup, model, instructions=""):
     else:
         config["environment"] = {"OPENAI_MODEL": model,
             "OPENAI_BASE_URL": ENDPOINT.removesuffix("/chat/completions")}
+        if setup["seam"] == "instruction-env":
+            config["environment"][setup["instruction_env"]] = (
+                setup["instruction_base"] +
+                ("\n\n" + instructions if instructions else ""))
     config["integrity_sha256"] = fingerprint(config)
     return config
 
@@ -149,7 +168,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
         state = None
         name = "refit-app-" + secrets.token_hex(10)
         proc = None
-        if profile.instructions and setup["seam"] != "llm":
+        if profile.instructions and setup["seam"] not in ("llm", "instruction-env"):
             return {"case": case["name"], "passed": False, "trace": [], "error": "native_instruction_seam_required",
                     "verdict": {"passed": False, "unsafe_attempts": 0}, "model_requests": 0}
         try:
@@ -160,11 +179,14 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
             os.set_blocking(proc.stdout.fileno(), False)
             runtime = native or setup
             args = runtime["args"]
-            if profile.instructions:
+            if profile.instructions and setup["seam"] == "llm":
                 args = ["prompt", "--system", profile.instructions, *args[1:]]
             send(proc, {"files": snapshot["files"], "module": runtime.get("module"),
                         "entry": runtime.get("entry"), "args": args,
                         "model": model, "prompt": case["prompt"], "seam": runtime["seam"],
+                        "instruction_env": runtime.get("instruction_env"),
+                        "instruction_base": runtime.get("instruction_base"),
+                        "instructions": profile.instructions,
                         "timeout": CASE_SECONDS}, min(limit, time.monotonic() + 12))
             event("sandbox_started", {"case": case["name"], "phase": phase, "model": model, "container": name})
             buffer = bytearray()
@@ -286,8 +308,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
     class RepairBroker:
         def complete(self, model, messages):
             check()
-            if setup["seam"] != "llm":
-                raise ValueError("A native instruction seam is required to apply and verify a repair.")
+            if setup["seam"] not in ("llm", "instruction-env"):
+                raise ValueError("An explicit native instruction seam is required for a repair.")
             event("inference_requested", {"model": model, "case": "repair", "number": broker.requests + 1})
             response = broker.complete(model, messages, max_tokens=900)
             event("inference_completed", {"model": model, "case": "repair", "number": broker.requests,

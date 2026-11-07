@@ -117,8 +117,18 @@ outputs remain host-side. Fresh containers give each model a clean source
 snapshot and state directory. The broker sends model messages to Vultr and
 keeps its credential outside the sandbox. It enforces the selected model,
 request caps and a fixed inference envelope. Generic environment-seam
-applications can receive compatible exports. An instruction repair requires
-an explicit native instruction seam, currently available for the LLM preset.
+applications can receive compatible exports. An instruction repair requires an explicit native instruction seam.
+In addition to the LLM preset, applications that **already read their system
+instructions from an environment variable** can opt into
+`"instruction_env":"SYSTEM_PROMPT"` and
+`"instruction_base":"<the original system instruction>"` alongside
+`module` or `entry`, `args`, and `cases`. Refit preserves those original
+instructions and appends only a candidate supplemental instruction for
+independent validation. Fresh export verification loads that configuration
+into the original application runtime. This path is implemented and
+unit-tested, but **has not yet demonstrated a paid independent-agent repair**.
+An application without a genuine configurable instruction seam must still
+report an unsupported repair rather than silently overwrite its prompts.
 
 ## Use the native export
 
