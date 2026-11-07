@@ -1,6 +1,7 @@
 """Container-only adapter loader. No inference key or network is required."""
 import importlib
 import json
+import os
 import sys
 import traceback
 
@@ -11,8 +12,18 @@ WIRE = sys.stdout
 
 
 def emit(value):
-    WIRE.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
-    WIRE.flush()
+    data = (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+    sent = 0
+    # Unbuffered TextIO can lose the unwritten suffix when the runtime's
+    # stdout pipe accepts only part of a large write (observed at 65,536 bytes).
+    while sent < len(data):
+        try:
+            written = os.write(WIRE.fileno(), data[sent:sent + 16384])
+        except InterruptedError:
+            continue
+        if written <= 0:
+            raise RuntimeError('Worker output pipe closed')
+        sent += written
     if value.get('type') == 'result':
         # Keep the container's attached stream alive until the host has read
         # the complete final frame, including large native transcripts.

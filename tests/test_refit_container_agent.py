@@ -6,12 +6,27 @@ import os
 import subprocess
 import sys
 import time
+from unittest.mock import Mock, patch
 
 from scripts.container_agent import command, validate_completion, validate_config, frame, send
 from scripts.migration_engine import AgentContract, AgentProfile, ReplayCase, evaluate
 
 
 class ContainerAdapterTests(unittest.TestCase):
+    def test_partial_stdout_writes_preserve_complete_result(self):
+        from integrations import container_worker
+        received = bytearray()
+        def short_write(fd, data):
+            count = min(len(data), 1024)
+            received.extend(data[:count])
+            return count
+        with patch.object(container_worker, 'WIRE', Mock()), \
+                patch.object(container_worker.os, 'write', side_effect=short_write), \
+                patch.object(container_worker.sys, 'stdin', Mock(readline=lambda: '{"type":"result_ack"}\n')):
+            container_worker.emit({'type': 'result', 'payload': 'é' * 100000})
+        self.assertTrue(received.endswith(b'\n'))
+        self.assertEqual(json.loads(received)['payload'], 'é' * 100000)
+
     def test_large_final_result_stays_attached_until_acknowledged(self):
         source = ("import sys\nfrom integrations.container_worker import emit\n"
                   "sys.stdout=sys.stderr\nemit({'type':'result','payload':'x'*1000000})\n")
