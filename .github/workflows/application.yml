@@ -1,0 +1,40 @@
+name: Verify application import and containment
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/application*.py'
+      - 'scripts/smoke_application.py'
+      - 'integrations/application/**'
+      - 'web/application/**'
+      - '.github/workflows/application.yml'
+permissions:
+  contents: read
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the application sandbox
+        run: |
+          sudo bash deploy/install-gvisor.sh
+          docker build -f integrations/application/Dockerfile -t refit-application .
+      - name: Verify HTTP import and disposable containment without inference
+        env:
+          REFIT_APPLICATION_TOKEN: test-only-operator-application-ci-token
+        run: |
+          python -m scripts.application_http --state /tmp/refit-application-http &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for attempt in {1..15}; do
+            if curl --max-time 2 -fsS http://127.0.0.1:8098/bring >/dev/null; then break; fi
+            sleep 1
+          done
+          python -m scripts.smoke_application
+          python -m scripts.verify_application_sandbox

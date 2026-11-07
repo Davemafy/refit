@@ -12,8 +12,8 @@ import re
 import secrets
 
 
-RUN_ID = re.compile(r"(?:live|diagnostic)-[0-9a-f]{16}\Z")
-ALLOWED_MODES = {"live", "live_diagnostic"}
+RUN_ID = re.compile(r"(?:live|diagnostic|app)-[0-9a-f]{16}\Z")
+ALLOWED_MODES = {"live", "live_diagnostic", "application_live"}
 
 
 class RunStore:

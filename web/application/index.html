@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bring your agent · Refit</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,sans-serif;background:#111411;color:#ebf1ea}*{box-sizing:border-box}body{margin:auto;max-width:760px;padding:26px 20px 60px}header{font-size:20px;font-weight:650}h1{font-size:clamp(30px,6vw,48px);letter-spacing:-.055em;margin:46px 0 8px}h2{font-size:19px;margin:0 0 16px}p{line-height:1.55;color:#a8b4aa}section{margin-top:20px;padding:20px;border:1px solid #303b31;background:#1b201b;border-radius:12px}label{display:block;margin:10px 0;color:#cbd9ca}input,select,textarea{display:block;width:100%;border:1px solid #445244;border-radius:7px;background:#141a14;color:inherit;font:inherit;margin-top:5px;padding:9px}input[type=checkbox]{display:inline;width:auto;margin-right:7px}button{background:#b5e8a3;border:0;border-radius:7px;color:#1b2719;font:600 14px system-ui;padding:10px 14px;cursor:pointer;margin:5px 8px 5px 0}button:disabled{opacity:.5;cursor:default}button.secondary{background:#303b31;color:#ebf1ea}.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:18rem;overflow:auto}a{color:#b5e8a3}[role=alert]{color:#ffd2c7}summary{cursor:pointer}[hidden]{display:none!important}:focus-visible{outline:2px solid #b5e8a3;outline-offset:3px}@media(max-width:480px){.pair{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>Refit</header>
+<h1>Bring your agent</h1>
+<p>Test a model change against the behavior your application depends on.</p>
+<section>
+<h2>Import and inspect</h2>
+<form id="importForm">
+<label>Operator access token<input id="token" type="password" autocomplete="off" required></label>
+<label>Source<select id="method"><option value="github">GitHub repository</option><option value="zip">Project ZIP</option></select></label>
+<div id="githubFields">
+<div class="pair">
+<label>Repository<input id="repository" placeholder="owner/repository" autocomplete="off"></label>
+<label>Commit SHA<input id="revision" placeholder="Full 40-character SHA" autocomplete="off"></label>
+</div>
+<label>Repository read token, for private source<input id="repoToken" type="password" autocomplete="off"></label>
+</div>
+<label id="zipField" hidden>Project ZIP, up to 4 MiB<input id="zip" type="file" accept=".zip,application/zip"></label>
+<button type="submit">Inspect source</button>
+</form>
+<p id="inspection" role="status" hidden></p>
+</section>
+<section id="runSection" hidden>
+<h2>Choose models</h2>
+<form id="runForm">
+<div class="pair">
+<label>Source model<select id="source"></select></label>
+<label>Replacement model<select id="target"></select></label>
+</div>
+<details id="setupPanel"><summary>Python entry and verification cases</summary>
+<label>Application contract JSON<textarea id="setup" rows="7" spellcheck="false" placeholder='{"module":"agent","args":["{prompt}"],"cases":[...]}'></textarea></label>
+</details>
+<label>Maximum Vultr requests<input id="budget" type="number" min="1" max="24" value="24" required></label>
+<label><input id="authorize" type="checkbox" required>I authorize this inference budget.</label>
+<button id="start" type="submit">Run migration</button>
+</form>
+</section>
+<section id="live" hidden>
+<h2 id="outcome" role="status">Migration</h2>
+<p id="summary"></p>
+<button id="cancel" class="secondary">Cancel</button>
+<button id="artifact" hidden>Download verified configuration</button>
+<button id="evidence" class="secondary">Download evidence</button>
+<details><summary>Execution and sandbox events</summary><pre id="events"></pre></details>
+</section>
+<p id="error" role="alert"></p>
+<script>
+const $ = id => document.getElementById(id);
+let imported, runId, cursor=0;
+const terminal = status => !["running","cancelling"].includes(status);
+const labels = {compatible_on_sample:"Verified compatibility",verified_adaptation:"Verified repair",
+  export_failed_original_runner_verification:"Export withheld after fresh verification",
+  source_baseline_insufficient:"Source did not pass verification",cancelled:"Cancelled",
+  interrupted:"Interrupted",inference_budget_exhausted:"Inference budget exhausted",failed:"Execution stopped"};
+const path = "/api/application";
+const runPath = () => path + "/runs/" + runId;
+const auth = () => ({Authorization:"Bearer "+$("token").value});
+async function api(url, data) {
+  const options = {headers:auth()};
+  if (data !== undefined) Object.assign(options,{method:"POST",body:JSON.stringify(data),
+    headers:{...options.headers,"Content-Type":"application/json"}});
+  const response = await fetch(url,options);
+  const payload = await response.json();
+  if (!response.ok) throw Error(payload.error?.message || "Request failed");
+  return payload;
+}
+function report(error) { $("error").textContent=error.message; }
+function busy(form, value) { form.querySelector('button[type=submit]').disabled=value; }
+$("method").onchange=()=>{const zip=$("method").value==="zip";$("zipField").hidden=!zip;$("githubFields").hidden=zip;};
+$("importForm").onsubmit=async event=>{
+  event.preventDefault(); $("error").textContent=""; $("runSection").hidden=true; busy(event.target,true);
+  try {
+    const capabilities=await api(path);
+    const data={method:$("method").value};
+    if (data.method==="github") Object.assign(data,{repository:$("repository").value.trim(),
+      revision:$("revision").value.trim(),token:$("repoToken").value});
+    else {
+      const file=$("zip").files[0];
+      if (!file || file.size>4*1024*1024) throw Error("Select a ZIP no larger than 4 MiB.");
+      const bytes=new Uint8Array(await file.arrayBuffer()); let encoded="";
+      for(let i=0;i<bytes.length;i+=32768) encoded+=String.fromCharCode(...bytes.subarray(i,i+32768));
+      data.archive=btoa(encoded);
+    }
+    imported=await api(path+"/imports",data);
+    $("inspection").hidden=false;
+    const d=imported.discovery;
+    $("inspection").textContent=`${imported.file_count} files inspected in ${imported.import_seconds}s. `+
+      (d.preset ? `${d.entry} · ${d.provider}. ${d.evaluation}.` : d.setup);
+    for(const id of ["source","target"]) {
+      $(id).replaceChildren(...capabilities.models.map(model=>new Option(model,model)));
+    }
+    $("target").selectedIndex=1;
+    $("budget").max=capabilities.max_requests;
+    $("setupPanel").hidden=Boolean(d.preset);
+    $("runSection").hidden=d.runtime==="typescript";
+  } catch(error) { report(error); }
+  finally { $("repoToken").value=""; busy(event.target,false); }
+};
+function update(run) {
+  $("outcome").textContent=labels[run.status]||run.status.replaceAll("_"," ");
+  const verification=run.verification||[];
+  const extra=verification.length ? ` · Fresh verification ${verification.filter(x=>x.passed).length}/${verification.length}` : "";
+  $("summary").textContent=`${run.id} · ${run.source} → ${run.target} · ${run.model_requests}/${run.budget} requests`+
+    extra+(run.error ? " · "+run.error.replaceAll("_"," ") : "");
+  $("cancel").disabled=run.status==="cancelling"; $("cancel").hidden=terminal(run.status);
+  $("artifact").hidden=!run.export_available;
+}
+async function observe() {
+  for(;;) {
+    const response=await fetch(runPath()+"/events?after="+cursor,{headers:auth()});
+    if(!response.ok) throw Error("Event stream unavailable.");
+    const reader=response.body.getReader(), decoder=new TextDecoder(); let buffer="";
+    for (;;) {
+      const {value,done}=await reader.read(); if(done) break;
+      buffer+=decoder.decode(value,{stream:true}); let end;
+      while((end=buffer.indexOf("\n\n"))!==-1) {
+        const message=buffer.slice(0,end); buffer=buffer.slice(end+2);
+        const line=message.split("\n").find(line=>line.startsWith("data: "));
+        if(!line) continue;
+        const e=JSON.parse(line.slice(6)); cursor=e.seq;
+        const d=e.details;
+        $("events").textContent+=`${e.seq}. ${e.type.replaceAll("_"," ")} `+
+          [d.phase,d.case,d.model,d.receipt ? (d.receipt.verified ? "cleanup verified" : "cleanup unverified") : "",d.status].filter(Boolean).join(" · ")+"\n";
+        if(e.type==="inference_requested") $("summary").textContent=`${runId} · Request ${d.number} · ${d.model}`;
+      }
+    }
+    const run=await api(runPath()); update(run);
+    if(terminal(run.status)) return;
+  }
+}
+$("runForm").onsubmit=async event=>{
+  event.preventDefault(); $("error").textContent=""; busy(event.target,true);
+  try {
+    const data={import_id:imported.id,source:$("source").value,target:$("target").value,
+      budget:Number($("budget").value),authorize:$("authorize").checked};
+    if(!imported.discovery.preset && $("setup").value.trim()) data.setup=JSON.parse($("setup").value);
+    const run=await api(path+"/runs",data); runId=run.id;cursor=0; $("events").textContent="";
+    $("live").hidden=false; update(run); await observe();
+  } catch(error) { report(error); }
+  finally { busy(event.target,false); $("authorize").checked=false; }
+};
+$("cancel").onclick=async()=>{try{update(await api(runPath()+"/cancel",{}));}catch(error){report(error);}};
+async function download(suffix) {
+  try {
+    const data=await api(runPath()+"/"+suffix);
+    const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
+    const anchor=document.createElement("a");anchor.href=url;anchor.download=runId+"-"+suffix+".json";anchor.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){report(error);}
+}
+$("artifact").onclick=()=>download("artifact"); $("evidence").onclick=()=>download("evidence");
+</script>
+</body></html>
