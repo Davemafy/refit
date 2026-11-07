@@ -1,5 +1,5 @@
 {
-  "run_live": true,
+  "run_live": false,
   "source": "glm-5.2",
   "target": "deepseek-v4.1-flash-1017",
   "max_requests": 48

@@ -354,3 +354,22 @@ That isolates whether a fifth original-agent step can complete after
 the previously observed four repeated GLM file reads. Its outcome must
 be evaluated independently and cannot be inferred from the earlier
 zero-inference test.
+
+### Second paid external AI SDK acceptance: November 7, 2026
+
+[GitHub Actions run 42404961771](https://github.com/Davemafy/refit/actions/runs/42404961771)
+reversed the models (GLM source, DeepSeek replacement) under the new eight-call
+per-case Refit ceiling. On the first \`order\` case, **GLM called \`read_file\`
+five times** and the original AI SDK agent exited without a usable final
+structured result (\`application_exited\`). The required tool was genuinely
+observed and file-state assertions passed. All observed sandbox cleanup
+receipts were verified. Only five requests were used; no export was produced
+and DeepSeek was not tested in this direction.
+
+Together with the first paid attempt, the results distinguish a skipped tool
+call from a repeated tool loop. The new extended-loop test broker proves
+Refit can transport a valid fifth-step completion, but **the paid GLM model
+did not deliver that completion**. A credible repair needs an explicit
+native, exportable adaptation seam plus fresh independent verification, not
+a forced success label or relaxed oracle. Further automatic billable retries
+are disabled until that adaptation is implemented and assessed.
