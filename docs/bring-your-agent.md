@@ -96,10 +96,13 @@ reviewed image includes LLM 0.37.1 and its dependencies. A reviewed Node
 runtime additionally supports pinned TypeScript/JavaScript CLI programs using
 the Vercel AI SDK 7 tool loop and approved dependencies, without running
 untrusted dependency-install scripts. It passes the original tool loop,
-training/validation/holdout and fresh export in a **zero-inference gVisor
-preflight**, but the first paid DeepSeek run failed to call the required
-`read_file` tool and Refit correctly withheld export. Do not describe this as
-a successful paid TypeScript migration. The LLM preset discovers the native CLI and uses its
+training, validation, holdout and fresh export with real Vultr inference
+in [the paid external acceptance](https://github.com/Davemafy/refit/actions/runs/42416108155).
+GLM → DeepSeek used 14 requests and verified seven gVisor cleanup receipts.
+The example opts into a reusable OpenAI-compatible adapter that supplies the
+schema as a final-output instruction during tool-enabled turns. The original
+agent still validates structured output and executes its original tools.
+The shared broker honors the response format requested by other applications. The LLM preset discovers the native CLI and uses its
 `extra-openai-models.yaml` seam. Other Python agents may supply
 `{"module":"agent","args":["{prompt}"],"cases":[...]}` in the form or through
 `--setup setup.json`. The guided form writes `format: refit.agent.v1`
@@ -148,8 +151,8 @@ Discovery lists candidate invocations with the nearest same-runtime manifest,
 dependency names, provider signals and the evidence for its confidence.
 Confirm or override the candidate before configuring a run. For an app
 that needs its own working directory, reimport with its application directory
-as the scope. Python and Node run in the existing managed sandbox. Existing
-HTTP services and local connector execution are outside this release.
+as the scope. Python and Node run in the existing managed sandbox. Developer-side
+execution is available through the [connector CLI](#developer-side-connectors).
 
 Add `state` to an evaluation case to verify application-local file effects.
 Each case starts with the pinned source snapshot. Paths are relative to the
@@ -320,6 +323,42 @@ fresh export checks must pass to prove that Refit does not truncate this
 legitimate five-step behavior. This is **not a claim of paid GLM success**.
 The real paid comparison remains an open acceptance check. Avoid replaying
 a failure without examining its event evidence.
+
+## Developer-side connectors
+
+Use an operator-controlled Linux test machine. Supply `VULTR_INFERENCE_API_KEY`
+in the connector process environment. The broker keeps it outside the agent
+and grants a one-case loopback token that authorizes only the selected model
+within the approved request budget.
+
+```bash
+python -m scripts.application_connector ./my-project \
+  --setup ./cases.json --python /absolute/path/to/venv/bin/python \
+  --allow-local-execution --authorize-requests 8 --evidence ./run.json
+```
+
+The local Python connector copies a bounded source snapshot to a fresh work
+directory per invocation. Only run code you trust with the permissions of your
+user account. The connector cleans up its worker and temporary workspace. It
+does not contain arbitrary network access or filesystem writes outside that
+workspace.
+
+For an existing test service, pass `--test-service http://127.0.0.1:9000/invoke`,
+`--service-revision <revision>` and `--allow-isolated-test-service` in place of
+the project and local-execution options. Set a scoped `REFIT_SERVICE_BEARER` in
+the connector environment. The endpoint accepts a POST with `prompt`, `model`,
+`base_url` and a temporary `api_key`, and returns `{"output": ...}` with
+text or a JSON object. The developer authorizes calls to this endpoint and
+confirms fresh test state for every invocation. Service mode verifies output
+and observed tool messages. It rejects file-state assertions because the
+service's filesystem is outside the connector's observation boundary.
+The CLI blocks non-loopback destinations and redirects.
+
+Both modes use the existing training, validation, holdout and fresh
+verification gates. A successful run writes the portable configuration to
+the private evidence file. Apply its model environment to the original
+invocation or pass its model and base URL to the service with your own
+provider credential. The service revision is supplied by its operator.
 
 ## One-shot paid TypeScript acceptance (external GitHub runner)
 

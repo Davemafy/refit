@@ -8,7 +8,10 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import secrets
+import signal
 import subprocess
+import sys
+import tempfile
 import time
 
 from .container_agent import command, frame, send, validate_completion
@@ -110,6 +113,11 @@ def configuration(snapshot, supplied=None):
             any(not isinstance(arg, str) or len(arg) > 1024 or "\x00" in arg for arg in args)
             or not any("{prompt}" in arg for arg in args)):
         raise ValueError("Supply up to 24 command arguments, including a {prompt} placeholder.")
+    validate_application_cases(cases)
+    return {**supplied, "seam": "instruction-env" if optional_seam <= supplied_keys else "openai-env"}
+
+
+def validate_application_cases(cases):
     if not isinstance(cases, list) or not 3 <= len(cases) <= 6:
         raise ValueError("Provide 3 to 6 cases covering train, validation and holdout.")
     names = set()
@@ -122,7 +130,6 @@ def configuration(snapshot, supplied=None):
         prompts.add(case["prompt"])
     if {case["split"] for case in cases} != {"train", "validation", "holdout"}:
         raise ValueError("Each split needs at least one independent case.")
-    return {**supplied, "seam": "instruction-env" if optional_seam <= supplied_keys else "openai-env"}
 
 
 def native_export(snapshot, setup, model, instructions=""):
@@ -131,6 +138,12 @@ def native_export(snapshot, setup, model, instructions=""):
               "revision": snapshot["revision"], "args": setup["args"],
               **{key: setup[key] for key in ("entry", "module") if key in setup},
               "instructions": instructions, "seam": setup["seam"]}
+    if setup.get("local_python"):
+        config["execution_mode"] = "local_connector"
+        config["python"] = setup["local_python"]
+    if setup.get("test_service"):
+        config["execution_mode"] = "existing_test_service"
+        config["test_service"] = setup["test_service"]
     if snapshot.get("snapshot_sha256"):
         config["snapshot_sha256"] = snapshot["snapshot_sha256"]
     if snapshot.get("directory"):
@@ -196,14 +209,32 @@ def completion_tool_choice(body, tools):
 
 
 
-def run_migration(snapshot, setup, source, target, image, broker, event, stopped):
+def run_migration(snapshot, setup, source, target, image, broker, event, stopped, *, local_python=None, test_service=None, service_bearer=None):
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
     started = time.monotonic()
-    image_id = subprocess.check_output(["docker", "image", "inspect", "--format={{.Id}}", image],
-                                      text=True, timeout=10, env=env).strip()
-    if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
-        raise ValueError("Application runtime image identity is unavailable.")
-    event("runtime_ready", {"image_id": image_id, "seconds": round(time.monotonic() - started, 3)})
+    local = local_python is not None or test_service is not None
+    if local:
+        if local_python is not None and (not setup.get("module") or not os.path.isabs(local_python) or not os.access(local_python, os.X_OK)):
+            raise ValueError("Local connector requires a Python module and an absolute executable interpreter.")
+        if test_service is not None:
+            if local_python is not None or not re.fullmatch(r"http://127\.0\.0\.1:[1-9][0-9]{0,4}/[A-Za-z0-9/_-]+", test_service):
+                raise ValueError("Service connector accepts only an explicitly authorized loopback HTTP endpoint.")
+            if not isinstance(service_bearer, str) or not re.fullmatch(r"[!-~]{16,512}", service_bearer):
+                raise ValueError("Set a scoped service bearer token.")
+            if any(case.get("state") for case in setup["cases"]):
+                raise ValueError("File-state checks are unavailable for service execution.")
+            setup = {**setup, "test_service": test_service}
+        else:
+            setup = {**setup, "local_python": local_python}
+        runtime_label = "existing_test_service" if test_service else "local_connector"
+        worker = Path(__file__).resolve().parents[1] / "integrations/application/worker.py"
+        event("runtime_ready", {"runtime": runtime_label, "isolation": "developer_host"})
+    else:
+        image_id = subprocess.check_output(["docker", "image", "inspect", "--format={{.Id}}", image],
+                                          text=True, timeout=10, env=env).strip()
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+            raise ValueError("Application runtime image identity is unavailable.")
+        event("runtime_ready", {"image_id": image_id, "seconds": round(time.monotonic() - started, 3)})
     deadline = started + RUN_SECONDS
 
     def check():
@@ -229,13 +260,22 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
         state = None
         name = "refit-app-" + secrets.token_hex(10)
         proc = None
+        local_state = None
         if profile.instructions and setup["seam"] not in ("llm", "instruction-env"):
             return {"case": case["name"], "passed": False, "trace": [], "error": "native_instruction_seam_required",
                     "verdict": {"passed": False, "unsafe_attempts": 0}, "model_requests": 0}
         try:
-            event("sandbox_starting", {"case": case["name"], "container": name})
-            proc = subprocess.Popen(command(image_id, name), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                    stderr=subprocess.DEVNULL, bufsize=0, env=env)
+            if local:
+                local_state = tempfile.TemporaryDirectory(prefix="refit-local-")
+                argv = [sys.executable, "-I", "-B", "-u", str(worker), "--local-connector"]
+                worker_env = {**env, "TMPDIR": local_state.name}
+            else:
+                event("sandbox_starting", {"case": case["name"], "container": name})
+                argv = command(image_id, name)
+                worker_env = env
+            proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, bufsize=0, env=worker_env,
+                                    start_new_session=local)
             os.set_blocking(proc.stdin.fileno(), False)
             os.set_blocking(proc.stdout.fileno(), False)
             runtime = native or setup
@@ -243,14 +283,18 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
             if profile.instructions and setup["seam"] == "llm":
                 args = ["prompt", "--system", profile.instructions, *args[1:]]
             state_paths = sorted({check["path"] for check in case.get("state", [])})
-            send(proc, {"state_paths": state_paths, "files": snapshot["files"], "module": runtime.get("module"),
+            send(proc, {"local_python": runtime.get("python", local_python),
+                        "test_service": runtime.get("test_service", test_service),
+                        "service_bearer": service_bearer, "state_paths": state_paths, "files": snapshot["files"], "module": runtime.get("module"),
                         "entry": runtime.get("entry"), "args": args,
                         "model": model, "prompt": case["prompt"], "seam": runtime["seam"],
                         "instruction_env": runtime.get("instruction_env"),
                         "instruction_base": runtime.get("instruction_base"),
                         "instructions": profile.instructions,
                         "timeout": CASE_SECONDS}, min(limit, time.monotonic() + 12))
-            event("sandbox_started", {"case": case["name"], "phase": phase, "model": model, "container": name})
+            event("local_started" if local else "sandbox_started",
+                  {"case": case["name"], "phase": phase, "model": model,
+                   **({"container": name} if not local else {})})
             buffer = bytearray()
             while True:
                 check()
@@ -331,9 +375,13 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 event("inference_completed", inference)
                 send(proc, {"message": message}, min(limit, time.monotonic() + 5))
             proc.wait(timeout=3)
-            state = json.loads(subprocess.check_output(["docker", "inspect", name], timeout=5, env=env))[0]
-            if proc.returncode != 0 or state["HostConfig"]["Runtime"] != "runsc" or state["State"]["OOMKilled"]:
-                error = "sandbox_failed"
+            if local:
+                if proc.returncode != 0:
+                    error = "local_worker_failed"
+            else:
+                state = json.loads(subprocess.check_output(["docker", "inspect", name], timeout=5, env=env))[0]
+                if proc.returncode != 0 or state["HostConfig"]["Runtime"] != "runsc" or state["State"]["OOMKilled"]:
+                    error = "sandbox_failed"
         except RunStopped as exc:
             error = str(exc)
         except Exception as exc:
@@ -344,13 +392,26 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                      else "sandbox_or_provider_error")
         finally:
             if proc is not None:
-                if proc.poll() is None:
+                if local:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                elif proc.poll() is None:
                     proc.kill()
                 proc.wait(timeout=5)
                 proc.stdin.close()
                 proc.stdout.close()
-            cleanup = remove_and_verify("docker", name, env=env)
-            event("sandbox_cleanup", {"case": case["name"], "phase": phase, "container": name, "receipt": cleanup})
+            if local:
+                if local_state is not None:
+                    local_state.cleanup()
+                cleanup = {"verified": local_state is not None and not os.path.lexists(local_state.name),
+                           "scope": "connector_temporary_workspace_and_worker_process",
+                           "isolation": "developer_host"}
+                event("local_cleanup", {"case": case["name"], "phase": phase, "receipt": cleanup})
+            else:
+                cleanup = remove_and_verify("docker", name, env=env)
+                event("sandbox_cleanup", {"case": case["name"], "phase": phase, "container": name, "receipt": cleanup})
         outcome = evaluate(case, result.get("stdout", ""), all_tool_calls, observed,
                            tool_arguments_observed=observed)
         state_checks = evaluate_state(case.get("state", []), result.get("state", {}))
@@ -378,7 +439,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                     "state_checks": state_checks,
                     "stdout_sha256": hashlib.sha256(result.get("stdout", "").encode()).hexdigest(),
                     "exit_code": result.get("exit_code"), "cleanup": cleanup,
-                    "runtime": state["HostConfig"]["Runtime"] if state else None,
+                    "runtime": runtime_label if local else state["HostConfig"]["Runtime"] if state else None,
                     "oom_killed": state["State"]["OOMKilled"] if state else None,
                     "elapsed_seconds": round(time.monotonic() - case_start, 3)}
         event("case_completed", {**evidence, "phase": phase, "model": model,

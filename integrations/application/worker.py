@@ -3,6 +3,7 @@ import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
+import secrets
 import signal
 import stat
 from pathlib import Path
@@ -61,7 +62,36 @@ def observe_state(root_fd, paths):
     return observations
 
 
+def call_test_service(cfg, endpoint, broker_token):
+    from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+    class NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None
+
+    request = Request(cfg["test_service"], method="POST", headers={
+        "Authorization": "Bearer " + cfg["service_bearer"], "Content-Type": "application/json",
+    }, data=json.dumps({"prompt": cfg["prompt"], "model": cfg["model"],
+                       "base_url": endpoint, "api_key": broker_token}).encode())
+    try:
+        with build_opener(NoRedirect()).open(request, timeout=cfg["timeout"]) as response:
+            raw = response.read(16385)
+        if len(raw) > 16384:
+            raise ValueError("response_limit")
+        output = json.loads(raw)
+        if not isinstance(output, dict) or set(output) != {"output"} or not isinstance(output["output"], (str, dict)):
+            raise ValueError("invalid_response")
+    except (OSError, ValueError):
+        send({"type": "case", "status": "test_service_failed"})
+        return
+    value = output["output"]
+    send({"type": "case", "status": "completed", "exit_code": 0,
+          "stdout": value if isinstance(value, str) else json.dumps(value)})
+
+
 def main():
+    local = sys.argv[1:] == ["--local-connector"]
+    broker_token = secrets.token_urlsafe(24) if local else "refit-loopback"
     cfg = json.loads(sys.stdin.buffer.readline(20 * 1024 * 1024))
     with tempfile.TemporaryDirectory(prefix="application-") as tmp:
         root = Path(tmp) / "source"
@@ -76,6 +106,10 @@ def main():
             def do_POST(self):
                 if self.path != "/v1/chat/completions":
                     self.send_error(404)
+                    return
+                if local and not secrets.compare_digest(
+                        self.headers.get("Authorization", "").encode(), f"Bearer {broker_token}".encode()):
+                    self.send_error(401)
                     return
                 try:
                     length = int(self.headers["Content-Length"])
@@ -110,10 +144,13 @@ def main():
         server = HTTPServer(("127.0.0.1", 0), Chat)
         endpoint = f"http://127.0.0.1:{server.server_port}/v1"
         threading.Thread(target=server.serve_forever, daemon=True).start()
+        if local and cfg.get("test_service"):
+            call_test_service(cfg, endpoint, broker_token)
+            return
         env = {"HOME": str(home), "PATH": "/usr/local/bin:/usr/bin:/bin",
                "PYTHONPATH": str(root), "PYTHONDONTWRITEBYTECODE": "1",
                "OPENAI_BASE_URL": endpoint, "OPENAI_MODEL": cfg["model"],
-               "OPENAI_API_KEY": "refit-loopback", "OPENAI_MAX_RETRIES": "0",
+               "OPENAI_API_KEY": broker_token, "OPENAI_MAX_RETRIES": "0",
                "LLM_USER_PATH": str(home)}
         env.update(instruction_environment(cfg))
         if cfg["seam"] == "llm":
@@ -128,26 +165,36 @@ def main():
             invocation = ["/usr/local/bin/node", "--import", "/opt/refit/node/node_modules/tsx/dist/loader.mjs",
                           "./" + cfg["entry"], *argv]
         else:
-            invocation = [sys.executable, "-B", "-m", cfg["module"], *argv]
+            interpreter = cfg["local_python"] if local else sys.executable
+            invocation = [interpreter, "-B", "-m", cfg["module"], *argv]
         paths = cfg.get("state_paths", [])
         root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         initial = observe_state(root_fd, paths)
-        # Files bound output growth by the container's writable tmpfs limit.
+        # In local mode no container tmpfs protects disk space. Limit per-file
+        # output and state growth for the developer-authorized child.
+        if local:
+            import resource
+            resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024,) * 2)
+        # The managed runtime also bounds output by its writable tmpfs limit.
         with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
             proc = subprocess.Popen(invocation,
-                cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr, start_new_session=True)
+                cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr, start_new_session=not local)
             try:
                 proc.wait(timeout=cfg["timeout"])
             except subprocess.TimeoutExpired:
-                os.killpg(proc.pid, signal.SIGKILL)
+                if local:
+                    proc.kill()
+                else:
+                    os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait()
                 os.close(root_fd)
                 send({"type": "case", "status": "application_timeout"})
                 return
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            if not local:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             final = observe_state(root_fd, paths)
             os.close(root_fd)
             stdout.seek(0)

@@ -1,6 +1,6 @@
 # Engineering architecture
 
-Refit migrates existing tool-using agents between language models and verifies supported behavioral outcomes before releasing an export. **Generality is the architectural goal, not the current compatibility claim.** The production-verified self-service path is managed Python 3.11 with non-streaming OpenAI-compatible Chat Completions. A reviewed Node/TypeScript runtime has passed zero-inference tool-loop tests, but its first paid migration failed its required tool behavior.
+Refit migrates existing tool-using agents between language models and verifies supported behavioral outcomes before releasing an export. **Generality is the architectural goal, not the current compatibility claim.** The production-verified self-service path is managed Python 3.11 with non-streaming OpenAI-compatible Chat Completions. The reviewed Node runtime passed a paid migration of the pinned AI SDK 7 file agent.
 
 Specialized refund and retail integrations run their original tools and stateful evaluators. The general imported-application pipeline has a narrower trusted evaluation contract. Details and evidence: [README](../README.md), [Bring Your Agent](bring-your-agent.md), and [framework verification](framework-evidence-2026-11-06.md).
 
@@ -46,10 +46,10 @@ Protected train/validation/holdout evaluations provide evidence for tested behav
 
 ## Supported and future integration boundaries
 
-**Implemented:** managed Python application execution; curated Node/TypeScript transport preflight; pinned GitHub/ZIP import; the operator-side local CLI; specialized original-agent integration runners; sandboxed inference, evidence, bounded adaptations and verified exports in supported cases.
+**Implemented:** managed Python application execution; curated Node/TypeScript with paid verification for the pinned AI SDK agent; pinned GitHub/ZIP import; the operator-side local CLI; specialized original-agent integration runners; sandboxed inference, evidence, bounded adaptations and verified exports in supported cases.
 
-**Not a general self-service capability yet:** arbitrary framework/SDK runtimes, existing HTTP-service invocation, a universal local connector, unrestricted streaming, arbitrary external tools, production database verification and independently proven paid TypeScript migration.
+**Not a general self-service capability yet:** arbitrary framework/SDK runtimes, arbitrary remote HTTP-service invocation, unrestricted streaming, arbitrary external tools and production database verification.
 
-The target design is one framework-independent agent invocation, model interception, tool/effect observation, trusted evaluation and portable export contract, with managed, existing-service and local-connector adapters. **Do not describe those modes as shipped until original application runs independently verify them.**
+The shared evaluator also runs from the developer-side CLI against trusted local Python or explicitly authorized loopback HTTP test services. The CLI labels these runs as developer-host execution. Hosted runs continue to require gVisor.
 
 For prior architecture milestones and historical experiment descriptions, see [engineering history](engineering-history.md).

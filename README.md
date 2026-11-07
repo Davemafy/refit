@@ -80,10 +80,10 @@ The synthetic refund holdout was not a pristine once-only blind statistical test
 | **Managed Python 3.11** with non-streaming OpenAI-compatible Chat Completions | Verified with genuine imported applications and real Vultr inference. |
 | **Pinned GitHub source ingestion** | Reads the pinned Git tree, selectively downloads and verifies required blobs, and skips common build outputs and assets. Supports application-directory and file selection. |
 | **ZIP ingestion** | Streams up to **32 MiB compressed**; the selected execution snapshot is limited to **12 MiB**, **1,500 files** and **512 KiB per file**. |
-| **Managed Node/TypeScript and Vercel AI SDK 7** | Reviewed, curated runtime passed tool-loop and export preflight with a zero-inference broker. The first paid DeepSeek test failed the required tool behavior, and Refit correctly withheld export. **A successful paid TypeScript migration is not yet demonstrated.** |
+| **Managed Node/TypeScript and Vercel AI SDK 7** | The pinned AI SDK 7 application passed a paid GLM → DeepSeek migration with original tools, file checks and fresh export verification. [Vultr receipt](https://github.com/Davemafy/refit/actions/runs/42416108155). |
 | **Generic managed-agent checks** | Exact output, JSON fields, broker-observed tool calls/arguments/results, forbidden tools, and bounded application-local file effects. These do **not** prove arbitrary database or external-service state. |
 | **Generic repairs** | Explicit original instruction-environment seams are implemented and tested; a successful independently verified paid repair through the self-service importer remains unproven. |
-| **Existing HTTP-service agents, remote tools and general local connectors** | Not supported through the self-service managed execution path. A separate operator-side local CLI and specialized integration runners exist. |
+| **Developer-side connectors** | Trusted local Python and authorized loopback HTTP test services use the shared broker and evaluator. See the [connector contract](docs/bring-your-agent.md#developer-side-connectors). |
 
 Streaming, arbitrary dependency installation, custom provider protocols, production database access and general external-service execution remain unsupported. Check the detailed [compatibility and ingestion guide](docs/bring-your-agent.md) before running an unfamiliar application.
 
@@ -119,4 +119,4 @@ Real, billable migrations require a configured Vultr inference credential, gViso
 - [Verified agent integration](integrations/retail/README.md)
 - [Engineering history and earlier milestones](docs/engineering-history.md)
 
-Refit's next major milestone is a framework-independent integration boundary that lets an unfamiliar developer invoke an existing service or local agent **without Refit-specific agent rewrites**, while preserving independently verifiable outcomes. Those execution modes are a roadmap, **not shipped capabilities**.
+Developer-side connectors run from the CLI. The hosted workspace uses managed gVisor execution.
