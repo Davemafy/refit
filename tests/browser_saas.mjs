@@ -176,6 +176,14 @@ try{
  assert.equal(await page.locator(".decision-stat strong").first().innerText(),"3 / 3");
  assert.equal(await page.locator(".decision-surface").getByText("Verified artifact available").count(),1);
  await page.screenshot({path:"artifacts/saas-ui/04-review.png",fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ const comparison = await page.locator(".comparison-scroll").evaluate(table => ({
+   pageFits: document.documentElement.scrollWidth <= innerWidth,
+   tableScrolls: table.scrollWidth > table.clientWidth,
+ }));
+ assert.deepEqual(comparison, {pageFits:true, tableScrolls:true});
+ await page.screenshot({path:"artifacts/saas-ui/11-comparison-mobile.png",fullPage:true});
+ await page.setViewportSize({width:1440,height:900});
  await page.getByRole("button",{name:"Trace",exact:true}).click();
  await page.locator(".log").waitFor();
  await page.getByRole("button",{name:"Evidence",exact:true}).last().click();

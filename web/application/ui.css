@@ -334,6 +334,7 @@ h2{font-weight:580;letter-spacing:-.04em}
 .finding svg{width:15px;height:15px;color:#aeb5b8}
 .decision-note{padding:2px 3px 18px;max-width:950px;color:#9fa5aa;font-size:12.5px;line-height:1.6}
 .comparison-card{padding:25px!important}
+.run-layout > *{min-width:0}
 .comparison-scroll{max-width:100%;overflow-x:auto;scrollbar-color:#484c52 #181a1d;scrollbar-width:thin}
 .comparison-table{min-width:740px}
 .comparison-table th{white-space:nowrap;font-size:11.5px;background:#151719}
