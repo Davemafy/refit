@@ -320,3 +320,19 @@ fresh export checks must pass to prove that Refit does not truncate this
 legitimate five-step behavior. This is **not a claim of paid GLM success**.
 The real paid comparison remains an open acceptance check. Avoid replaying
 a failure without examining its event evidence.
+
+## One-shot paid TypeScript acceptance (external GitHub runner)
+
+The explicit request in
+`experiments/ai-sdk-file-agent/live-acceptance-request.json` is the sole
+push-trigger for `.github/workflows/live-application-typescript.yml`.
+It checks for `VULTR_INFERENCE_API_KEY` in GitHub Actions secrets, builds the
+pinned upstream AI SDK agent into a fresh `runsc` runtime, and authorizes
+**at most 48 paid Vultr requests** for one DeepSeek-to-GLM migration. The
+result, including failures, per-case tool/state outcomes, export eligibility
+and container cleanup receipts, is saved as a seven-day workflow artifact.
+Missing credentials cause an explicit skip without any paid requests. This
+execution is **external runner evidence**, not proof the production Vultr
+service has deployed this Git revision. It must not be represented as a
+successful paid TypeScript migration unless the recorded source, target,
+original-runner fresh export and all cleanup checks actually pass.

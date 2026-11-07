@@ -1,0 +1,66 @@
+name: One-shot paid TypeScript application acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/ai-sdk-file-agent/live-acceptance-request.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-one-shot-typescript-live
+  cancel-in-progress: false
+
+jobs:
+  original-agent-vultr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Gate paid inference against explicit bounded acceptance request
+        id: gate
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          request=json.loads(Path("experiments/ai-sdk-file-agent/live-acceptance-request.json").read_text())
+          valid=(request=={"run_live":True,"source":"deepseek-v4.1-flash-1017",
+                          "target":"glm-5.2","max_requests":48})
+          permitted=valid and bool(os.getenv("VULTR_INFERENCE_API_KEY"))
+          with open(os.environ["GITHUB_OUTPUT"],"a",encoding="utf8") as stream:
+              stream.write("enabled="+("true" if permitted else "false")+"\n")
+          print("Paid acceptance:", "authorized" if permitted else "skipped (request or secret absent)")
+          PY
+      - name: Install gVisor and build the original agent runtime
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          sudo bash deploy/install-gvisor.sh
+          docker build -f integrations/application/Dockerfile -t refit-application .
+          bash experiments/ai-sdk-file-agent/prepare.sh /tmp/refit-upstream-typescript.zip
+      - name: Execute one bounded real Vultr migration with fresh native verification
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python -m scripts.acceptance_typescript_live \
+            --archive /tmp/refit-upstream-typescript.zip \
+            --setup experiments/ai-sdk-file-agent/setup.json \
+            --request experiments/ai-sdk-file-agent/live-acceptance-request.json \
+            --output /tmp/refit-paid-typescript-acceptance.json
+      - name: Archive verified evidence or a faithful failure receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-typescript-paid-acceptance
+          path: /tmp/refit-paid-typescript-acceptance.json
+          retention-days: 7
+          if-no-files-found: ignore
