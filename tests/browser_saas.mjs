@@ -50,10 +50,12 @@ try{
  await page.getByRole("heading",{name:"Configure migration"}).waitFor();
  await page.getByRole("button",{name:/View recorded results/}).click();
  await page.getByRole("heading",{name:"Review migration results"}).waitFor();
+ assert.equal(await page.locator("#pageError").count(),0,"The run review must not show an application error");
  await page.goto(url+"/app/runs");
  await page.getByRole("button",{name:"demo-python-2026-11-07",exact:true}).waitFor();
  await page.getByRole("button",{name:"demo-python-2026-11-07",exact:true}).click();
  await page.getByRole("heading",{name:"Review migration results"}).waitFor();
+ assert.equal(await page.locator("#pageError").count(),0,"The run review must not show an application error");
  await page.getByText(/Public, read-only preview/).first().waitFor();
  const exampleDownload=page.waitForEvent("download");
  await page.getByRole("button",{name:/Export verified configuration/}).first().click();
@@ -101,6 +103,10 @@ try{
  }));
  assert.ok(fontState.sans&&fontState.mono,fontState);
  assert.ok(fontState.family.includes("Geist"),fontState);
+ assert.equal((await context.request.get(url+"/assets/run-outcome.js")).status(),200);
+ assert.equal((await context.request.get(url+"/assets/spline-sans-latin.woff2")).status(),200);
+ await page.evaluate(async()=>{await document.fonts.load('590 32px "Spline Sans"')});
+ assert.equal(await page.evaluate(()=>document.fonts.check('590 32px "Spline Sans"')),true);
  for(const fontName of ["geist-sans", "geist-mono"]){
    const response=await context.request.get(url+"/assets/"+fontName+".woff2");
    assert.equal(response.status(),200);
@@ -164,7 +170,11 @@ try{
  await page.getByRole("button",{name:seeded.id,exact:true}).click();
  await page.waitForURL(url+"/app/runs/"+seeded.id);
  await page.getByRole("heading",{name:"Review migration results"}).waitFor();
+ assert.equal(await page.locator("#pageError").count(),0,"The run review must not show an application error");
  await page.getByText(/Sandbox cleanup receipts/).waitFor();
+ assert.equal(await page.locator(".decision-surface.compatible").count(),1);
+ assert.equal(await page.locator(".decision-stat strong").first().innerText(),"3 / 3");
+ assert.equal(await page.locator(".decision-surface").getByText("Verified artifact available").count(),1);
  await page.screenshot({path:"artifacts/saas-ui/04-review.png",fullPage:true});
  await page.getByRole("button",{name:"Trace",exact:true}).click();
  await page.locator(".log").waitFor();
@@ -176,6 +186,7 @@ try{
  await page.locator("#evidenceInspector").getByText("Tool observations").waitFor();
  await page.locator(".evidence-entry").filter({hasText:"Cleanup receipt"}).first().click();
  await page.locator("#evidenceInspector").getByText("Cleanup reason").waitFor();
+ assert.equal(await page.locator("#pageError").count(),0,"Evidence inspection must not show an application error");
  await page.screenshot({path:"artifacts/saas-ui/09-evidence-desktop.png",fullPage:true});
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,"Evidence inspector must fit mobile viewport");
@@ -187,6 +198,22 @@ try{
  const downloaded=await waiting;
  assert.ok(downloaded.suggestedFilename().endsWith("-artifact.json"));
  assert.equal(runRequests.length,0,"Fixture UI test must never launch inference");
+
+ const failedSeed=(await (await context.request.get(url+"/__fixture__/seed-failure")).json()).id;
+ await page.goto(url+"/app/runs/"+failedSeed);
+ await page.getByRole("heading",{name:"Migration not verified"}).waitFor();
+ await page.getByText("Replacement regression").waitFor();
+ assert.equal(await page.locator(".decision-surface.blocked").count(),1);
+ assert.equal(await page.locator("#pageError").count(),0,"Rejected run must render without errors");
+ assert.equal(await page.getByRole("button",{name:/Export verified configuration/}).count(),0,
+   "A failed migration must not offer an export");
+ await page.getByRole("button",{name:/Inspect failing evidence/}).click();
+ await page.getByRole("navigation",{name:"Run evidence"}).waitFor();
+ assert.equal(await page.locator(".evidence-entry.selected").count(),1,
+   "First failing case must be selected in the evidence explorer");
+ await page.locator("#evidenceInspector").getByText("Failed").first().waitFor();
+ await page.screenshot({path:"artifacts/saas-ui/11-rejected-run.png",fullPage:true});
+ assert.equal(await page.locator("#pageError").count(),0);
 
  await page.goto(url+"/app/settings");
  await page.getByRole("heading",{name:"Settings"}).waitFor();
