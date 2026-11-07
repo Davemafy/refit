@@ -59,15 +59,35 @@ TasksMax=64
 [Install]
 WantedBy=multi-user.target
 UNIT
+# A prior release installed the service from an immutable /opt/refit-release-* checkout.
+# Existing systemd drop-ins can override a newly written base unit. Take ownership of
+# this one field explicitly rather than removing unrelated host-managed overrides.
+install -d -m 0755 /etc/systemd/system/refit-application.service.d
+cat > /etc/systemd/system/refit-application.service.d/zz-refit-managed-checkout.conf <<OVERRIDE
+[Service]
+WorkingDirectory=$REPO
+Environment=REFIT_DEPLOYED_REVISION=$REVISION
+OVERRIDE
 systemctl daemon-reload
+SERVICE_DIRECTORY="$(systemctl show refit-application --property=WorkingDirectory --value)"
+if [[ "$SERVICE_DIRECTORY" != "$REPO" ]]; then
+  printf 'Refit service checkout mismatch: expected %s, got %s.\n' "$REPO" "$SERVICE_DIRECTORY" >&2
+  systemctl cat refit-application >&2
+  exit 1
+fi
 systemctl enable --now refit-application
 systemctl restart refit-application
 for attempt in {1..15}; do
-  if curl --max-time 2 -fsS http://127.0.0.1:8098/bring >/dev/null; then
-    echo 'Refit operator service is ready on 127.0.0.1:8098.'
+  # Do not mistake the old process answering /bring for the new release.
+  installed="$(curl -fsS --max-time 2 http://127.0.0.1:8098/api/application/release 2>/dev/null |
+    python3 -c 'import json,sys; print(json.load(sys.stdin).get("revision", ""))' 2>/dev/null || true)"
+  if [[ "$installed" == "$REVISION" ]] &&
+     curl --max-time 2 -fsS http://127.0.0.1:8098/bring >/dev/null; then
+    echo "Refit operator service is ready on 127.0.0.1:8098 at revision $REVISION."
     exit 0
   fi
   sleep 1
 done
+printf 'Refit operator did not start at expected revision %s.\n' "$REVISION" >&2
 systemctl --no-pager status refit-application
 exit 1
