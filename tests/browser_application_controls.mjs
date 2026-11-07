@@ -72,13 +72,13 @@ try {
   await page.getByText(/TypeScript execution is unavailable/).waitFor();
   assert.equal(await page.getByRole("button", { name: "Run migration" }).isVisible(), false);
 
-  async function start(expected) {
+  async function start(expected, budget = 1) {
     await inspect(zip);
     await page.getByRole("button", { name: "Run migration" }).waitFor();
     const setupPanel = page.locator("#setupPanel");
     if (!(await setupPanel.evaluate(el => el.open))) await setupPanel.locator("summary").click();
     await page.getByLabel("Application contract JSON").fill(JSON.stringify(setup));
-    await page.getByLabel("Maximum Vultr requests").fill("1");
+    await page.getByLabel("Maximum Vultr requests").fill(String(budget));
     await page.getByLabel("I authorize this inference budget.").check();
     const received = page.waitForResponse(r => r.url().endsWith("/api/application/runs"));
     await page.getByRole("button", { name: "Run migration" }).click();
@@ -116,7 +116,7 @@ try {
   await page.getByRole("button", { name: "Open run" }).click();
   await page.locator("#outcome").filter({ hasText: "Interrupted" }).waitFor();
   await assertSafe(interrupted.id, "interrupted");
-  const quota = await start(429);
+  const quota = await start(429, 2);
   assert.equal(quota.error.code, "daily_budget_exhausted");
   await page.getByRole("alert").getByText("This operator's daily request allowance is reserved.").waitFor();
   console.log(JSON.stringify({ unsupported: true, cancelled: cancelled.id, interrupted: interrupted.id,

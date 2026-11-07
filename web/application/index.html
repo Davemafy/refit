@@ -68,6 +68,7 @@
 <p id="provenance"></p>
 <p id="summary"></p>
 <p id="scope" hidden></p>
+<p id="failureDetail" hidden></p>
 <button id="reconnect" class="secondary" hidden>Reconnect to run</button>
 <p id="sandbox"></p><ul id="phases"></ul>
 <button id="cancel" class="secondary">Cancel</button>
@@ -113,7 +114,7 @@ function openRun(id) {
   $("outcome").textContent="Opening run";
   $("summary").textContent=id;
   $("provenance").textContent="";
-  for(const control of ["cancel","artifact","evidence","scope","reconnect"]) $(control).hidden=true;
+  for(const control of ["cancel","artifact","evidence","scope","reconnect","failureDetail"]) $(control).hidden=true;
   $("live").hidden=false;
   return session;
 }
@@ -259,6 +260,12 @@ async function observe(session) {
             const row=document.createElement("li");
             row.textContent=d.phase.replaceAll("_"," ")+" · "+d.model+" · "+d.passed+"/"+d.total+" passed";
             $("phases").append(row);
+          }
+          if(e.type==="case_completed" && !d.passed) {
+            $("failureDetail").textContent = d.verdict?.required_tool_observed === false
+              ? d.case + " did not produce the required tool result. Inspect the evidence before changing models."
+              : d.case + " failed: " + (d.error || "verification did not pass").replaceAll("_"," ");
+            $("failureDetail").hidden=false;
           }
           if(e.type==="sandbox_started") $("sandbox").textContent="gVisor container running · "+d.case;
           if(e.type==="sandbox_cleanup") $("sandbox").textContent=d.receipt.verified

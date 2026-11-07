@@ -6,7 +6,7 @@ import base64
 import binascii
 from datetime import datetime, timezone
 import fcntl
-from http.cookies import SimpleCookie
+from http.cookies import CookieError, SimpleCookie
 from http.server import ThreadingHTTPServer
 import json
 import os
@@ -33,6 +33,14 @@ BODY_LIMIT = ((ARCHIVE_LIMIT + 2) // 3) * 4 + 8192
 ACTIVE = {"running", "cancelling"}
 ACCOUNT_BUDGET = 16
 COOKIE = "__Host-refit-session"
+
+
+def reserved_requests(run):
+    # Interrupted jobs keep the whole reservation because an in-flight
+    # provider call may have outlived the process.
+    if run["status"] in ACTIVE or run["status"] == "interrupted":
+        return run["budget"]
+    return max(run.get("model_requests", run["budget"]), run.get("request_attempts_logged", 0))
 
 
 def now():
@@ -146,8 +154,8 @@ class ApplicationService:
             if any(run["status"] in ACTIVE for run, _ in self.runs.values()):
                 raise ApiProblem(409, "run_in_progress", "One application migration is already running.")
             day = now()[:10]
-            reserved = sum(run["budget"] for run, _ in self.runs.values() if run["started_at"][:10] == day)
-            own_reserved = sum(run["budget"] for run, _ in self.runs.values()
+            reserved = sum(reserved_requests(run) for run, _ in self.runs.values() if run["started_at"][:10] == day)
+            own_reserved = sum(reserved_requests(run) for run, _ in self.runs.values()
                                if run.get("owner") == owner and run["started_at"][:10] == day)
             if owner != "operator" and own_reserved + budget > ACCOUNT_BUDGET:
                 raise ApiProblem(429, "account_budget_exhausted", "Your daily request allowance is reserved.")
@@ -218,7 +226,10 @@ class ApplicationHandler(RefitHandler):
 
     def session_secret(self):
         cookies = SimpleCookie()
-        cookies.load(self.headers.get("Cookie", ""))
+        try:
+            cookies.load(self.headers.get("Cookie", ""))
+        except CookieError:
+            return ""
         return cookies[COOKIE].value if COOKIE in cookies else ""
 
     def authorize(self):

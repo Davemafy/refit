@@ -11,7 +11,8 @@ const output = process.env.REFIT_PLATFORM_OUTPUT || "artifacts/platform-browser"
 const invites = [process.env.REFIT_PLATFORM_INVITE_A, process.env.REFIT_PLATFORM_INVITE_B];
 const paid = process.argv.includes("--execute");
 const path = "/api/application";
-const cap = 16;
+const runtime = process.env.REFIT_PLATFORM_RUNTIME || "typescript";
+const cap = runtime === "python" ? 8 : 16;
 assert(new URL(origin).protocol === "https:");
 assert(archive && setupFile && invites.every(Boolean));
 await mkdir(output, { recursive: true });
@@ -50,8 +51,9 @@ try {
   const importing = owner.waitForResponse(r => r.url().endsWith(path + "/imports"));
   await owner.getByRole("button", { name: "Inspect source" }).click();
   const imported = await (await importing).json();
-  assert.equal(imported.discovery.runtime, "typescript");
-  await owner.getByText(/Vercel AI SDK/).waitFor();
+  assert.equal(imported.discovery.runtime, runtime);
+  if (runtime === "typescript") await owner.getByText(/Vercel AI SDK/).waitFor();
+  else await owner.getByText(/python -m src.qa/).waitFor();
   const setup = JSON.parse(await readFile(setupFile, "utf8"));
 
   async function request(page, suffix, data) {
@@ -112,10 +114,11 @@ try {
     assert.ok(receipts.every(e => e.details.receipt.verified));
     const cases = evidence.events.filter(e => e.type === "case_completed");
     assert.equal(cases.length, 7);
-    assert.ok(cases.every(e => e.details.verdict.required_tool_observed));
+    if (runtime === "typescript") assert.ok(cases.every(e => e.details.verdict.required_tool_observed));
     const config = await download("Download verified configuration", "artifact");
     assert.deepEqual(config, evidence.run.export);
-    assert.equal(config.entry, "invoke.ts");
+    if (runtime === "typescript") assert.equal(config.entry, "invoke.ts");
+    else assert.equal(config.module, "src.qa");
     assert.equal(config.environment.OPENAI_MODEL, target);
     await owner.screenshot({ path: `${output}/${accepted.id}.jpg`, type: "jpeg", quality: 62, fullPage: true });
     await owner.reload();
