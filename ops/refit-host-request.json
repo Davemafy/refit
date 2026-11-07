@@ -1,1 +1,4 @@
-{"action":"deploy","reason":"Release the tested durable account migration queue and budget reservations"}
+{
+  "action": "deploy",
+  "reason": "Preserve project removal with ownerless legacy run receipts"
+}

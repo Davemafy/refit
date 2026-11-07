@@ -87,7 +87,12 @@ try {
       const r = await fetch(url, data === undefined ? {} : {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
       });
-      return { status: r.status, body: await r.json() };
+      const payload = await r.text();
+      try {
+        return { status: r.status, body: JSON.parse(payload) };
+      } catch {
+        throw new Error(url + " returned HTTP " + r.status + " with a non-JSON response");
+      }
     }, { url: path + suffix, data });
   }
 

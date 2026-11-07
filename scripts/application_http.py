@@ -194,7 +194,7 @@ class ApplicationService:
     def dispatch(self):
         """Start eligible jobs under the service lock, after committing their reservation."""
         running = [run for run, _ in self.runs.values() if run["status"] in EXECUTING]
-        active_owners = {run["owner"] for run in running}
+        active_owners = {run.get("owner", "operator") for run in running}
         queued = sorted((run for run, _ in self.runs.values() if run["status"] == "queued"),
                         key=lambda run: (run["started_at"], run["id"]))
         day = now()[:10]
@@ -316,7 +316,7 @@ class ApplicationService:
             queued = [run for run in jobs if run["status"] == "queued"]
             running = [run for run in jobs if run["status"] in EXECUTING]
             if owner == "operator" and (len(running) >= self.max_active or
-                                        any(run["owner"] == owner for run in running)):
+                                        any(run.get("owner", "operator") == owner for run in running)):
                 raise ApiProblem(409, "run_in_progress", "An operator migration slot is unavailable.")
             if owner != "operator" and (len(queued) >= QUEUE_LIMIT or
                                         sum(run["owner"] == owner for run in queued) >= OWNER_QUEUE_LIMIT):
@@ -385,11 +385,10 @@ class ApplicationService:
                 self.emit(ident, "cancellation_requested", {})
             return self.get(ident, owner)[0]
 
-
     def remove_project(self, owner, ident):
         with self.lock:
-            if any(run["owner"] == owner and run["status"] == "queued" and run["import"]["id"] == ident
-                   for run, _ in self.runs.values()):
+            if any(run["status"] == "queued" and run.get("owner") == owner
+                   and run["import"]["id"] == ident for run, _ in self.runs.values()):
                 raise ApiProblem(409, "project_queued", "Cancel queued migrations before removing this project.")
             return self.accounts.remove_project(owner, ident)
 

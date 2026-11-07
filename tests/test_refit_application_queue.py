@@ -82,6 +82,14 @@ class ApplicationQueueTests(TestCase):
         self.assertNotIn("_queued_setup", run)
         self.assertNotIn("_queued_setup", (self.state / "runs" / (run["id"] + ".json")).read_text())
 
+    def test_legacy_run_without_owner_does_not_break_project_removal(self):
+        service = self.service()
+        alice, request = self.project(service, "alice")
+        bob, _ = self.project(service, "bob")
+        service.runs["app-1234567890abcdef"] = ({"status": "interrupted"}, [])
+        self.assertFalse(service.remove_project(bob, request["import_id"]))
+        self.assertTrue(service.remove_project(alice, request["import_id"]))
+
     def test_simultaneous_submissions_cannot_oversubscribe(self):
         service = self.service(daily_budget=2, max_active=2)
         projects = [self.project(service, name) for name in ("alice", "bob")]
