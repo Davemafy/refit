@@ -32,7 +32,7 @@ const symbols={
 };
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
-const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0};
+const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[]};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -383,6 +383,97 @@ function renderComparison(cases,source,target,report){
    '</td></tr>';
  }).join("")+'</tbody></table></div>';
 }
+
+// Evidence navigation only exposes observations returned by the run API.
+function evidenceEntries(run,events){
+ const entries=[];
+ (run.verification||[]).forEach((details,index)=>entries.push({
+  key:"verification-"+index,type:"verification",title:details.case||"Verification "+(index+1),
+  subtitle:"Fresh export check",details
+ }));
+ events.filter(event=>event.type==="case_completed").forEach(event=>entries.push({
+  key:"case-"+event.seq,type:"case",title:event.details?.case||"Case "+event.seq,
+  subtitle:[event.details?.phase,event.details?.model].filter(Boolean).join(" · "),
+  details:event.details||{}
+ }));
+ events.filter(event=>event.type==="sandbox_cleanup").forEach(event=>entries.push({
+  key:"cleanup-"+event.seq,type:"cleanup",
+  title:event.details?.case||"Sandbox "+event.seq,
+  subtitle:[event.details?.phase,"Cleanup receipt"].filter(Boolean).join(" · "),
+  details:event.details||{}
+ }));
+ entries.push({key:"provenance",type:"provenance",title:"Run provenance",
+  subtitle:"Configuration and run identifiers",details:run});
+ return entries;
+}
+function evidenceOutcome(item){
+ const d=item.details;
+ if(item.type==="case"||item.type==="verification")
+  return typeof d.passed==="boolean"?(d.passed?"Passed":"Failed"):"Not recorded";
+ if(item.type==="cleanup")
+  return d.receipt?.verified===true?"Verified":d.receipt?.verified===false?"Unverified":"Not recorded";
+ return "Recorded";
+}
+function evidenceDetail(item){
+ const d=item.details;
+ const field=(label,value)=>'<div class="evidence-field"><dt>'+safe(label)+'</dt><dd>'+safe(value===undefined||value===null||value===""?"Not recorded":value)+'</dd></div>';
+ const fields=[];
+ if(item.type==="provenance"){
+  fields.push(field("Run ID",d.id),field("Status",d.status),
+   field("Source model",d.source),field("Replacement model",d.target),
+   field("Started",d.started_at),field("Finished",d.finished_at),
+   field("Configuration SHA-256",d.configuration_sha256),
+   field("Model requests",d.model_requests),field("Inference budget",d.budget),
+   field("Verified export",d.export_available===true?"Available":"Not available"));
+ }else if(item.type==="cleanup"){
+  fields.push(field("Case",d.case),field("Phase",d.phase),
+   field("Receipt verified",d.receipt?.verified===true?"Yes":d.receipt?.verified===false?"No":"Not recorded"),
+   field("Cleanup reason",d.receipt?.reason),field("Observed",d.receipt?.observed_at),
+   field("Container",d.receipt?.container_name||d.container));
+ }else{
+  fields.push(field("Case",d.case),field("Evaluation",item.type==="verification"?"Fresh export check":d.phase),
+   field("Model",d.model),
+   field("Outcome",evidenceOutcome(item)),field("Model requests",d.model_requests),
+   field("Exit code",d.exit_code),field("Output SHA-256",d.stdout_sha256));
+ }
+ let supplemental="";
+ if(item.type==="case"||item.type==="verification"){
+  const verdict=Object.entries(d.verdict||{}).filter(([,value])=>typeof value==="boolean");
+  supplemental+=(verdict.length?'<h4>Assertions</h4><div class="evidence-checks">'+verdict.map(([name,passed])=>
+   '<div><span class="'+(passed?"sub":"error")+'">'+safe(passed?"Passed":"Failed")+'</span><span>'+
+   safe(name.replaceAll("_"," "))+'</span></div>').join("")+'</div>':"");
+  const calls=(d.trace||[]).flatMap(trace=>(trace.tools_called||[]).map(name=>({name,trace})));
+  supplemental+='<h4>Tool observations</h4>'+(calls.length?
+   '<ul class="evidence-tools">'+calls.map(({name,trace})=>'<li><span class="mono">'+safe(name)+'</span><span class="muted small">model request '+safe(trace.number)+'</span></li>').join("")+'</ul>':
+   '<p class="small sub">No tool calls recorded for this evaluation.</p>');
+  if(d.error)supplemental+='<div class="notice">'+safe(d.error)+'</div>';
+ }
+ return '<div class="evidence-detail-head"><div><h3>'+safe(item.title)+'</h3><p class="small">'+
+   safe(item.subtitle)+'</p></div><span class="chip bordered">'+safe(evidenceOutcome(item))+'</span></div>'+
+  '<dl class="evidence-fields">'+fields.join("")+'</dl>'+supplemental;
+}
+function evidenceExplorer(run,events){
+ const entries=evidenceEntries(run,events);
+ state.evidenceItems=entries;
+ if(!entries.some(item=>item.key===state.evidenceSelected))state.evidenceSelected=entries[0].key;
+ const selected=entries.find(item=>item.key===state.evidenceSelected);
+ let group="";
+ const navigation=entries.map(item=>{
+  const section=item.type==="verification"?"Verification":item.type==="case"?"Evaluations":
+   item.type==="cleanup"?"Sandbox cleanup":"Provenance";
+  const heading=section===group?"":'<div class="evidence-group">'+safe(section)+'</div>';
+  group=section;
+  return heading+'<button type="button" class="evidence-entry'+(item.key===selected.key?" selected":"")+
+   '" data-action="evidence-select" data-key="'+safe(item.key)+'" aria-pressed="'+
+   (item.key===selected.key?'true':'false')+'"><span class="evidence-entry-title">'+
+   safe(item.title)+'</span><span class="evidence-entry-sub">'+safe(item.subtitle)+
+   '</span></button>';
+ }).join("");
+ return '<div class="evidence-workspace"><nav class="evidence-index" aria-label="Run evidence">'+
+  navigation+'</nav><section class="evidence-inspector" id="evidenceInspector" aria-live="polite">'+
+  evidenceDetail(selected)+'</section></div>';
+}
+
 function runLog(events){if(!events.length)return "No events received yet.";
  return events.slice(-75).map(e=>{
   const d=e.details||{},time=(e.time||"").slice(11,19);
@@ -420,7 +511,7 @@ async function showRun(id,refreshOnly=false){
    '</pre><p class="small">'+(run.export_available?"The adaptation passed fresh original-runtime verification.":"The adaptation has no verified export.")+
    '</p></div>':
   currentTab==="traces"?'<pre class="log">'+safe(runLog(events))+'</pre>':
-  '<div class="stack"><div class="hint-note">'+cleaned+' of '+cleanups.length+' recorded containers verified cleaned up.</div><pre class="log">'+safe(JSON.stringify({run_id:run.id,configuration_sha256:run.configuration_sha256,status:run.status,verification:run.verification||[],events:events.filter(e=>e.type==="sandbox_cleanup"||e.type==="terminal")},null,2))+'</pre></div>';
+  evidenceExplorer(run,events);
  page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration "+run.id)+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
  (active?'<button data-action="cancel-run" data-id="'+safe(id)+'" class="btn">Cancel</button>':"")+
  '<button data-action="evidence-download" data-id="'+safe(id)+'" class="btn">'+ico("download")+' Download evidence</button>'+
@@ -607,6 +698,18 @@ document.addEventListener("click",async event=>{
    el("extraSplit").focus();
   }else if(action==="start-migration")await startMigration();
   else if(action==="cancel-run"){await req("/runs/"+id+"/cancel",{});await showRun(id);}
+  else if(action==="evidence-select"){
+   const item=state.evidenceItems.find(entry=>entry.key===button.dataset.key);
+   const inspector=el("evidenceInspector");
+   if(!item||!inspector)return;
+   state.evidenceSelected=item.key;
+   inspector.innerHTML=evidenceDetail(item);
+   page.querySelectorAll(".evidence-entry").forEach(entry=>{
+    const selected=entry.dataset.key===item.key;
+    entry.classList.toggle("selected",selected);
+    entry.setAttribute("aria-pressed",String(selected));
+   });
+  }
   else if(action==="evidence-download"||action==="artifact-download")await download(id,action==="evidence-download"?"evidence":"artifact");
   else if(action==="tab"){state.tab=button.dataset.tab;const runId=location.pathname.split("/").pop();await showRun(runId);}
   else if(action==="signout"){await req("/logout",{});location.assign("/");}
