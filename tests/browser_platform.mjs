@@ -30,17 +30,19 @@ try {
     const page = await context.newPage();
     page.setDefaultTimeout(25_000);
     page.on("pageerror", error => errors.push(error.message));
-    const status = await page.goto(origin + "/bring");
+    const status = await page.goto(origin + "/signup");
     assert.equal(status.status(), 200);
-    await page.getByRole("heading", { name: "Sign in" }).waitFor();
+    await page.getByRole("heading", { name: "Create your account" }).waitFor();
     const user = { username: `judge-${index}-${randomBytes(5).toString("hex")}`,
       password: randomBytes(24).toString("base64url") };
     credentials.push(user);
     await page.locator("#username").fill(user.username);
     await page.locator("#password").fill(user.password);
     await page.locator("#invite").fill(invite);
-    await page.getByRole("button", { name: "Continue" }).click();
-    await page.getByText("Signed in as " + user.username).waitFor();
+    await page.getByRole("button", { name: /Continue/ }).click();
+    await page.waitForURL(origin + "/app");
+    await page.goto(origin + "/app/agents/new");
+    await page.getByRole("heading", { name: "Bring your agent" }).waitFor();
     const cookie = (await context.cookies()).find(c => c.name === "__Host-refit-session");
     assert.ok(cookie?.httpOnly && cookie?.secure && cookie?.sameSite === "Strict");
     pages.push(page);
@@ -49,7 +51,7 @@ try {
   await owner.locator("#method").selectOption("zip");
   await owner.locator("#zip").setInputFiles(archive);
   const importing = owner.waitForResponse(r => r.url().endsWith(path + "/imports"));
-  await owner.getByRole("button", { name: "Inspect source" }).click();
+  await owner.getByRole("button", { name: /Inspect source/ }).click();
   const imported = await (await importing).json();
   assert.equal(imported.discovery.runtime, runtime);
   if (runtime === "typescript") await owner.getByText(/Vercel AI SDK/).waitFor();
@@ -71,14 +73,14 @@ try {
   assert.equal((await request(other, "/projects/" + imported.id + "/remove", {})).status, 404);
   let live = null;
   if (paid) {
+    await owner.getByRole("button", { name: /Continue to configuration/ }).click();
     await owner.locator("#source").selectOption(source);
     await owner.locator("#target").selectOption(target);
-    await owner.locator("#setupPanel summary").click();
     await owner.locator("#setup").fill(JSON.stringify(setup));
     await owner.locator("#budget").fill(String(cap));
     await owner.locator("#authorize").check();
     const starting = owner.waitForResponse(r => r.url().endsWith(path + "/runs") && r.request().method() === "POST");
-    await owner.getByRole("button", { name: "Run migration" }).click();
+    await owner.getByRole("button", { name: /Run migration/ }).click();
     const response = await starting;
     assert.equal(response.status(), 202, await response.text());
     const accepted = await response.json();
@@ -90,9 +92,17 @@ try {
     assert.equal((await request(other, runRoute + "/artifact")).status, 404);
     assert.equal((await request(other, runRoute + "/cancel", {})).status, 404);
 
-    await owner.waitForFunction(() => {
-      return !["Opening run", "Migration", "running", "cancelling"].includes(document.querySelector("#outcome").textContent);
-    }, null, { timeout: 160_000 });
+    await owner.waitForURL(origin + "/app/runs/" + accepted.id);
+    // Poll the persisted owner-scoped status, not a presentation-only label.
+    let completed;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      completed = await request(owner, runRoute);
+      if (completed.status === 200 && !["running", "cancelling"].includes(completed.body.status)) break;
+      await new Promise(resolve => setTimeout(resolve, 1700));
+    }
+    assert.equal(completed.status, 200);
+    assert.ok(!["running", "cancelling"].includes(completed.body.status), "Migration did not reach a terminal status.");
+    await owner.goto(origin + "/app/runs/" + accepted.id);
 
     async function download(name, suffix) {
       const pending = owner.waitForEvent("download");
@@ -115,24 +125,25 @@ try {
     const cases = evidence.events.filter(e => e.type === "case_completed");
     assert.equal(cases.length, 7);
     if (runtime === "typescript") assert.ok(cases.every(e => e.details.verdict.required_tool_observed));
-    const config = await download("Download verified configuration", "artifact");
+    const config = await download("Export verified configuration", "artifact");
     assert.deepEqual(config, evidence.run.export);
     if (runtime === "typescript") assert.equal(config.entry, "invoke.ts");
     else assert.equal(config.module, "src.qa");
     assert.equal(config.environment.OPENAI_MODEL, target);
     await owner.screenshot({ path: `${output}/${accepted.id}.jpg`, type: "jpeg", quality: 62, fullPage: true });
-    await owner.reload();
-    await owner.getByText("Signed in as " + credentials[0].username).waitFor();
-    await owner.getByRole("button", { name: new RegExp(accepted.id) }).click();
-    await owner.getByRole("button", { name: "Download verified configuration" }).waitFor();
+    await owner.goto(origin + "/app/runs");
+    await owner.getByRole("button", { name: accepted.id, exact: true }).click();
+    await owner.getByRole("button", { name: /Export verified configuration/ }).first().waitFor();
   }
+  await other.goto(origin + "/app/settings");
   await other.getByRole("button", { name: "Sign out" }).click();
-  await other.getByRole("heading", { name: "Sign in" }).waitFor();
+  await other.waitForURL(origin + "/");
   assert.equal((await request(other, "/projects")).status, 401);
+  await other.goto(origin + "/login");
   await other.locator("#username").fill(credentials[1].username);
   await other.locator("#password").fill(credentials[1].password);
-  await other.getByRole("button", { name: "Continue" }).click();
-  await other.getByText("Signed in as " + credentials[1].username).waitFor();
+  await other.getByRole("button", { name: /Continue/ }).click();
+  await other.waitForURL(origin + "/app");
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ browser: "Firefox", twoAccounts: true, isolation: true, live }));
 } finally {

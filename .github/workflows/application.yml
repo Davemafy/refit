@@ -11,6 +11,9 @@ on:
       - 'scripts/refit_vultr_probe.py'
       - 'web/application/**'
       - 'tests/browser_application*.mjs'
+      - 'tests/browser_saas.mjs'
+      - 'tests/saas_fixture_server.py'
+      - 'tests/test_refit_saas_routes.py'
       - 'deploy/launch-application.sh'
       - 'deploy/launch-platform-https.sh'
       - '.github/workflows/application.yml'
@@ -55,3 +58,13 @@ jobs:
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps firefox
           node tests/browser_application_controls.mjs
+      - name: Verify SaaS routes and review in Firefox without inference
+        run: node tests/browser_saas.mjs
+      - name: Archive zero-inference SaaS browser captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-saas-browser-views
+          path: artifacts/saas-ui/
+          retention-days: 3
+          if-no-files-found: ignore

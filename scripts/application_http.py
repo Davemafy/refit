@@ -112,6 +112,8 @@ class ApplicationService:
         ident = "import-" + secrets.token_hex(8)
         summary = {k: v for k, v in snapshot.items() if k != "files"}
         summary.update(id=ident, file_count=len(snapshot["files"]),
+                       file_paths=sorted(snapshot["files"])[:160],
+                       file_paths_truncated=len(snapshot["files"]) > 160,
                        import_seconds=round(time.monotonic() - started, 3))
         if owner != "operator":
             self.accounts.save_project(owner, ident, summary, snapshot)
@@ -314,20 +316,60 @@ class ApplicationHandler(RefitHandler):
         except socket.timeout:
             self._problem(ApiProblem(408, "request_timeout", "The request did not finish in time."))
 
+    def send_page(self, filename, mime):
+        body = (ROOT / "web" / "application" / filename).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy",
+            "default-src 'none'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+            "form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         try:
             url = urlsplit(self.path)
-            if url.path in ("/", "/bring"):
-                body = (ROOT / "web" / "application" / "index.html").read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
-                self.end_headers()
-                self.wfile.write(body)
-                return
+            page = url.path
+            # Fixed-allowlist assets, never arbitrary file paths or user source.
+            assets = {
+                "/assets/ui.css": ("ui.css", "text/css; charset=utf-8"),
+                "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                "/assets/auth.js": ("auth.js", "text/javascript; charset=utf-8"),
+            }
+            if page in assets:
+                filename, mime = assets[page]
+                return self.send_page(filename, mime)
+            if page == "/bring" and self.public():
+                return self.redirect("/app/agents/new")
+            page_files = {
+                "/": "landing.html", "/docs": "docs.html",
+                "/login": "auth.html", "/signup": "auth.html",
+                "/bring": "index.html",  # Preserve operator-only test harness.
+                "/app": "app.html", "/app/agents": "app.html",
+                "/app/agents/new": "app.html", "/app/runs": "app.html",
+                "/app/evidence": "app.html", "/app/settings": "app.html",
+            }
+            filename = page_files.get(page)
+            if filename is None and re.fullmatch(r"/app/runs/app-[0-9a-f]{16}", page):
+                filename = "app.html"
+            if filename is not None:
+                # Browsing requires a session, but ownership enforcement always
+                # remains on the API and applies to every request.
+                if filename == "app.html" and self.public() and not self.service.accounts.resolve(self.session_secret()):
+                    from urllib.parse import quote
+                    return self.redirect("/login?next=" + quote(page, safe="/"))
+                return self.send_page(filename, "text/html; charset=utf-8")
             if url.path == "/api/application/session":
                 if not self.public():
                     return self._send(200, {"mode": "operator"})

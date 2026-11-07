@@ -1,0 +1,418 @@
+"use strict";
+// Refit developer workspace. All execution and verification originate at the
+// owner-scoped application API; the browser never manufactures evaluation data.
+const el=id=>document.getElementById(id);
+const page=el("page");
+const API="/api/application";
+const safe=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const symbols={
+ search:'<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>',
+ help:'<circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 0 1 4.5 1c0 1.9-2.3 2.2-2.3 4"/><path d="M12 17h.01"/>',
+ layers:'<path d="m12 2 9 5-9 5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/>',
+ list:'<path d="M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01"/>',
+ pulse:'<path d="M2 12h5l3-8 4 16 3-8h5"/>',
+ settings:'<path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/><circle cx="12" cy="12" r="4"/>',
+ book:'<path d="M12 6c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1zM12 6v15"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',
+ arrow:'<path d="M5 12h14m-6-6 6 6-6 6"/>',
+ back:'<path d="M19 12H5m6-6-6 6 6 6"/>',
+ check:'<path d="m4 12 5 5L20 6"/>',
+ close:'<path d="M18 6 6 18M6 6l12 12"/>',
+ code:'<path d="m8 8-4 4 4 4M16 8l4 4-4 4"/>',
+ box:'<path d="m12 2 9 5-9 5-9-5zM3 7v10l9 5 9-5V7M12 12v10"/>',
+ git:'<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h6a4 4 0 0 1 4 4v6M6 8v10"/>',
+ upload:'<path d="M12 16V3m-5 5 5-5 5 5M4 17v4h16v-4"/>',
+ download:'<path d="M12 3v14m-5-5 5 5 5-5M4 18v3h16v-3"/>',
+ clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',
+ file:'<path d="M5 2h9l5 5v15H5zM14 2v5h5M8 12h8M8 16h8"/>',
+ shield:'<path d="m12 2 9 4v6c0 6-4 9-9 10-5-1-9-4-9-10V6zM8 12l3 3 5-6"/>',
+ alert:'<path d="M12 3 2 21h20zM12 9v5M12 18h.01"/>',
+ eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+ lock:'<rect x="4" y="11" width="16" height="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'
+};
+const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
+for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
+const state={username:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0};
+const statusText={
+ compatible_on_sample:"Compatible on evaluated cases",
+ verified_adaptation:"Verified repair",
+ source_baseline_insufficient:"Source baseline failed",
+ export_failed_original_runner_verification:"Export verification failed",
+ interrupted:"Interrupted",failed:"Execution failed",
+ inference_budget_exhausted:"Budget exhausted",cancelled:"Cancelled",
+ running:"Running",cancelling:"Cancelling"
+};
+const ended=status=>!["running","cancelling"].includes(status);
+const statusChip=status=>{
+ const klass=["compatible_on_sample","verified_adaptation"].includes(status)?"good":ended(status)?"bad":"warn";
+ return '<span class="chip '+klass+'"><span class="dot"></span>'+safe(statusText[status]||status||"Unknown")+'</span>';
+};
+function notify(message){const old=el("pageError");if(old)old.remove();const note=document.createElement("div");note.className="notice";note.id="pageError";note.textContent=message;page.prepend(note);note.scrollIntoView({block:"nearest"});}
+async function req(suffix,body,signal){
+ const options={credentials:"same-origin",signal};
+ if(body!==undefined)Object.assign(options,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+ const response=await fetch(API+suffix,options);
+ const payload=await response.json().catch(()=>({}));
+ if(response.status===401){location.assign("/login?next="+encodeURIComponent(location.pathname));throw Error("Your session has expired.");}
+ if(!response.ok)throw Error(payload.error?.message||"Request failed ("+response.status+").");
+ return payload;
+}
+const formatTime=value=>{if(!value)return "—";const date=new Date(value);return Number.isNaN(date.getTime())?String(value):date.toLocaleString();};
+const formatDuration=value=>typeof value==="number"?value.toFixed(1)+" s":"—";
+function header(label,step=0,crumb){
+ const node=el("crumb");node.textContent=crumb||label;
+ const steps=el("steps");
+ steps.hidden=!step;
+ if(step){
+  const labels=["Inspect","Configure","Run","Review"];
+  steps.innerHTML=labels.map((name,i)=>
+   '<span class="step '+(step===i+1?"active":step>i+1?"done":"")+'"><span class="num">'+(step>i+1?ico("check"):i+1)+'</span>'+name+'</span>'+
+   (i===3?"":'<span class="step-sep">—</span>')).join("");
+ }
+ for(const link of document.querySelectorAll("a[data-nav]")){
+   const href=link.getAttribute("href");
+   link.classList.toggle("selected",href==="/app/agents"?location.pathname.startsWith("/app/agents"):href==="/app/runs"?location.pathname.startsWith("/app/runs"):href===location.pathname);
+ }
+ document.title=label+" · Refit";
+}
+function stopStream(){
+ if(state.stream){state.stream.close();state.stream=null;}
+ state.streamId=null;state.streamCursor=0;
+ if(state.refreshHandle){clearTimeout(state.refreshHandle);state.refreshHandle=null;}
+}
+function navigate(to,replace=false){
+ if(!/^\/app(?:\/|$)/.test(to))return;
+ if(replace)history.replaceState({},"",to);else history.pushState({},"",to);
+ show().catch(e=>notify(e.message));
+}
+async function refreshWorkspace(){
+ const [projects,runs]=await Promise.all([req("/projects"),req("/runs")]);
+ state.projects=projects.projects||[];
+ state.runs=runs.runs||[];
+}
+const lead=(title,subtitle,right="")=>'<div class="page-lead"><div><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
+const empty=(title,desc,button)=>'<div class="empty"><div class="empty-icon">'+ico("layers")+'</div><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
+const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
+async function overview(){
+ header("Overview");
+ await refreshWorkspace();
+ page.innerHTML=lead("Your workspace","Manage application agents and review real migration evidence.",importButton)+
+ '<div class="metrics" style="margin-bottom:25px"><div class="metric"><strong>'+state.projects.length+'</strong><span>Imported agents</span></div><div class="metric"><strong>'+state.runs.length+'</strong><span>Recent runs</span></div><div class="metric"><strong>'+state.runs.filter(r=>r.status==="compatible_on_sample"||r.status==="verified_adaptation").length+'</strong><span>Verified results</span></div><div class="metric"><strong>'+state.runs.filter(r=>!ended(r.status)).length+'</strong><span>Active migrations</span></div></div>'+
+ '<section class="card inner"><div class="between"><h3>Recent migrations</h3><a href="/app/runs" data-nav class="btn compact">View all '+ico("arrow")+'</a></div><div style="margin-top:16px">'+runTable(state.runs.slice(0,5))+'</div></section>'+
+ '<section class="card inner" style="margin-top:18px"><h3>Get started</h3><p style="margin:8px 0 18px">Import a pinned repository or ZIP, confirm its original entry point and evaluation cases, then choose a replacement model.</p>'+importButton+'</section>';
+}
+const runTable=runs=>runs.length?
+ '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Run</th><th>Models</th><th>Status</th><th>Started</th></tr></thead><tbody>'+
+ runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td>'+safe(r.source||"—")+' → '+safe(r.target||"—")+'</td><td>'+statusChip(r.status)+'</td><td>'+safe(formatTime(r.started_at))+'</td></tr>').join("")+'</tbody></table></div>':
+ empty("No runs yet","Your migrations will appear here. Import an agent to start.",importButton);
+async function agents(){
+ header("Agents");
+ await refreshWorkspace();
+ page.innerHTML=lead("Agents","Your imported application source snapshots and detected runtimes.",importButton)+
+ (state.projects.length?
+ '<div class="card" style="overflow-x:auto"><table class="table"><thead><tr><th>Source</th><th>Runtime</th><th>Entry point</th><th>Files</th><th></th></tr></thead><tbody>'+
+ state.projects.map(p=>'<tr><td><button class="link-btn" data-action="project" data-id="'+safe(p.id)+'">'+safe(p.repository||"Uploaded ZIP")+'</button><div class="small muted mono">'+safe(p.id)+'</div></td><td>'+safe(p.discovery?.runtime||"Unknown")+'</td><td>'+safe(p.discovery?.entry||"Configuration required")+'</td><td>'+safe(p.file_count||0)+'</td><td><button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table></div>':
+ empty("No agents imported","Import a pinned GitHub revision or a ZIP. Refit will inspect the source before any paid execution.",importButton));
+}
+async function runs(){
+ header("Runs");
+ await refreshWorkspace();
+ page.innerHTML=lead("Runs","Migration history with actual inference, evaluation and sandbox evidence.",importButton)+'<section class="card">'+runTable(state.runs)+'</section>';
+}
+async function evidenceIndex(){
+ header("Evidence");
+ await refreshWorkspace();
+ page.innerHTML=lead("Evidence","Open a migration to inspect its case results, model requests, tool events and sandbox cleanup.")+
+ (state.runs.length?'<div class="card">'+runTable(state.runs)+'</div>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
+}
+async function settings(){
+ header("Settings");
+ const config=await req("");
+ page.innerHTML=lead("Settings","Your developer account and execution limits.")+
+ '<div class="card inner" style="max-width:800px"><h3>Account</h3><div class="fact"><span>'+ico("lock")+'</span><span class="sub">Signed in as</span><strong>'+safe(state.username)+'</strong></div><div class="fact"><span>'+ico("shield")+'</span><span class="sub">Isolation</span><strong>Owner-scoped projects and runs</strong></div><div class="fact"><span>'+ico("clock")+'</span><span class="sub">Per-run limit</span><strong>'+safe(config.max_requests)+' requests</strong></div><div class="fact"><span>'+ico("box")+'</span><span class="sub">Worker</span><strong>Isolated gVisor execution</strong></div><p class="small" style="margin:18px 0">Releases, limits and supported runtimes are documented publicly. Live execution requires explicit authorization and is subject to a shared global ceiling.</p><button class="btn" data-action="signout">Sign out</button></div>';
+}
+function wizardIntro(){
+ return '<div class="page-lead"><div><h1>Bring your agent</h1><p>Import existing source, configure its evaluation and verify a model change.</p></div></div>';
+}
+async function flow(){
+ let step=state.wizard?.step||0;
+ if(!step)header("Import agent",1);
+ if(step===1)header("Inspect your agent",1);
+ if(step===2)header("Configure migration",2);
+ if(step===0){
+  page.innerHTML=wizardIntro()+
+   '<div class="card inner" style="max-width:960px"><div class="between"><div><h3>Import existing source</h3><p style="margin-top:6px">Use a pinned GitHub commit or a source ZIP. No model requests are made during inspection.</p></div><span class="chip bordered">'+ico("shield")+' Private to your account</span></div>'+
+   '<form id="importForm" class="stack" style="margin-top:24px"><label class="field">Import from<select class="control" id="method"><option value="github">GitHub repository</option><option value="zip">Project ZIP</option></select></label>'+
+   '<div id="githubFields" class="form-grid"><label class="field">Repository<input class="control" id="repository" placeholder="owner/repository" autocomplete="off" required></label><label class="field">Pinned commit SHA<input class="control mono" id="revision" placeholder="40-character commit hash" maxlength="40" required></label><label class="field span-two">Private repository read token <span class="hint">Optional. Never stored.</span><input type="password" autocomplete="off" id="repoToken" class="control" placeholder="Scoped read token"></label></div>'+
+   '<label class="field" id="zipField" hidden>Source ZIP (up to 4 MiB)<input id="zip" class="control" type="file" accept=".zip,application/zip"></label>'+
+   '<div class="button-row"><button class="btn primary" type="submit">Inspect source '+ico("arrow")+'</button><a class="btn" href="/docs">Import requirements</a></div></form></div>'+
+   '<div class="hint-note" style="max-width:960px;margin-top:18px">Inspection reports detected runtime and entry points. It does not imply the agent is compatible or ready to execute.</div>';
+  return;
+ }
+ const p=state.wizard.project,d=p.discovery||{};
+ if(step===1){
+   const features=[["Agent entry point",d.entry||"Not confidently detected"],["Runtime",d.runtime||"Unknown"],["Provider",d.provider||"Not detected"],["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],["Tools",d.tool||"Not independently enumerated"]];
+   const files=p.file_paths||d.evaluation_files||[];
+   page.innerHTML=lead("Inspect your agent","Review what was actually discovered. Confirm setup before authorizing any execution.")+
+   '<section class="card"><div class="repo-card-head"><div class="repo-mark">'+ico("git")+'</div><div style="flex:1"><h3>'+safe(p.repository||"Uploaded ZIP")+'</h3><p class="small mono">'+safe(p.revision||p.id)+'</p></div><span class="chip bordered">'+safe(p.file_count)+' files inspected</span></div>'+
+   '<div class="split-panel"><div>'+features.map(f=>'<div class="fact"><span class="muted">'+ico(f[0]==="Runtime"?"code":f[0]==="Tools"?"layers":"box")+'</span><strong>'+safe(f[0])+'</strong><span class="value">'+safe(f[1])+'</span></div>').join("")+'</div>'+
+   '<div><h3 style="margin-bottom:12px">Available inspection detail</h3><p class="small">Source filenames are shown from your authenticated import. File contents and tool definitions are not exposed by this API.</p><div class="file-list" style="margin-top:14px">'+(files.length?files.map(f=>'<div>'+ico("file")+' '+safe(f)+'</div>').join(""):'<div>No individual test-file paths reported.</div>')+'</div></div></div></section>'+
+   (d.runnable===false?'<div class="notice" style="margin-top:18px">'+safe(d.setup||"Unsupported runtime")+'</div>':d.setup?'<p style="margin-top:16px;font-size:13px">'+safe(d.setup)+'</p>':'')+
+   '<div class="flow-footer"><button class="btn" data-action="flow-back">'+ico("back")+' Back</button><button class="btn primary" data-action="flow-config" '+(d.runnable===false?"disabled":"")+'>Continue to configuration '+ico("arrow")+'</button></div>';
+   return;
+ }
+ if(!state.capabilities)state.capabilities=await req("");
+ const models=state.capabilities.models||[];
+ const source=state.wizard.source||models[0]||"",target=state.wizard.target||models[1]||"";
+ page.innerHTML=lead("Configure migration","Choose the source and replacement models, then supply independent evaluation cases.")+
+ '<div class="flow-grid"><section class="card inner stack"><label class="field">Original model <span class="hint">The model used for baseline execution.</span><select class="control" id="source">'+models.map(m=>'<option '+(source===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
+ '<label class="field">Replacement model <span class="hint">The model whose behavior will be verified.</span><select class="control" id="target">'+models.map(m=>'<option '+(target===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
+ '<label class="field">Evaluation scope<span class="hint">Independent train, validation, and holdout cases are required. Quick checks are not substituted for these gates.</span></label>'+
+ (d.preset?'<div class="hint-note">'+safe(d.evaluation||"Reviewed native evaluation preset will be used.")+'</div>':
+  '<label class="field">Original runtime and evaluation contract JSON <span class="hint">3–6 independent cases, with actual expected stdout and at least one case per split.</span><textarea id="setup" class="control" spellcheck="false" placeholder=\'{"module":"src.qa","args":["{prompt}"],"cases":[...]}\'>'+safe(state.wizard.setup||"")+'</textarea></label>')+
+ '<label class="field">Maximum Vultr requests<input type="number" id="budget" class="control" min="1" max="'+safe(state.capabilities.max_requests)+'" value="'+safe(state.wizard.budget||state.capabilities.max_requests)+'"></label>'+
+ '<label class="hstack" style="font-size:13px"><input id="authorize" type="checkbox" style="width:17px;height:17px"> I authorize this bounded live inference run.</label></section>'+
+ '<aside class="card inner side-facts"><h3>Migration summary</h3><hr><div class="pair-line"><span class="sub">Source</span><span>'+safe(p.repository||"Uploaded ZIP")+'</span></div><div class="pair-line"><span class="sub">Entry point</span><span>'+safe(d.entry||"Operator-configured")+'</span></div><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(d.runtime)+'</span></div><div class="pair-line"><span class="sub">Verification</span><span>Original-runtime fresh check</span></div><div class="hint-note">'+ico("shield")+' Untrusted source runs inside a bounded disposable gVisor container. No production services are enabled by default.</div></aside></div>'+
+ '<div class="flow-footer"><button class="btn" data-action="flow-inspect">'+ico("back")+' Back to inspection</button><button id="start" class="btn primary" data-action="start-migration">Run migration '+ico("arrow")+'</button></div>';
+}
+async function importProject(){
+ const btn=page.querySelector('#importForm button[type="submit"]');
+ if(btn)btn.disabled=true;
+ try{
+   const kind=el("method").value;let body={method:kind};
+   if(kind==="github"){
+     body.repository=el("repository").value.trim();body.revision=el("revision").value.trim();body.token=el("repoToken").value;
+   }else{
+     const file=el("zip").files[0];
+     if(!file||file.size>4*1024*1024)throw Error("Select a ZIP no larger than 4 MiB.");
+     const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
+     for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+     body.archive=btoa(binary);
+   }
+   if(el("repoToken"))el("repoToken").value="";
+   const project=await req("/imports",body);
+   state.wizard={step:1,project,source:null,target:null,setup:"",budget:null};
+   await refreshWorkspace();
+   await flow();
+ }catch(e){notify(e.message);}finally{if(btn?.isConnected)btn.disabled=false;}
+}
+async function chooseProject(id){
+ const item=state.projects.find(p=>p.id===id);
+ if(!item)throw Error("This project is no longer in your workspace.");
+ state.wizard={step:1,project:item,source:null,target:null,setup:"",budget:null};
+ navigate("/app/agents/new");
+}
+async function startMigration(){
+ const btn=el("start");if(btn)btn.disabled=true;
+ try{
+   const p=state.wizard.project,d=p.discovery||{};
+   const source=el("source").value,target=el("target").value;
+   if(source===target)throw Error("Select two different models.");
+   if(!el("authorize").checked)throw Error("Authorize the inference budget before starting.");
+   const budget=Number(el("budget").value);
+   if(!Number.isInteger(budget)||budget<1||budget>state.capabilities.max_requests)throw Error("Choose a valid request budget.");
+   const body={import_id:p.id,source,target,budget,authorize:true};
+   if(!d.preset){
+      let setup;try{setup=JSON.parse(el("setup").value);}catch(e){throw Error("Provide valid application contract JSON, including independent evaluation cases.");}
+      body.setup=setup;
+   }
+   state.wizard.source=source;state.wizard.target=target;state.wizard.budget=budget;
+   if(body.setup)state.wizard.setup=JSON.stringify(body.setup,null,2);
+   const run=await req("/runs",body);
+   navigate("/app/runs/"+run.id);
+ }catch(e){notify(e.message);}finally{if(btn?.isConnected)btn.disabled=false;}
+}
+function renderComparison(cases,source,target){
+ const base=cases.filter(e=>e.details?.phase!=="fresh_export");
+ const names=[...new Set(base.map(e=>e.details?.case).filter(Boolean))];
+ if(!names.length)return '<div class="hint-note">No source/replacement case comparisons have been recorded yet.</div>';
+ const cell=d=>d?(d.passed?'<span class="chip good">'+ico("check")+' Passed</span>':'<span class="chip bad">'+ico("alert")+' Failed</span>')+
+  (d.verdict?.required_tool_observed===true?'<div class="small sub">Required tool observed</div>':
+  d.verdict?.required_tool_observed===false?'<div class="small error">Required tool not observed</div>':"")+
+  (d.error?'<div class="small error">'+safe(d.error)+'</div>':""):'<span class="muted">Not run</span>';
+ return '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Test case</th><th>Original · '+safe(source)+'</th><th>Replacement · '+safe(target)+'</th><th>Comparison</th></tr></thead><tbody>'+
+ names.map(name=>{
+  const original=base.find(e=>e.details.case===name&&e.details.model===source)?.details;
+  const replacement=base.find(e=>e.details.case===name&&e.details.model===target)?.details;
+  const identical=!!original?.stdout_sha256&&original.stdout_sha256===replacement?.stdout_sha256;
+  const bothPassed=original?.passed&&replacement?.passed;
+  return '<tr><td><strong>'+safe(name)+'</strong></td><td>'+cell(original)+'</td><td>'+cell(replacement)+'</td><td>'+
+   (bothPassed&&identical?'<span class="chip good">Matching stdout</span>':
+    original&&replacement?'<span class="chip warn">Difference or failure</span>':'<span class="muted">Incomplete</span>')+
+   '</td></tr>';
+ }).join("")+'</tbody></table></div>';
+}
+function runLog(events){if(!events.length)return "No events received yet.";
+ return events.slice(-75).map(e=>{
+  const d=e.details||{},time=(e.time||"").slice(11,19);
+  return [time,("000"+e.seq).slice(-3),e.type.replaceAll("_"," "),d.phase,d.case,d.model,d.tools_called?.join(", "),
+   d.receipt?.verified===true?"cleanup verified":d.receipt?.verified===false?"cleanup unverified":null,
+   d.error||null].filter(Boolean).join("   ");
+ }).join("\n");
+}
+async function showRun(id,refreshOnly=false){
+ const [run,evidence]=await Promise.all([req("/runs/"+id),req("/runs/"+id+"/evidence")]);
+ if(location.pathname!=="/app/runs/"+id)return;
+ state.runRevision++;
+ const events=evidence.events||[],cases=events.filter(e=>e.type==="case_completed");
+ const baseCases=cases.filter(e=>e.details?.phase!=="fresh_export");
+ const names=[...new Set(baseCases.map(e=>e.details?.case).filter(Boolean))];
+ const matched=names.filter(name=>{
+  const original=baseCases.find(e=>e.details.case===name&&e.details.model===run.source)?.details;
+  const replacement=baseCases.find(e=>e.details.case===name&&e.details.model===run.target)?.details;
+  return original?.passed&&replacement?.passed&&original.stdout_sha256&&original.stdout_sha256===replacement.stdout_sha256;
+ }).length;
+ const cleanups=events.filter(e=>e.type==="sandbox_cleanup");
+ const cleaned=cleanups.filter(e=>e.details?.receipt?.verified).length;
+ const active=!ended(run.status);
+ header(active?"Run migration":"Migration review",active?3:4,"Agents / "+(run.import?.repository||"Imported agent")+" / "+(active?"Run":"Review"));
+ const currentTab=state.tab||"evaluation";
+ const tabs=["evaluation","traces","evidence"];
+ const panel=currentTab==="evaluation"?renderComparison(cases,run.source,run.target):
+  currentTab==="traces"?'<pre class="log">'+safe(runLog(events))+'</pre>':
+  '<div class="stack"><div class="hint-note">'+cleaned+' of '+cleanups.length+' recorded containers verified cleaned up.</div><pre class="log">'+safe(JSON.stringify({run_id:run.id,configuration_sha256:run.configuration_sha256,status:run.status,verification:run.verification||[],events:events.filter(e=>e.type==="sandbox_cleanup"||e.type==="terminal")},null,2))+'</pre></div>';
+ page.innerHTML='<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration "+run.id)+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
+ (active?'<button data-action="cancel-run" data-id="'+safe(id)+'" class="btn">Cancel</button>':"")+
+ '<button data-action="evidence-download" data-id="'+safe(id)+'" class="btn">'+ico("download")+' Download evidence</button>'+
+ (run.export_available?'<button data-action="artifact-download" data-id="'+safe(id)+'" class="btn primary">'+ico("download")+' Export verified configuration</button>':"")+
+ '</div></div>'+
+ (run.error?'<div class="notice" style="margin-bottom:18px">'+safe("Execution result: "+run.error.replaceAll("_"," "))+'</div>':"")+
+ '<div class="run-layout"><div class="stack"><section class="card inner"><div class="between"><div><h2>'+(active?"Executing migration":"Review migration results")+'</h2><p style="font-size:13px;margin-top:5px">'+(active?"Live execution with recorded inference, case outcomes and cleanup.":"Only observed cases and verified artifacts are shown.")+'</p></div><span class="chip bordered">'+safe(run.model_requests??run.request_attempts_logged??0)+' / '+safe(run.budget)+' requests</span></div>'+
+ '<div class="metrics" style="margin-top:20px"><div class="metric"><strong>'+matched+' / '+names.length+'</strong><span>Matching evaluated cases</span></div><div class="metric"><strong>'+cleaned+' / '+cleanups.length+'</strong><span>Sandbox cleanup receipts</span></div><div class="metric"><strong>'+safe(formatDuration(run.execution_seconds))+'</strong><span>Execution duration</span></div><div class="metric"><strong>'+((run.verification||[]).filter(v=>v.passed).length)+' / '+((run.verification||[]).length)+'</strong><span>Fresh export checks</span></div></div>'+
+ '<div class="tabs" style="margin-top:19px">'+tabs.map(t=>'<button class="tab '+(t===currentTab?"active":"")+'" data-action="tab" data-tab="'+t+'">'+(t==="traces"?"Trace":t.charAt(0).toUpperCase()+t.slice(1))+'</button>').join("")+'</div>'+
+ '<div class="tab-panel" id="runPanel">'+panel+'</div></section>'+
+ (active?'<div class="hint-note">'+ico("clock")+' This run is persisted. You can leave this page and reopen it from Runs. Inference is never automatically retried.</div>':
+ run.export_available?'<div class="hint-note">'+ico("check")+' Export is available only because the original application passed the fresh verification gate. Compatibility is established for the evaluated cases, not every possible behavior.</div>':
+ '<div class="hint-note">'+ico("alert")+' No verified export is available. Review the failed baseline, model calls and verification evidence.</div>')+'</div>'+
+ '<aside class="stack"><section class="card inner side-facts"><h3>Run details</h3><div class="pair-line"><span class="sub">Run ID</span><span class="mono">'+safe(run.id)+'</span></div><div class="pair-line"><span class="sub">Source</span><span>'+safe(run.source)+'</span></div><div class="pair-line"><span class="sub">Target</span><span>'+safe(run.target)+'</span></div><div class="pair-line"><span class="sub">Started</span><span>'+safe(formatTime(run.started_at))+'</span></div><div class="pair-line"><span class="sub">Requests</span><span>'+safe(run.model_requests??0)+'</span></div><div class="pair-line"><span class="sub">Export</span><span>'+(run.export_available?"Verified":"Withheld")+'</span></div></section>'+
+ '<section class="card inner"><h3 style="margin-bottom:17px">Execution timeline</h3><div class="timeline">'+
+ [["runtime_ready","Sandbox image prepared"],["sandbox_started","Application sandbox started"],["inference_completed","Vultr inference completed"],["case_completed","Evaluation case completed"],["sandbox_cleanup","Sandbox cleaned up"]].map(([key,label])=>{
+  const done=events.some(e=>e.type===key);
+  return '<div class="timeline-item '+(done?"done":"")+'"><span class="small-dot"></span>'+label+'</div>';
+ }).join("")+'</div></section>'+
+ '<section class="card inner side-facts"><h3>Environment</h3><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(run.import?.discovery?.runtime||"Imported application")+'</span></div><div class="pair-line"><span class="sub">Isolation</span><span>gVisor</span></div><div class="pair-line"><span class="sub">Network</span><span>Restricted</span></div></section></aside></div>'+
+ '<div class="flow-footer"><button class="btn" data-action="show-runs">'+ico("back")+' Back to runs</button>'+
+ (run.export_available?'<button class="btn primary" data-action="artifact-download" data-id="'+safe(id)+'">'+ico("download")+' Export changes</button>':"")+'</div>';
+ if(active)subscribe(id);else stopStream();
+}
+function subscribe(id){
+ if(state.streamId===id&&state.stream)return;
+ stopStream();
+ state.streamId=id;
+ const source=new EventSource(API+"/runs/"+id+"/events?after=0");
+ state.stream=source;
+ source.onmessage=event=>{
+  try{
+   const e=JSON.parse(event.data);
+   if(e.seq<=state.streamCursor)return;
+   state.streamCursor=e.seq;
+   if(state.refreshHandle)clearTimeout(state.refreshHandle);
+   state.refreshHandle=setTimeout(()=>{state.refreshHandle=null;if(location.pathname==="/app/runs/"+id)showRun(id,true).catch(err=>notify(err.message));},e.type==="terminal"?0:220);
+  }catch(error){console.error("Invalid run event",error);}
+ };
+ // SSE connections expire after ten seconds. EventSource reconnects automatically.
+ source.onerror=()=>{};
+}
+async function download(id,type){
+ const data=await req("/runs/"+id+"/"+type);
+ const body=JSON.stringify(data,null,2),file=new Blob([body],{type:"application/json"});
+ const url=URL.createObjectURL(file),link=document.createElement("a");
+ link.href=url;link.download=id+"-"+type+".json";document.body.appendChild(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function searchOverlay(){
+ const overlay=document.createElement("div");
+ overlay.id="searchOverlay";overlay.setAttribute("role","dialog");overlay.setAttribute("aria-modal","true");
+ overlay.style.cssText="position:fixed;inset:0;background:#000b;z-index:90;display:flex;align-items:flex-start;justify-content:center;padding:13vh 14px";
+ overlay.innerHTML='<div class="card inner" style="width:100%;max-width:600px;background:#1a1b1f;max-height:70vh;overflow:auto"><div class="hstack">'+ico("search")+'<input id="searchInput" class="control" autofocus placeholder="Search your agents and runs…" aria-label="Search your agents and runs"><button class="btn compact" id="searchClose" aria-label="Close search">'+ico("close")+'</button></div><div id="searchResults" style="margin-top:15px"></div></div>';
+ document.body.appendChild(overlay);
+ const input=overlay.querySelector("#searchInput"),results=overlay.querySelector("#searchResults");
+ function update(){
+   const term=input.value.trim().toLowerCase();
+   const candidates=[
+    ...state.projects.map(p=>({title:p.repository||"Uploaded ZIP",sub:p.id,url:"/app/agents/new?project="+p.id,action:"project",id:p.id})),
+    ...state.runs.map(r=>({title:r.id,sub:statusText[r.status]||r.status,url:"/app/runs/"+r.id,action:"run",id:r.id}))
+   ].filter(x=>(x.title+" "+x.sub).toLowerCase().includes(term)).slice(0,15);
+   results.innerHTML=candidates.length?candidates.map(x=>'<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:8px" data-search-action="'+x.action+'" data-search-id="'+safe(x.id)+'"><span>'+safe(x.title)+'</span><span class="muted small" style="margin-left:auto">'+safe(x.sub)+'</span></button>').join(""):'<div class="small muted" style="padding:16px">No matching agents or runs.</div>';
+ }
+ input.addEventListener("input",update);update();input.focus();
+ overlay.querySelector("#searchClose").onclick=()=>overlay.remove();
+ overlay.onclick=event=>{if(event.target===overlay)overlay.remove();};
+ overlay.addEventListener("click",event=>{
+  const action=event.target.closest("[data-search-action]");
+  if(!action)return;
+  const id=action.dataset.searchId,kind=action.dataset.searchAction;overlay.remove();
+  if(kind==="project"){chooseProject(id).catch(e=>notify(e.message));}else navigate("/app/runs/"+id);
+ });
+}
+async function show(){
+ stopStream();page.innerHTML='<div class="small muted">Loading…</div>';
+ const pathname=location.pathname;
+ if(pathname==="/app"){await overview();return;}
+ if(pathname==="/app/agents"){await agents();return;}
+ if(pathname==="/app/agents/new"){
+  const projectId=new URLSearchParams(location.search).get("project");
+  if(projectId&&(!state.wizard||state.wizard.project?.id!==projectId)){
+   await refreshWorkspace();const project=state.projects.find(p=>p.id===projectId);
+   if(project)state.wizard={step:1,project};
+  }
+  await flow();return;
+ }
+ if(pathname==="/app/runs"){await runs();return;}
+ if(pathname==="/app/evidence"){await evidenceIndex();return;}
+ if(pathname==="/app/settings"){await settings();return;}
+ const match=pathname.match(/^\/app\/runs\/(app-[0-9a-f]{16})$/);
+ if(match){await showRun(match[1]);return;}
+ navigate("/app",true);
+}
+document.addEventListener("click",async event=>{
+ const nav=event.target.closest("a[data-nav]");
+ if(nav){event.preventDefault();navigate(nav.pathname+nav.search);return;}
+ const button=event.target.closest("[data-action]");if(!button)return;
+ const action=button.dataset.action,id=button.dataset.id;
+ try{
+  if(action==="new-agent"){state.wizard=null;navigate("/app/agents/new");}
+  else if(action==="show-runs")navigate("/app/runs");
+  else if(action==="run")navigate("/app/runs/"+id);
+  else if(action==="project")await chooseProject(id);
+  else if(action==="remove"){
+   if(!confirm("Delete this imported source snapshot from your workspace? Existing run evidence is retained."))return;
+   await req("/projects/"+id+"/remove",{});await agents();
+  }else if(action==="flow-back"){state.wizard=null;await flow();}
+  else if(action==="flow-config"){state.wizard.step=2;await flow();}
+  else if(action==="flow-inspect"){
+   state.wizard.source=el("source")?.value;state.wizard.target=el("target")?.value;
+   state.wizard.setup=el("setup")?.value||state.wizard.setup;
+   state.wizard.budget=el("budget")?.value;state.wizard.step=1;await flow();
+  }else if(action==="start-migration")await startMigration();
+  else if(action==="cancel-run"){await req("/runs/"+id+"/cancel",{});await showRun(id);}
+  else if(action==="evidence-download"||action==="artifact-download")await download(id,action==="evidence-download"?"evidence":"artifact");
+  else if(action==="tab"){state.tab=button.dataset.tab;const runId=location.pathname.split("/").pop();await showRun(runId);}
+  else if(action==="signout"){await req("/logout",{});location.assign("/");}
+ }catch(e){notify(e.message);}
+});
+document.addEventListener("change",event=>{
+ if(event.target.id==="method"){
+  const zip=event.target.value==="zip";
+  el("zipField").hidden=!zip;el("githubFields").hidden=zip;
+  for(const id of ["repository","revision"]){el(id).required=!zip;}
+  el("zip").required=zip;
+ }
+});
+document.addEventListener("submit",async event=>{
+ if(event.target.id==="importForm"){event.preventDefault();await importProject();}
+});
+el("search").addEventListener("click",searchOverlay);
+document.addEventListener("keydown",event=>{
+ if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();searchOverlay();}
+ if(event.key==="Escape")el("searchOverlay")?.remove();
+});
+window.addEventListener("popstate",()=>show().catch(e=>notify(e.message)));
+(async()=>{
+ try{
+  const session=await req("/session");
+  if(session.mode!=="account"||!session.username){location.assign("/login?next="+encodeURIComponent(location.pathname));return;}
+  state.username=session.username;el("avatar").textContent=session.username.charAt(0).toUpperCase();
+  await show();
+ }catch(e){notify(e.message);}
+})();

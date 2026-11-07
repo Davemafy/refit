@@ -59,8 +59,14 @@ server {
     limit_conn refit_connections 12;
     add_header Strict-Transport-Security "max-age=86400" always;
 
-    location = / { return 302 /bring; }
+    location = / { include snippets/refit-platform-proxy.conf; }
+    location = /docs { include snippets/refit-platform-proxy.conf; }
+    location = /login { include snippets/refit-platform-proxy.conf; }
+    location = /signup { include snippets/refit-platform-proxy.conf; }
     location = /bring { include snippets/refit-platform-proxy.conf; }
+    location ^~ /assets/ { include snippets/refit-platform-proxy.conf; }
+    location = /app { include snippets/refit-platform-proxy.conf; }
+    location ^~ /app/ { include snippets/refit-platform-proxy.conf; }
     location = /api/application { include snippets/refit-platform-proxy.conf; }
     location ~ ^/api/application/(login|register)$ {
         limit_req zone=refit_login burst=6 nodelay;
@@ -109,4 +115,4 @@ WantedBy=timers.target
 UNIT
 systemctl daemon-reload
 systemctl enable --now refit-platform-certificate.timer
-printf 'Refit platform ready at https://%s/bring\n' "$IP"
+printf 'Refit platform ready at https://%s/\n' "$IP"
