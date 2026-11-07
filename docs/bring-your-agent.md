@@ -136,6 +136,40 @@ unit-tested, but **has not yet demonstrated a paid independent-agent repair**.
 An application without a genuine configurable instruction seam must still
 report an unsupported repair rather than silently overwrite its prompts.
 
+### Application boundaries and file state
+
+Discovery lists candidate invocations with the nearest same-runtime manifest,
+dependency names, provider signals and the evidence for its confidence.
+Confirm or override the candidate before configuring a run. For an app
+that needs its own working directory, reimport with its application directory
+as the scope. Python and Node run in the existing managed sandbox. Existing
+HTTP services and local connector execution are outside this release.
+
+Add `state` to an evaluation case to verify application-local file effects.
+Each case starts with the pinned source snapshot. Paths are relative to the
+sandbox application directory. Supported operations are `exists`, `absent`,
+`changed`, `unchanged` and `json_contains`. For example:
+
+```json
+{
+  "name": "refund-state",
+  "split": "holdout",
+  "prompt": "Refund the test order",
+  "state": [
+    {"path": "state/order.json", "op": "changed"},
+    {"path": "state/order.json", "op": "json_contains", "expected": {"status": "refunded"}},
+    {"path": "state/real-payment.json", "op": "absent"}
+  ]
+}
+```
+
+The sandbox worker reports the observed files before and after invocation.
+The evaluator holds the expected values outside the agent sandbox and
+publishes file statuses, hashes and verdicts to the authenticated run.
+Checks read bounded UTF-8 regular files and reject symlinks. These checks
+verify local file effects, rather than database transactions or remote
+business state. No external service permissions are granted.
+
 ## Use the native export
 
 For the verified LLM run, with the original app installed at the pinned

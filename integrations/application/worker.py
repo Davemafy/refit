@@ -3,6 +3,8 @@ import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
+import signal
+import stat
 from pathlib import Path
 import subprocess
 import sys
@@ -29,6 +31,34 @@ def instruction_environment(cfg):
             "\x00" in base or "\x00" in extra):
         raise ValueError("Invalid native instruction text")
     return {key: base + ("\n\n" + extra if extra else "")}
+
+
+def observe_state(root_fd, paths):
+    """Inspect bounded regular files without following links out of the workspace."""
+    observations = {}
+    for path in paths:
+        fd = os.dup(root_fd)
+        try:
+            parts = path.split("/")
+            for part in parts[:-1]:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            child = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+            with os.fdopen(child, "rb") as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    observations[path] = {"status": "unsupported"}
+                    continue
+                value = stream.read(16385)
+            observations[path] = ({"status": "file", "text": value.decode("utf-8")}
+                                  if len(value) <= 16384 else {"status": "too_large"})
+        except FileNotFoundError:
+            observations[path] = {"status": "missing"}
+        except (OSError, UnicodeDecodeError):
+            observations[path] = {"status": "unsupported"}
+        finally:
+            os.close(fd)
+    return observations
 
 
 def main():
@@ -99,22 +129,33 @@ def main():
                           "./" + cfg["entry"], *argv]
         else:
             invocation = [sys.executable, "-B", "-m", cfg["module"], *argv]
+        paths = cfg.get("state_paths", [])
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        initial = observe_state(root_fd, paths)
         # Files bound output growth by the container's writable tmpfs limit.
         with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
             proc = subprocess.Popen(invocation,
-                cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+                cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr, start_new_session=True)
             try:
                 proc.wait(timeout=cfg["timeout"])
             except subprocess.TimeoutExpired:
-                proc.kill()
+                os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait()
+                os.close(root_fd)
                 send({"type": "case", "status": "application_timeout"})
                 return
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            final = observe_state(root_fd, paths)
+            os.close(root_fd)
             stdout.seek(0)
             stderr.seek(0)
             output = stdout.read(16385)
             send({"type": "case", "status": "completed" if len(output) <= 16384 else "output_limit",
-                  "exit_code": proc.returncode, "stdout": output[:16384].decode("utf-8", "replace"),
+                  "exit_code": proc.returncode, "state": {path: {"before": initial[path], "after": final[path]}
+                                                           for path in paths}, "stdout": output[:16384].decode("utf-8", "replace"),
                   "stderr": stderr.read(2048).decode("utf-8", "replace")})
 
 

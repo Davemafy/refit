@@ -324,77 +324,117 @@ def unpack_zip(archive):
 def inspect(files):
     def read(name):
         return base64.b64decode(files.get(name, "")).decode("utf-8", "replace")
-    try:
-        project = tomllib.loads(read("pyproject.toml")).get("project", {})
-        if not isinstance(project, dict):
-            project = {}
-    except ValueError:
-        project = {}
-    python = any(name.endswith(".py") for name in files)
-    node_files = [name for name in files if name.endswith((".ts", ".mts", ".js", ".mjs"))
-                  and not name.endswith(".d.ts")]
-    typescript = any(name.endswith((".ts", ".tsx", ".mts")) for name in files) or (
-        "package.json" in files and bool(node_files))
-    try:
-        package = json.loads(read("package.json"))
-        if not isinstance(package, dict):
-            package = {}
-    except ValueError:
-        package = {}
-    runtime = "python" if python and not typescript else "typescript" if typescript else "unknown"
+
+    manifests = {}
+    for name in sorted(files):
+        path = PurePosixPath(name)
+        if path.name not in {"package.json", "pyproject.toml", "requirements.txt"}:
+            continue
+        runtime = "typescript" if path.name == "package.json" else "python"
+        try:
+            if path.name == "package.json":
+                metadata = json.loads(read(name))
+                dependencies = sorted(metadata.get("dependencies", {}))
+            elif path.name == "pyproject.toml":
+                metadata = tomllib.loads(read(name)).get("project", {})
+                dependencies = metadata.get("dependencies", [])
+            else:
+                metadata = {}
+                dependencies = read(name).splitlines()
+            dependencies = sorted({match.group() for item in dependencies if isinstance(item, str)
+                                   and (match := re.match(r"[@a-zA-Z0-9_./-]+", item))})
+        except (ValueError, AttributeError, TypeError):
+            metadata, dependencies = {}, []
+        manifests.setdefault((path.parent, runtime), (name, metadata, dependencies[:40]))
+    _, project, _ = manifests.get((PurePosixPath("."), "python"), (None, {}, []))
     if project.get("name") == "llm" and project.get("version") == "0.37.1" and "llm/__main__.py" in files:
         return {"runtime": "python", "setup": None, "preset": "llm-0.37.1",
                 "provider": "OpenAI-compatible Chat Completions",
                 "entry": "python -m llm", "tool": "llm_version",
                 "evaluation": "Exact stdout and observed original llm_version tool result"}
-    evaluation_files = sorted(name for name in files if
-        (name.startswith(("test/", "tests/", "__tests__/")) or
-         re.search(r"(?:^test_|[.]test[.]|[.]spec[.])", PurePosixPath(name).name))
-        and name.endswith((".py", ".ts", ".js", ".mts", ".mjs")))[:12]
-    if runtime == "unknown":
-        return {"runtime": runtime, "preset": None, "runnable": False, "entry": None,
-                "provider": None, "evaluation_files": evaluation_files,
-                "setup": "Upload the runnable Python module or Node CLI and its dependency manifest."}
-    if runtime == "typescript":
-        if "package.json" not in files:
-            return {"runtime": "typescript", "setup": "TypeScript execution is unavailable without a package.json declaring its runtime dependencies.",
-                    "runnable": False, "preset": None, "entry": None, "provider": None, "dependencies": []}
-        dependencies = package.get("dependencies", {})
-        dependencies = sorted(dependencies) if isinstance(dependencies, dict) else []
-        advertised = package.get("main")
-        entry = advertised.removeprefix("./") if isinstance(advertised, str) else None
-        if entry not in node_files:
-            entry = node_files[0] if len(node_files) == 1 else None
-        return {"runtime": "typescript", "setup": (
-            "Supply an existing Node CLI entry file, its arguments, and train, validation and holdout cases. "
-            "Use OPENAI_BASE_URL and OPENAI_MODEL with non-streaming Chat Completions."),
-            "preset": None, "entry": entry, "provider": "Vercel AI SDK" if "ai" in dependencies else None,
-            "dependencies": dependencies[:40], "evaluation_files": evaluation_files}
-    else:
-        setup = "Provide a Python module, its arguments, and train, validation, and holdout cases with exact expected stdout. The agent must use OPENAI_BASE_URL and OPENAI_MODEL, with streaming disabled."
+
+    evaluation_files = [name for name in sorted(files) if name.endswith((".py", ".ts", ".js", ".mts", ".mjs"))
+                        and (set(PurePosixPath(name).parts[:-1]) & {"test", "tests", "__tests__"}
+                             or re.search(r"(?:^test_|[.]test[.]|[.]spec[.])", PurePosixPath(name).name))]
     candidates = []
-    if runtime == "python":
-        for name in sorted(files):
-            if not name.endswith(".py") or name in evaluation_files:
+    observed_runtimes = set()
+    for name in sorted(files):
+        path = PurePosixPath(name)
+        if path.suffix == ".py":
+            runtime = "python"
+        elif path.suffix in {".ts", ".mts", ".js", ".mjs", ".tsx"} and not name.endswith(".d.ts"):
+            runtime = "typescript"
+        else:
+            continue
+        observed_runtimes.add(runtime)
+        if name in evaluation_files:
+            continue
+        scope = next((parent for parent in path.parents if (parent, runtime) in manifests), PurePosixPath("."))
+        manifest, metadata, dependencies = manifests.get((scope, runtime), (None, {}, []))
+        content = read(name)
+        provider = None
+        if "OPENAI_BASE_URL" in content and "OPENAI_MODEL" in content:
+            provider = "OpenAI environment variables detected"
+        elif runtime == "typescript" and "ai" in dependencies:
+            provider = "Vercel AI SDK"
+        elif "anthropic" in dependencies:
+            provider = "Anthropic SDK detected"
+        elif "openai" in dependencies or "@ai-sdk/openai" in dependencies:
+            provider = "OpenAI SDK detected"
+        evidence = []
+        if runtime == "python":
+            if path.name != "__main__.py" and not re.search(r"""__name__\s*==\s*["']__main__["']""", content):
                 continue
             module = name[:-3].removesuffix("/__main__").replace("/", ".")
             if not all(part.isidentifier() for part in module.split(".")):
                 continue
-            content = read(name)
-            if all(marker in content for marker in ("__main__", "OPENAI_BASE_URL", "OPENAI_MODEL")):
-                takes_input = any(marker in content for marker in ("argparse", "sys.argv", "click", "typer"))
-                candidates.append((takes_input, module))
-    preferred = max((priority for priority, _ in candidates), default=False)
-    best = [module for priority, module in candidates if priority == preferred]
-    entry = f"python -m {best[0]}" if len(best) == 1 else None
-    declared = project.get("dependencies", [])
-    dependencies = sorted({match.group() for requirement in declared
-        if isinstance(requirement, str) and (match := re.match(r"[A-Za-z0-9_.-]+", requirement))}
-        )[:40] if isinstance(declared, list) else []
-    return {"runtime": runtime, "setup": setup, "preset": None,
-            "provider": "OpenAI environment variables detected" if entry else None,
-            "entry": entry, "dependencies": dependencies, "evaluation_files": evaluation_files}
-
+            entry = f"python -m {module}"
+            evidence.append("Python main guard or package entry")
+            if any(marker in content for marker in ("argparse", "sys.argv", "click", "typer")):
+                evidence.append("CLI input detected")
+        else:
+            if not manifest or path.suffix == ".tsx":
+                continue
+            entry = name
+            declared = [metadata.get("main"), metadata.get("bin")]
+            if isinstance(metadata.get("bin"), dict):
+                declared.extend(metadata["bin"].values())
+            if any(isinstance(item, str) and scope / item == path for item in declared):
+                evidence.append("Package declares this entry")
+            elif "process.argv" in content:
+                evidence.append("CLI input detected")
+            elif path.stem in {"agent", "cli", "invoke", "main"} and provider:
+                evidence.append("Agent entry filename and provider dependency")
+            else:
+                continue
+        if provider:
+            evidence.append(provider)
+        confidence = "high" if provider and any("CLI input" in item or "declares" in item for item in evidence) else "possible"
+        candidates.append({"path": name, "entry": entry, "runtime": runtime,
+                           "directory": "" if str(scope) == "." else str(scope),
+                           "manifest": manifest, "dependencies": dependencies,
+                           "provider": provider, "confidence": confidence, "evidence": evidence})
+    likely = [candidate for candidate in candidates if candidate["confidence"] == "high"]
+    chosen = likely[0] if len(likely) == 1 else candidates[0] if len(candidates) == 1 else None
+    runtime = chosen["runtime"] if chosen else (
+        next(iter(observed_runtimes)) if len(observed_runtimes) == 1 else "mixed" if observed_runtimes else "unknown")
+    result = {"runtime": runtime, "preset": None, "entry": chosen["entry"] if chosen else None,
+              "provider": chosen["provider"] if chosen else None,
+              "dependencies": chosen["dependencies"] if chosen else [],
+              "applications": candidates[:40], "evaluation_files": evaluation_files[:12],
+              "setup": "Choose the original entry point and configure non-streaming Chat Completions and independent cases."}
+    if runtime == "unknown" or (runtime == "typescript" and not any(lang == runtime for _, lang in manifests)):
+        result["runnable"] = False
+        result["setup"] = ("TypeScript execution is unavailable without a package.json declaring runtime dependencies."
+                           if runtime == "typescript" else "Import a runnable Python module or Node CLI.")
+    if runtime == "typescript" and not chosen:
+        node = [name for name in files if name.endswith((".ts", ".mts", ".js", ".mjs")) and not name.endswith(".d.ts")]
+        if len(node) == 1:
+            result["entry"] = node[0]
+            result["dependencies"] = manifests.get((PurePosixPath("."), runtime), (None, {}, []))[2]
+            if "ai" in result["dependencies"]:
+                result["provider"] = "Vercel AI SDK"
+    return result
 
 
 def discover_source_signals(files):

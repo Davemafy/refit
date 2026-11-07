@@ -44,6 +44,23 @@ class ApplicationImportTests(unittest.TestCase):
         self.assertIsNone(snapshot["discovery"]["preset"])
         self.assertIn("TypeScript execution is unavailable", snapshot["discovery"]["setup"])
 
+    def test_discovery_uses_application_boundaries_in_a_mixed_repository(self):
+        python = b'import argparse\nOPENAI_BASE_URL = OPENAI_MODEL = ""\nif __name__ == "__main__": pass'
+        entries = [
+            ("agent.py", python),
+            ("web/package.json", b'{"dependencies":{"react":"1.0.0"}}'),
+            ("web/index.ts", b'export const ui = "web";'),
+        ]
+        result = source_snapshot(archive(entries))["discovery"]
+        self.assertEqual(result["entry"], "python -m agent")
+        entries.extend([("node/package.json", b'{"dependencies":{"ai":"7.0.0"},"main":"cli.ts"}'),
+                        ("node/cli.ts", b'import {ToolLoopAgent} from "ai"; process.argv[2]')])
+        result = source_snapshot(archive(entries))["discovery"]
+        self.assertEqual(result["runtime"], "mixed")
+        self.assertIsNone(result["entry"])
+        self.assertEqual([(app["entry"], app["directory"]) for app in result["applications"]],
+                         [("python -m agent", ""), ("node/cli.ts", "node")])
+
     def test_local_cli_excludes_the_separately_supplied_setup_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

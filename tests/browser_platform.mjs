@@ -73,7 +73,7 @@ try {
   }
   assert.equal(imported.discovery.runtime, runtime);
   if (runtime === "typescript") await owner.getByText(/Vercel AI SDK/).waitFor();
-  else await owner.getByText(/python -m src.qa/).waitFor();
+  else await owner.getByText("python -m src.qa", { exact: true }).first().waitFor();
   const setup = JSON.parse(await readFile(setupFile, "utf8"));
 
   async function request(page, suffix, data) {

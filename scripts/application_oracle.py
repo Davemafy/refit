@@ -3,11 +3,12 @@
 Expected outcomes never enter an imported agent's gVisor container.
 This deliberately excludes arbitrary Python/JavaScript evaluator code.
 """
+import hashlib
 import json
 import re
 
 REQUIRED = {"name", "split", "prompt"}
-OPTIONAL = {"stdout", "json_contains", "tool", "tool_result", "tool_arguments", "forbidden_tools"}
+OPTIONAL = {"stdout", "json_contains", "tool", "tool_result", "tool_arguments", "forbidden_tools", "state"}
 TOOL_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,99}\Z")
 
 
@@ -22,8 +23,8 @@ def validate_case(case):
         raise ValueError("Invalid evaluation case name.")
     if case["split"] not in {"train", "validation", "holdout"}:
         raise ValueError("Invalid evaluation split.")
-    if not ({"stdout", "json_contains", "tool"} & case.keys()):
-        raise ValueError("Supply exact stdout, JSON fields, or an expected tool.")
+    if not ({"stdout", "json_contains", "tool", "state"} & case.keys()):
+        raise ValueError("Supply a response, tool, or application state check.")
     if {"tool_result", "tool_arguments"} & case.keys() and "tool" not in case:
         raise ValueError("Tool arguments or results require a named tool.")
     for field in ("stdout", "tool_result"):
@@ -51,6 +52,30 @@ def validate_case(case):
         if len(payload) > 4096:
             raise ValueError(f"{field} exceeds 4096 bytes.")
 
+    if "state" in case:
+        checks = case["state"]
+        if not isinstance(checks, list) or not 1 <= len(checks) <= 8:
+            raise ValueError("Provide between one and eight application state checks.")
+        for check in checks:
+            if not isinstance(check, dict) or not {"path", "op"} <= check.keys():
+                raise ValueError("Each state check needs a path and operation.")
+            path, operation = check["path"], check["op"]
+            if (not isinstance(path, str) or not 1 <= len(path) <= 180
+                    or not all(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", part) for part in path.split("/"))):
+                raise ValueError("State checks require a safe relative path under the application directory.")
+            if operation not in ("exists", "absent", "changed", "unchanged", "json_contains"):
+                raise ValueError("Unsupported state check operation.")
+            if set(check) != ({"path", "op", "expected"} if operation == "json_contains" else {"path", "op"}):
+                raise ValueError("Only json_contains accepts an expected value.")
+            if operation == "json_contains":
+                try:
+                    value = json.dumps(check["expected"], allow_nan=False)
+                except (TypeError, ValueError, RecursionError):
+                    raise ValueError("State expectations must be valid JSON.") from None
+                if not isinstance(check["expected"], dict) or not check["expected"] or len(value.encode()) > 4096:
+                    raise ValueError("State JSON checks require a nonempty object of up to 4 KiB.")
+
+
 
 def _contains(actual, expected):
     if isinstance(expected, dict):
@@ -67,6 +92,34 @@ def matches_tool_arguments(case, raw):
         return _contains(json.loads(raw), case["tool_arguments"])
     except (ValueError, TypeError, RecursionError):
         return False
+
+
+def evaluate_state(checks, observations):
+    evidence = []
+    for check in checks:
+        path, operation = check["path"], check["op"]
+        observation = observations.get(path, {})
+        before = observation.get("before", {})
+        after = observation.get("after", {})
+        passed = False
+        if after.get("status") in {"file", "missing"}:
+            if operation in {"exists", "absent"}:
+                passed = after["status"] == ("file" if operation == "exists" else "missing")
+            elif operation in {"changed", "unchanged"} and before.get("status") in {"file", "missing"}:
+                passed = (before == after) == (operation == "unchanged")
+            elif operation == "json_contains" and after["status"] == "file":
+                try:
+                    passed = _contains(json.loads(after["text"]), check["expected"])
+                except (KeyError, ValueError, TypeError, RecursionError):
+                    pass
+        def receipt(item):
+            status = item.get("status", "unobserved")
+            text = item.get("text")
+            return {"status": status, **({"sha256": hashlib.sha256(text.encode()).hexdigest()}
+                                         if isinstance(text, str) else {})}
+        evidence.append({"path": path, "op": operation, "passed": passed,
+                         "before": receipt(before), "after": receipt(after)})
+    return evidence
 
 
 def evaluate(case, stdout, tools_called, tool_result_observed, *, tool_arguments_observed=False):

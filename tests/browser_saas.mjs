@@ -122,7 +122,8 @@ try{
  await page.locator("#zip").setInputFiles({name:"agent.zip",mimeType:"application/zip",buffer:zip});
  await page.getByRole("button",{name:/Inspect agent/}).click();
  await page.getByRole("heading",{name:"Inspect your agent"}).waitFor();
- await page.getByText("python -m agent").waitFor();
+ await page.locator(".fact .value").filter({hasText:/^python -m agent$/}).waitFor();
+ await page.getByLabel("Application boundary").selectOption("0");
  await page.screenshot({path:"artifacts/saas-ui/02-inspection.png",fullPage:true});
  await page.getByRole("button",{name:/Continue to configuration/}).click();
  await page.getByRole("heading",{name:"Configure migration"}).waitFor();
@@ -133,13 +134,17 @@ try{
  assert.equal(await cases.count(),3);
  for(const [index,split] of ["train","validation","holdout"].entries()){
   const row=cases.nth(index);
+  if (await row.getAttribute("open") === null) await row.locator("summary").first().click();
   await row.getByLabel("Case name").fill(split);
   await row.getByLabel("Agent input").fill("Prompt for "+split);
   await row.getByLabel("Expected output").fill("ok");
  }
+ await cases.first().getByText("Application state checks",{exact:true}).click();
+ await cases.first().getByLabel("File assertions (JSON array)",{exact:false}).fill('[{"path":"state.json","op":"absent"}]');
  await page.getByRole("button",{name:"Edit JSON"}).click();
  const setup=JSON.parse(await page.locator("#setup").inputValue());
  assert.equal(setup.format,"refit.agent.v1");
+ assert.deepEqual(setup.cases[0].state,[{path:"state.json",op:"absent"}]);
  assert.deepEqual(setup.cases.map(item=>item.split),["train","validation","holdout"]);
  await page.getByRole("button",{name:"Use guided setup"}).click();
  assert.equal(await cases.last().getByLabel("Agent input").inputValue(),"Prompt for holdout");

@@ -152,9 +152,9 @@ function wizardIntro(){
  return '<div class="import-header"><div><h1>Bring your agent</h1><p>Start with the code you already have. We’ll inspect the agent before changing anything.</p></div></div>';
 }
 const importPathSteps='<div class="import-next"><div><span>'+ico("code")+'</span><strong>Inspect</strong><p>Identify the original runtime and model boundary.</p></div><div><span>'+ico("layers")+'</span><strong>Configure</strong><p>Choose models and independent evaluation cases.</p></div><div><span>'+ico("shield")+'</span><strong>Verify</strong><p>Compare real execution before exporting.</p></div></div>';
-function caseFields(item={},split="train",removable=false){
+function caseFields(item={},split="train",removable=false,open=false){
  const value=key=>safe(item[key]||"");
- return '<fieldset class="setup-case"><legend>'+safe(item.split||split)+'</legend>'+
+ return '<details class="setup-case" '+(open?"open":"")+'><summary>'+safe(item.split||split)+(item.name?" · "+safe(item.name):"")+'</summary><div class="setup-case-body">'+
  '<input type="hidden" data-case="split" value="'+safe(item.split||split)+'">'+
  '<label class="field">Case name<input class="control" data-case="name" placeholder="lookup-order" value="'+value("name")+'"></label>'+
  '<label class="field">Agent input<textarea class="control" data-case="prompt" rows="2">'+value("prompt")+'</textarea></label>'+
@@ -165,7 +165,13 @@ function caseFields(item={},split="train",removable=false){
  '<label class="field">Expected tool arguments (JSON object)<textarea class="control" data-case="tool_arguments" rows="2">'+safe(item.tool_arguments?JSON.stringify(item.tool_arguments):"")+'</textarea></label>'+
  '<label class="field">Expected tool result<input class="control" data-case="tool_result" value="'+value("tool_result")+'"></label>'+
  '<label class="field">Forbidden tools, one per line<textarea class="control" data-case="forbidden_tools" rows="2">'+safe((item.forbidden_tools||[]).join("\n"))+'</textarea></label>'+
- '</details>'+(removable?'<button class="btn" type="button" data-action="remove-case">Remove case</button>':'')+'</fieldset>';
+ '</details><details class="case-options"><summary>Application state checks</summary>'+
+ '<label class="field">File assertions (JSON array)<span class="hint">Check existence, change or JSON fields in the sandbox workspace.</span><textarea class="control" data-case="state" rows="2" placeholder="[{&quot;path&quot;:&quot;state.json&quot;,&quot;op&quot;:&quot;changed&quot;}]">'+safe(item.state?JSON.stringify(item.state):"")+'</textarea></label>'+
+ '</details>'+(removable?'<button class="btn" type="button" data-action="remove-case">Remove case</button>':'')+'</div></details>';
+}
+function selectedDiscovery(){
+ const discovery=state.wizard.project.discovery||{};
+ return {...discovery,...state.wizard.application};
 }
 function setupFields(discovery){
  const stored=state.wizard.setup;
@@ -184,7 +190,7 @@ function setupFields(discovery){
  '<label class="field">Command arguments, one per line<span class="hint">Use {prompt} for the case input and {model} if your CLI accepts a model argument.</span><textarea id="runtimeArgs" class="control" rows="2">'+safe((config.args||["{prompt}"]).join("\n"))+'</textarea></label>'+
  '<div class="hint-note">The agent must use OPENAI_BASE_URL and OPENAI_MODEL with non-streaming Chat Completions.</div>'+
  '<h3>Evaluation cases</h3><p class="hint">Use different inputs for training, validation and holdout. Expected outcomes stay outside the agent container.</p>'+
- '<div id="caseFields">'+items.map((item,index)=>caseFields(item,item.split,index>=3)).join("")+'</div>'+
+ '<div id="caseFields">'+items.map((item,index)=>caseFields(item,item.split,index>=3,index===0)).join("")+'</div>'+
  '<div class="hstack"><label class="field">Additional case split<select id="extraSplit" class="control"><option>train</option><option>validation</option><option>holdout</option></select></label><button class="btn" type="button" data-action="add-case">Add case</button></div>'+
  '<details class="case-options" '+(config.instruction_env?"open":"")+'><summary>Permit instruction adaptation</summary>'+
  '<label class="field">Existing instruction environment variable<input id="instructionEnv" class="control" value="'+safe(config.instruction_env||"")+'"></label>'+
@@ -203,8 +209,8 @@ function readSetup(discovery){
    for(const input of group.querySelectorAll("[data-case]")){
     const key=input.dataset.case,value=input.value;
     if(!value&&!(["split","name","prompt"].includes(key)))continue;
-    if(key==="json_contains"||key==="tool_arguments"){
-     try{item[key]=JSON.parse(value);}catch{throw Error("Expected JSON fields and tool arguments must be valid JSON.");}
+    if(key==="json_contains"||key==="tool_arguments"||key==="state"){
+     try{item[key]=JSON.parse(value);}catch{throw Error("Structured checks, tool arguments and file assertions must be valid JSON.");}
     }else item[key]=key==="forbidden_tools"?value.split("\n").map(x=>x.trim()).filter(Boolean):value;
    }
    return item;
@@ -240,7 +246,7 @@ async function flow(){
    '<div class="import-actions"><p>'+ico("shield")+' Private inspection. No model calls or sandbox execution at this step.</p><button class="btn primary" type="submit">Inspect agent '+ico("arrow")+'</button></div></form></section>'+importPathSteps+'</div>';
   return;
  }
- const p=state.wizard.project,d=p.discovery||{};
+ const p=state.wizard.project,d=selectedDiscovery();
  if(step===1){
    const features=[["Agent entry point",d.entry||"Not confidently detected"],["Runtime",d.runtime||"Unknown"],["Provider",d.provider||"Not detected"],["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],["Tools",d.tool||"Not independently enumerated"],["Provider signals",d.provider_signals?.join(", ")||"Not detected"]];
    const files=d.evaluation_files||[];
@@ -248,6 +254,11 @@ async function flow(){
    '<section class="card"><div class="repo-card-head"><div class="repo-mark">'+ico("git")+'</div><div style="flex:1"><h3>'+safe(p.repository||"Uploaded ZIP")+'</h3><p class="small mono">'+safe(p.revision||p.id)+'</p></div><span class="chip bordered">'+safe(p.file_count)+' files inspected</span></div>'+
    '<div class="split-panel"><div>'+features.map(f=>'<div class="fact"><span class="muted">'+ico(f[0]==="Runtime"?"code":f[0]==="Tools"?"layers":"box")+'</span><strong>'+safe(f[0])+'</strong><span class="value">'+safe(f[1])+'</span></div>').join("")+'</div>'+
    '<div><h3 style="margin-bottom:12px">Possible test files</h3><p class="small">These are static hints. Confirm the entry point and choose independent checks before authorizing a run.</p><div class="file-list" style="margin-top:14px">'+(files.length?files.map(f=>'<div>'+ico("file")+' '+safe(f)+'</div>').join(""):'<div>No individual test-file paths reported.</div>')+'</div></div></div></section>'+
+   (d.applications?.length||d.runtime==="mixed"?'<section class="card inner" style="margin-top:16px"><label class="field" for="applicationBoundary">Application boundary</label>'+
+     '<select id="applicationBoundary" class="control"><option value="">'+safe(d.entry||"Choose a runtime or detected entry")+'</option>'+
+     (d.applications||[]).map((app,index)=>'<option value="'+index+'" '+(state.wizard.application?.path===app.path?"selected":"")+'>'+safe(app.entry+" · "+app.runtime+" · "+app.confidence+" confidence")+'</option>').join("")+
+     '<option value="python">Enter a Python module</option><option value="typescript">Enter a Node entry file</option></select>'+
+     '<p class="small" id="boundaryEvidence">'+safe(state.wizard.application?.evidence?.join(" · ")||"Confirm the entry point before configuring an evaluation.")+'</p></section>':'')+
    (p.selection_counts?'<section class="card inner" style="margin-top:16px"><h3>Source selection</h3>'+
      (p.directory?'<p class="small">Scope: <code>'+safe(p.directory)+'</code></p>':'')+
      '<div class="hstack" style="flex-wrap:wrap;margin-top:10px">'+["included","excluded","unsupported"].map(status=>
@@ -319,7 +330,7 @@ async function startMigration(){
  if(state.guest){notify("Sign in to authorize a live migration.");return;}
  const btn=el("start");if(btn)btn.disabled=true;
  try{
-   const p=state.wizard.project,d=p.discovery||{};
+   const p=state.wizard.project,d=selectedDiscovery();
    const source=el("source").value,target=el("target").value;
    if(source===target)throw Error("Select two different models.");
    if(!el("authorize").checked)throw Error("Authorize the inference budget before starting.");
@@ -340,7 +351,7 @@ function renderComparison(cases,source,target,report){
  if(!names.length)return '<div class="hint-note">No source/replacement case comparisons have been recorded yet.</div>';
  const checkLabels={stdout_matches:"Exact output",json_matches:"Structured output",
    required_tool_called:"Required tool called",required_tool_observed:"Required tool result",
-   forbidden_tools_absent:"Forbidden tools absent",tool_arguments_match:"Required tool arguments"};
+   forbidden_tools_absent:"Forbidden tools absent",tool_arguments_match:"Required tool arguments",state_checks_passed:"Application state"};
  const cell=d=>{
   if(!d)return '<span class="muted">Pending</span>';
   const checks=Object.entries(checkLabels).filter(([key])=>typeof d.verdict?.[key]==="boolean");
@@ -350,6 +361,8 @@ function renderComparison(cases,source,target,report){
     '<details class="case-options comparison-checks"><summary>Case evidence</summary><ul>'+
     checks.map(([key,label])=>'<li class="'+(d.verdict[key]?"sub":"error")+'">'+
       safe(label)+(d.verdict[key]?" passed":" failed")+'</li>').join("")+
+    (d.state_checks||[]).map(check=>'<li class="'+(check.passed?"sub":"error")+'">'+
+      safe(check.path+" · "+check.op.replaceAll("_"," ")+" · "+check.before.status+" → "+check.after.status+(check.passed?" · passed":" · failed"))+'</li>').join("")+
     (tools.length?'<li class="sub">Model requested '+safe(tools.join(", "))+'</li>':"")+
     (Number.isInteger(d.model_requests)?'<li class="sub">'+safe(d.model_requests)+' model requests</li>':"")+
     (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul></details>';
@@ -428,8 +441,7 @@ async function showRun(id,refreshOnly=false){
   return '<div class="timeline-item '+(done?"done":"")+'"><span class="small-dot"></span>'+label+'</div>';
  }).join("")+'</div></section>'+
  '<section class="card inner side-facts"><h3>Environment</h3><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(run.import?.discovery?.runtime||"Imported application")+'</span></div><div class="pair-line"><span class="sub">Isolation</span><span>gVisor</span></div><div class="pair-line"><span class="sub">Network</span><span>Restricted</span></div></section></aside></div>'+
- '<div class="flow-footer"><button class="btn" data-action="show-runs">'+ico("back")+' Back to runs</button>'+
- (run.export_available?'<button class="btn primary" data-action="artifact-download" data-id="'+safe(id)+'">'+ico("download")+' Export changes</button>':"")+'</div>';
+ '<div class="flow-footer"><button class="btn" data-action="show-runs">'+ico("back")+' Back to runs</button></div>';
  if(active)subscribe(id);else stopStream();
 }
 function subscribe(id){
@@ -552,19 +564,27 @@ document.addEventListener("click",async event=>{
    if(!confirm("Delete this imported source snapshot from your workspace? Existing run evidence is retained."))return;
    await req("/projects/"+id+"/remove",{});await agents();
   }else if(action==="flow-back"){state.wizard=null;await flow();}
-  else if(action==="flow-config"){state.wizard.step=2;await flow();}
+  else if(action==="flow-config"){
+   const picked=el("applicationBoundary")?.value;
+   const d=state.wizard.project.discovery;
+   const app=picked==="python"||picked==="typescript"?{runtime:picked,entry:null}:
+     picked?d.applications[Number(picked)]:null;
+   if(!app&&d.runtime==="mixed")throw Error("Choose an application boundary before continuing.");
+   if(app?.entry!==state.wizard.application?.entry||app?.runtime!==state.wizard.application?.runtime)state.wizard.setup="";
+   state.wizard.application=app;state.wizard.step=2;await flow();
+  }
   else if(action==="flow-inspect"){
    state.wizard.source=el("source")?.value;state.wizard.target=el("target")?.value;
    if(el("setup"))state.wizard.setup=state.wizard.advanced?el("setup").value:
-     JSON.stringify(readSetup(state.wizard.project.discovery),null,2);
+     JSON.stringify(readSetup(selectedDiscovery()),null,2);
    state.wizard.budget=el("budget")?.value;state.wizard.step=1;await flow();
   }else if(action==="toggle-setup"){
-   const d=state.wizard.project.discovery;
+   const d=selectedDiscovery();
    const setup=readSetup(d);
    if(state.wizard.advanced){
     const field=d.runtime==="typescript"?"entry":"module";
     const fields=["format","mode",field,"args","cases","instruction_env","instruction_base"];
-    const caseKeys=["name","split","prompt","stdout","json_contains","tool","tool_arguments","tool_result","forbidden_tools"];
+    const caseKeys=["name","split","prompt","stdout","json_contains","tool","tool_arguments","tool_result","forbidden_tools","state"];
     if(!setup||typeof setup!=="object"||Object.keys(setup).some(key=>!fields.includes(key))||
        (setup.mode&&setup.mode!=="managed")||(setup.format&&setup.format!=="refit.agent.v1")||
        !Array.isArray(setup.args)||setup.args.some(arg=>typeof arg!=="string"||arg.includes("\n"))||
@@ -580,7 +600,7 @@ document.addEventListener("click",async event=>{
   }else if(action==="add-case"){
    const fields=el("caseFields");
    if(fields.childElementCount>=6)throw Error("Use at most six evaluation cases.");
-   fields.insertAdjacentHTML("beforeend",caseFields({},el("extraSplit").value,true));
+   fields.insertAdjacentHTML("beforeend",caseFields({},el("extraSplit").value,true,true));
    fields.lastElementChild.querySelector('[data-case="name"]').focus();
   }else if(action==="remove-case"){
    button.closest(".setup-case").remove();

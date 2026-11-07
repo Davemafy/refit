@@ -5,14 +5,14 @@ import base64
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import secrets
 import subprocess
 import time
 
 from .container_agent import command, frame, send, validate_completion
-from .application_oracle import evaluate, matches_tool_arguments, validate_case
+from .application_oracle import evaluate, evaluate_state, matches_tool_arguments, validate_case
 from .docker_cleanup import remove_and_verify
 from .migration_engine import AgentContract, AgentProfile, ReplayCase, fingerprint, migrate
 from .refit_vultr_probe import ENDPOINT
@@ -49,8 +49,10 @@ def configuration(snapshot, supplied=None):
     if preset and supplied is None:
         return {**llm_setup(), "seam": "llm"}
     runtime = snapshot["discovery"]["runtime"]
+    if isinstance(supplied, dict) and ("entry" in supplied) != ("module" in supplied):
+        runtime = "typescript" if "entry" in supplied else "python"
     if runtime not in {"python", "typescript"}:
-        raise ValueError("Upload a runnable Python module or Node CLI with its dependency manifest.")
+        raise ValueError("Choose a discovered application or supply an explicit Python module or Node CLI.")
     key = "entry" if runtime == "typescript" else "module"
     required = {key, "args", "cases"}
     optional_seam = {"instruction_env", "instruction_base"}
@@ -78,10 +80,12 @@ def configuration(snapshot, supplied=None):
                 or not entry.endswith((".ts", ".mts", ".js", ".mjs"))
                 or entry.endswith(".d.ts")):
             raise ValueError("Choose a TypeScript or JavaScript CLI file present in the imported source.")
-        if "package.json" not in snapshot["files"]:
+        manifest = next((str(parent / "package.json") for parent in PurePosixPath(entry).parents
+                         if str(parent / "package.json") in snapshot["files"]), None)
+        if manifest is None:
             raise ValueError("TypeScript execution is unavailable without a package.json declaring its runtime dependencies.")
         try:
-            package = json.loads(base64.b64decode(snapshot["files"]["package.json"]))
+            package = json.loads(base64.b64decode(snapshot["files"][manifest]))
             deps = package.get("dependencies", {})
             if not isinstance(deps, dict) or not all(isinstance(v, str) for v in deps.values()):
                 raise ValueError
@@ -210,7 +214,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
             args = runtime["args"]
             if profile.instructions and setup["seam"] == "llm":
                 args = ["prompt", "--system", profile.instructions, *args[1:]]
-            send(proc, {"files": snapshot["files"], "module": runtime.get("module"),
+            state_paths = sorted({check["path"] for check in case.get("state", [])})
+            send(proc, {"state_paths": state_paths, "files": snapshot["files"], "module": runtime.get("module"),
                         "entry": runtime.get("entry"), "args": args,
                         "model": model, "prompt": case["prompt"], "seam": runtime["seam"],
                         "instruction_env": runtime.get("instruction_env"),
@@ -301,7 +306,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
             event("sandbox_cleanup", {"case": case["name"], "phase": phase, "container": name, "receipt": cleanup})
         outcome = evaluate(case, result.get("stdout", ""), all_tool_calls, observed,
                            tool_arguments_observed=observed)
-        ok = (not error and result.get("status") == "completed" and result.get("exit_code") == 0
+        state_checks = evaluate_state(case.get("state", []), result.get("state", {}))
+        ok = (all(check["passed"] for check in state_checks) and not error and result.get("status") == "completed" and result.get("exit_code") == 0
               and outcome["passed"] and calls > 0 and cleanup["verified"])
         error = error or (None if ok else (
             "sandbox_cleanup_unverified" if not cleanup["verified"] else
@@ -316,9 +322,12 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                        outcome["required_tool_observed"] if "tool_result" in case
                        else outcome["required_tool_called"]),
                    "forbidden_tools_absent": outcome["forbidden_tools_absent"],
-                   "tool_arguments_match": outcome["tool_arguments_match"]}
+                   "tool_arguments_match": outcome["tool_arguments_match"],
+                   **({"state_checks_passed": all(check["passed"] for check in state_checks)}
+                      if state_checks else {})}
         evidence = {"case": case["name"], "passed": bool(ok), "verdict": verdict,
                     "error": error, "trace": receipt, "model_requests": calls,
+                    "state_checks": state_checks,
                     "stdout_sha256": hashlib.sha256(result.get("stdout", "").encode()).hexdigest(),
                     "exit_code": result.get("exit_code"), "cleanup": cleanup,
                     "runtime": state["HostConfig"]["Runtime"] if state else None,

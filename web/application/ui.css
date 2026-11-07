@@ -264,7 +264,8 @@ textarea.control { font-family: "Geist Mono", monospace; }
 .setup-fields, #guidedSetup, #caseFields { display: grid; gap: 14px; }
 .setup-fields [hidden] { display: none !important; }
 .setup-fields textarea.control { min-height: 64px; resize: vertical; }
-.setup-case { border: 1px solid var(--line, #333); border-radius: 8px; padding: 14px; min-width: 0; display: grid; gap: 10px; }
-.setup-case legend { padding-inline: 5px; text-transform: capitalize; font-weight: 600; }
+.setup-case { border: 1px solid var(--line, #333); border-radius: 8px; padding: 14px; min-width: 0; }
+.setup-case > summary { cursor: pointer; text-transform: capitalize; font-weight: 600; }
+.setup-case-body { display: grid; gap: 10px; margin-top: 12px; }
 .case-options summary { cursor: pointer; font-size: 13px; }
 .case-options[open] > label { margin-top: 10px; }

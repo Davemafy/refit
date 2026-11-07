@@ -1,12 +1,47 @@
 """Independent outcome evaluation never executes imported application code."""
+import os
+from pathlib import Path
+import tempfile
 import unittest
 
-from scripts.application_oracle import evaluate, matches_tool_arguments, validate_case
+from scripts.application_oracle import evaluate, evaluate_state, matches_tool_arguments, validate_case
 
 
 class ApplicationOracleTests(unittest.TestCase):
     def sample(self, **kwargs):
         return {"name": "case_1", "split": "train", "prompt": "Answer", **kwargs}
+
+    def test_state_verdict_comes_from_observed_files(self):
+        from integrations.application.worker import observe_state
+        case = self.sample(state=[
+            {"path": "state.json", "op": "changed"},
+            {"path": "state.json", "op": "json_contains", "expected": {"status": "refunded"}},
+            {"path": "audit.json", "op": "absent"},
+        ])
+        validate_case(case)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / "state.json"
+            state.write_text('{"status":"paid"}')
+            (root / "audit.json").symlink_to("/etc/passwd")
+            fd = os.open(root, os.O_DIRECTORY)
+            try:
+                paths = ["state.json", "audit.json"]
+                before = observe_state(fd, paths)
+                unchanged = evaluate_state(case["state"], {path: {"before": before[path], "after": before[path]}
+                                                           for path in paths})
+                self.assertEqual([row["passed"] for row in unchanged], [False, False, False])
+                state.write_text('{"status":"refunded"}')
+                (root / "audit.json").unlink()
+                after = observe_state(fd, paths)
+                changed = evaluate_state(case["state"], {path: {"before": before[path], "after": after[path]}
+                                                         for path in paths})
+                self.assertTrue(all(row["passed"] for row in changed))
+                self.assertNotIn("text", changed[0]["after"])
+            finally:
+                os.close(fd)
+        with self.assertRaisesRegex(ValueError, "safe relative path"):
+            validate_case(self.sample(state=[{"path": "../outside", "op": "absent"}]))
 
     def test_legacy_stdout(self):
         case = self.sample(stdout="  HELLO ")
