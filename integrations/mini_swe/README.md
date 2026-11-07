@@ -134,3 +134,29 @@ that no tracked source change was produced. Existing refund/retail artifacts
 and the public deployment were not changed.
 
 Original report SHA-256: `b778365cdea71798c015522af519b1a01ceeb565b8b172dd961bca8f6b28a7d4`.
+
+## Isolated follow-up on November 7, 2026
+
+The [paid follow-up](https://github.com/Davemafy/refit/actions/runs/42347731383)
+ran at commit `292c7d5508100ff1b0ab9847f454938229155d12`. Its zero-inference
+preflight reproduced the issue and verified the upstream fix in separate
+evaluator containers. The source and unmodified target each submitted a
+patch in 12 model requests. Each frozen patch passed training, validation,
+and holdout. The engine reached `compatible_on_sample` without generating a
+repair because the target passed training.
+
+The final export gate reran the original target agent from a clean checkout
+with the proposed export loaded. Its new diff passed all four holdout
+assertions, but the agent attempted to run pytest after the training verifier
+passed and exited with `LimitsExceeded` before submitting. The final status
+was `export_failed_original_runner_verification`, and the export was withheld.
+The observed failure is intermittent under the original 12-step limit.
+
+The follow-up used 36 of its 61 allowed requests. Across both paid runs the
+total was 71 of the original 96. All seven live evaluator containers and the
+generation container had verified cleanup. Full model traces, diffs and
+patch-bound receipts are preserved in
+`data/evaluations/mini-swe-requests-2316-002.json.gz`. The six red/green
+preflight receipts are in `data/evaluations/mini-swe-requests-2316-002-preflight.json.gz`.
+
+Original follow-up report SHA-256: `f15223cae5956f75b8e7d6521bb595da62c94a12f8a102a52867e0f1c27c6e66`.
