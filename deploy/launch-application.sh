@@ -14,7 +14,11 @@ test -r /etc/refit/inference.env
 docker info --format '{{json .Runtimes}}' | python3 -c 'import json,sys; assert "runsc" in json.load(sys.stdin)'
 IMAGE="${REFIT_APPLICATION_IMAGE:-refit-application}"
 BUDGET="${REFIT_APPLICATION_DAILY_BUDGET:-48}"
-[[ "$IMAGE" =~ ^[a-z0-9][a-z0-9_.:-]{0,100}$ && "$BUDGET" =~ ^[0-9]{1,2}$ ]] && ((BUDGET >= 1 && BUDGET <= 96))
+ACCOUNT_BUDGET="${REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET:-16}"
+[[ "$IMAGE" =~ ^[a-z0-9][a-z0-9_.:-]{0,100}$ &&
+   "$BUDGET" =~ ^[0-9]{1,4}$ && "$ACCOUNT_BUDGET" =~ ^[0-9]{1,3}$ ]] &&
+  ((BUDGET >= 1 && BUDGET <= 2048 &&
+    ACCOUNT_BUDGET >= 1 && ACCOUNT_BUDGET <= 512))
 docker build -f "$REPO/integrations/application/Dockerfile" -t "$IMAGE" "$REPO"
 getent group docker >/dev/null
 id refit-application >/dev/null 2>&1 || useradd --system --home-dir /var/lib/refit-application --shell /usr/sbin/nologin refit-application
@@ -40,7 +44,7 @@ EnvironmentFile=/etc/refit/application.env
 EnvironmentFile=-/etc/refit/application-public.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
-ExecStart=/usr/bin/python3 -m scripts.application_http --state /var/lib/refit-application --port 8098 --image $IMAGE --daily-budget $BUDGET
+ExecStart=/usr/bin/python3 -m scripts.application_http --state /var/lib/refit-application --port 8098 --image $IMAGE --daily-budget $BUDGET --account-daily-budget $ACCOUNT_BUDGET
 UMask=0077
 Restart=on-failure
 RestartSec=3

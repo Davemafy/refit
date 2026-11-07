@@ -27,10 +27,16 @@ settings. ZIP import remains supported. Confirm independent evaluation cases
 and the original entry point, select models, and authorize a bounded migration.
 
 New accounts are subject to the same authentication, project isolation,
-per-account daily inference allowance (16 reserved requests) and global
-daily ceiling (operator-configured, currently 48 requests). New accounts
-do not receive unlimited inference. Login and registration remain
-rate-limited by the HTTPS reverse proxy. Anonymous visitors can inspect
+per-account daily inference allowance (16 reserved requests by default) and
+global daily ceiling (operator-configured). The live VM was separately
+reported configured at 72 requests/day; this source change does not itself
+update its running service. Both limits are now explicitly configurable
+(1–512 per account; 1–2048 across accounts). The per-migration limit is
+64, while per-case model completions permit up to eight original agent
+steps rather than the previous four. These values are safety and capacity
+bounds, not claims of successful model compatibility. Public signup is open,
+so keep global budgets and ingress rate limits enabled even with funded
+Vultr credits. Anonymous visitors can inspect
 only the explicitly published example; they cannot view private runs,
 evidence, credentials, or exports.
 
@@ -295,3 +301,22 @@ The [Figma architecture](https://www.figma.com/design/jh0XDbYZzwv90vAOnWw0Zu/Unt
 guided the persistent run ID and outcome/evidence separation. The recorded-only
 board predates this live service. Both verified compatibility and verified
 repair may export when fresh native verification passes.
+
+
+## TypeScript tool-loop acceptance: extended fifth step
+
+The paid GLM TypeScript run reported four consecutive \`read_file\` calls and
+stopped at Refit's old four-completion per-case cap. That result **does not**
+establish that a fifth model completion would succeed. The revised runner
+allows eight completions per case within bounded run and sandbox deadlines.
+It emits a diagnostic event after four identical read-only calls without
+changing the tool outcomes or granting an export. Unsafe and state-changing
+tool calls are not treated as read-only repeats.
+
+The zero-inference gVisor acceptance now includes a separate scripted broker
+that returns four identical file reads followed by a valid structured response
+on the fifth original AI SDK step. All seven native sandbox executions and
+fresh export checks must pass to prove that Refit does not truncate this
+legitimate five-step behavior. This is **not a claim of paid GLM success**.
+The real paid comparison remains an open acceptance check. Avoid replaying
+a failure without examining its event evidence.

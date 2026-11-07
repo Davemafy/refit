@@ -23,7 +23,7 @@ permissions:
 jobs:
   application:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +41,7 @@ jobs:
         run: |
           bash experiments/ai-sdk-file-agent/prepare.sh /tmp/refit-ai-sdk-agent.zip
           python -m scripts.verify_application_typescript /tmp/refit-ai-sdk-agent.zip experiments/ai-sdk-file-agent/setup.json
+          python -m scripts.verify_application_typescript /tmp/refit-ai-sdk-agent.zip experiments/ai-sdk-file-agent/setup.json --extended-read-loop
       - name: Verify HTTP import and disposable containment without inference
         env:
           REFIT_APPLICATION_TOKEN: test-only-operator-application-ci-token

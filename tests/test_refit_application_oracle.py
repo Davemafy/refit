@@ -75,6 +75,22 @@ class ApplicationOracleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsupported_model_request"):
                 completion_tool_choice({"tool_choice": choice}, tools)
 
+    def test_read_only_loop_diagnostics_are_hashed_and_never_block_execution(self):
+        from scripts.application_run import BUDGET_LIMIT, CASE_CALLS, read_only_tool_signature
+        self.assertGreaterEqual(CASE_CALLS, 5)
+        self.assertGreaterEqual(BUDGET_LIMIT, 32)
+        def response(name, args):
+            return {"tool_calls": [{"function": {"name": name, "arguments": args}}]}
+        first = read_only_tool_signature(response("read_file", '{"path":"order.txt"}'))
+        self.assertEqual(first, read_only_tool_signature(response("read_file", '{"path": "order.txt"}')))
+        self.assertRegex(first, r"^sha256:[a-f0-9]{64}$")
+        self.assertNotIn("order.txt", first)
+        self.assertNotEqual(first, read_only_tool_signature(response("read_file", '{"path":"other.txt"}')))
+        for tool in ("write_file", "delete_file", "issue_refund"):
+            self.assertIsNone(read_only_tool_signature(response(tool, '{"path":"order.txt"}')))
+        self.assertIsNone(read_only_tool_signature(response("read_file", "invalid json")))
+        self.assertIsNone(read_only_tool_signature({}))
+
     def test_tool_argument_checks_require_observed_matching_call(self):
         case = self.sample(tool="get_order", tool_arguments={"id": 7})
         validate_case(case)

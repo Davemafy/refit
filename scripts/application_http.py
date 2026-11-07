@@ -36,7 +36,7 @@ from .refit_vultr_probe import VultrInference, load_key
 ROOT = Path(__file__).resolve().parents[1]
 BODY_LIMIT = ((ARCHIVE_LIMIT + 2) // 3) * 4 + 8192
 ACTIVE = {"running", "cancelling"}
-ACCOUNT_BUDGET = 16
+DEFAULT_ACCOUNT_BUDGET = 16
 COOKIE = "__Host-refit-session"
 
 
@@ -119,9 +119,13 @@ def public_example():
 
 
 class ApplicationService:
-    def __init__(self, directory, token, image, daily_budget=24, public_origin=None):
+    def __init__(self, directory, token, image, daily_budget=24, public_origin=None,
+                 account_budget=DEFAULT_ACCOUNT_BUDGET):
         if len(token) < 32:
             raise ValueError("Set a private REFIT_APPLICATION_TOKEN of at least 32 characters.")
+        if (type(daily_budget) is not int or not 1 <= daily_budget <= 2048
+                or type(account_budget) is not int or not 1 <= account_budget <= 512):
+            raise ValueError("Daily and per-account request budgets must remain positive and bounded.")
         self.directory = directory
         directory.mkdir(parents=True, mode=0o700, exist_ok=True)
         self.process_lock = (directory / ".service-lock").open("a")
@@ -132,6 +136,7 @@ class ApplicationService:
         self.account_slots = threading.BoundedSemaphore(2)
         self.image = image
         self.daily_budget = daily_budget
+        self.account_budget = account_budget
         self.lock = threading.RLock()
         self.streams = threading.BoundedSemaphore(8)
         self.import_slots = threading.BoundedSemaphore(2)
@@ -237,7 +242,7 @@ class ApplicationService:
             reserved = sum(reserved_requests(run) for run, _ in self.runs.values() if run["started_at"][:10] == day)
             own_reserved = sum(reserved_requests(run) for run, _ in self.runs.values()
                                if run.get("owner") == owner and run["started_at"][:10] == day)
-            if owner != "operator" and own_reserved + budget > ACCOUNT_BUDGET:
+            if owner != "operator" and own_reserved + budget > self.account_budget:
                 raise ApiProblem(429, "account_budget_exhausted", "Your daily request allowance is reserved.")
             if reserved + budget > self.daily_budget:
                 raise ApiProblem(429, "daily_budget_exhausted", "This operator's daily request allowance is reserved.")
@@ -489,8 +494,16 @@ class ApplicationHandler(RefitHandler):
                 return self._send(200, {"mode": "account", "username": session[1] if session else None})
             owner = self.authorize()
             if url.path == "/api/application":
-                return self._send(200, {"models": MODELS,
-                    "max_requests": BUDGET_LIMIT if owner == "operator" else ACCOUNT_BUDGET})
+                with self.service.lock:
+                    date = now()[:10]
+                    reserved = sum(reserved_requests(run) for run, _ in self.service.runs.values()
+                                   if run["started_at"][:10] == date and run.get("owner") == owner)
+                allowance = self.service.account_budget if owner != "operator" else self.service.daily_budget
+                return self._send(200, {
+                    "models": MODELS, "max_requests": min(BUDGET_LIMIT, allowance),
+                    "account_daily_allowance": allowance, "account_reserved_today": reserved,
+                    "global_daily_ceiling": self.service.daily_budget,
+                })
             source = re.fullmatch(r"/api/application/projects/(import-[0-9a-f]{16})/source", url.path)
             if source and owner != "operator":
                 query = parse_qs(url.query)
@@ -563,13 +576,16 @@ def main():
     parser.add_argument("--port", type=int, default=8098)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--image", default="refit-application")
-    parser.add_argument("--daily-budget", type=int, choices=range(1, 97), default=24)
+    parser.add_argument("--daily-budget", type=int, choices=range(1, 2049), default=24)
+    parser.add_argument("--account-daily-budget", type=int, choices=range(1, 513),
+                        default=DEFAULT_ACCOUNT_BUDGET)
     parser.add_argument("--public-origin", default=os.getenv("REFIT_PUBLIC_ORIGIN"))
     args = parser.parse_args()
     if args.public_origin and not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::[0-9]+)?", args.public_origin):
         parser.error("Public origin must be an exact HTTPS origin.")
     service = ApplicationService(args.state, os.getenv("REFIT_APPLICATION_TOKEN", ""),
-                                 args.image, args.daily_budget, args.public_origin)
+                                 args.image, args.daily_budget, args.public_origin,
+                                 args.account_daily_budget)
     revision = os.getenv("REFIT_DEPLOYED_REVISION", "")
     if revision and not re.fullmatch(r"[0-9a-f]{40}", revision):
         parser.error("REFIT_DEPLOYED_REVISION must be a full Git commit SHA.")

@@ -14,6 +14,28 @@ PASSWORD = "a test-only password"
 
 
 class ApplicationAccountTests(unittest.TestCase):
+    def test_operator_can_configure_larger_bounded_quotas_without_authorization_loss(self):
+        with TemporaryDirectory() as directory:
+            service = ApplicationService(
+                Path(directory), "test-operator-token-32-characters", "image",
+                daily_budget=512, public_origin=ORIGIN, account_budget=96
+            )
+            self.assertEqual(service.account_budget, 96)
+            self.assertEqual(service.daily_budget, 512)
+            secret = service.accounts.register("engineer", "example-password-12345")
+            owner = service.accounts.resolve(secret)[0]
+            self.assertTrue(owner)
+            self.assertNotEqual(owner, "operator")
+            self.assertEqual(service.account_budget, 96)
+            service.process_lock.close()
+        for daily, own in ((0, 16), (2049, 16), (72, 0), (72, 513)):
+            with self.subTest(daily=daily, account=own), TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(ValueError, "bounded"):
+                    ApplicationService(
+                        Path(directory), "test-operator-token-32-characters", "image",
+                        daily_budget=daily, public_origin=ORIGIN, account_budget=own
+                    )
+
     def test_account_ownership_session_origin_and_budget(self):
         with TemporaryDirectory() as directory:
             service = ApplicationService(Path(directory), "test-operator-token-32-characters", "image",
@@ -50,6 +72,11 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(status, 201)
                     bob = cookie.split(";", 1)[0]
                     self.assertEqual(request("GET", "/projects")[0], 401)
+                    status, capability, _ = request("GET", "", cookie=alice)
+                    self.assertEqual(status, 200)
+                    self.assertEqual(capability["max_requests"], 16)
+                    self.assertEqual(capability["account_daily_allowance"], 16)
+                    self.assertEqual(capability["global_daily_ceiling"], 48)
                     owner = service.accounts.resolve(alice.split("=", 1)[1])[0]
                     project = "import-1234567890abcdef"
                     service.accounts.save_project(owner, project, {"id": project},

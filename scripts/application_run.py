@@ -18,10 +18,10 @@ from .migration_engine import AgentContract, AgentProfile, ReplayCase, fingerpri
 from .refit_vultr_probe import ENDPOINT
 
 MODELS = ("deepseek-v4.1-flash-1017", "glm-5.2")
-BUDGET_LIMIT = 24
-CASE_SECONDS = 45
-RUN_SECONDS = 360
-CASE_CALLS = 4
+BUDGET_LIMIT = 64
+CASE_SECONDS = 100
+RUN_SECONDS = 1000
+CASE_CALLS = 8
 NODE_PACKAGES = json.loads((Path(__file__).resolve().parents[1] /
     "integrations/application/node/package.json").read_text())["dependencies"]
 
@@ -153,6 +153,32 @@ def native_export(snapshot, setup, model, instructions=""):
     return config
 
 
+def read_only_tool_signature(message):
+    """Hash a repeated identical read-only tool action without retaining arguments.
+
+    Repeated calls are diagnostic, not grounds for changing the native
+    application's behavior or bypassing independent verification.
+    """
+    calls = message.get("tool_calls") or []
+    if (not isinstance(calls, list) or not calls or
+            any(not isinstance(call, dict) or not isinstance(call.get("function"), dict)
+                or call["function"].get("name") not in {"read_file", "list_files"}
+                for call in calls)):
+        return None
+    normalized = []
+    for call in calls:
+        fn = call["function"]
+        arguments = fn.get("arguments")
+        if not isinstance(arguments, str):
+            return None
+        try:
+            parsed = json.loads(arguments)
+        except (ValueError, TypeError):
+            return None
+        normalized.append((fn["name"], parsed))
+    return fingerprint(normalized)
+
+
 def completion_tool_choice(body, tools):
     """Preserve the original agent's choice, limited to its declared functions."""
     choice = body.get("tool_choice", "auto")
@@ -195,6 +221,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
         observed = False
         tool_ids = set()
         all_tool_calls = []
+        last_read_only_signature = None
+        consecutive_read_only_calls = 0
         result = {}
         error = None
         cleanup = None
@@ -245,7 +273,9 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 tools = body.get("tools")
                 validate_completion({"model": model, "messages": messages, "tools": tools}, {model})
                 tool_choice = completion_tool_choice(body, tools)
-                if calls >= CASE_CALLS or broker.requests >= broker.max_requests:
+                if calls >= CASE_CALLS:
+                    raise RunStopped("case_request_limit_exhausted")
+                if broker.requests >= broker.max_requests:
                     raise RunStopped("inference_budget_exhausted")
                 # The oracle checks the original tool observation, not only model prose.
                 for msg in messages:
@@ -272,12 +302,29 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 check()
                 model_calls = message.get("tool_calls") or []
                 tools_used = [x["function"]["name"] for x in model_calls]
+                signature = read_only_tool_signature(message)
+                if signature is None:
+                    last_read_only_signature = None
+                    consecutive_read_only_calls = 0
+                elif signature == last_read_only_signature:
+                    consecutive_read_only_calls += 1
+                else:
+                    last_read_only_signature = signature
+                    consecutive_read_only_calls = 1
+                if consecutive_read_only_calls == 4:
+                    event("repeated_read_only_tool_calls", {
+                        "model": model, "case": case["name"], "phase": phase,
+                        "consecutive": consecutive_read_only_calls,
+                        "signature_sha256": signature,
+                        "meaning": "Repeated identical read-only calls; execution continues within its budget.",
+                    })
                 all_tool_calls.extend(tools_used)
                 tool_ids.update(
                     x["id"] for x in model_calls if x["function"]["name"] == case.get("tool")
                     and matches_tool_arguments(case, x["function"].get("arguments"))
                 )
                 inference = {"number": broker.requests, "model": model, "tools_called": tools_used,
+                             "repeated_read_only_call_count": consecutive_read_only_calls,
                              "request_sha256": fingerprint(body), "response_sha256": fingerprint(message),
                              "seconds": round(time.monotonic() - requested_at, 3)}
                 receipt.append(inference)
@@ -327,6 +374,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                       if state_checks else {})}
         evidence = {"case": case["name"], "passed": bool(ok), "verdict": verdict,
                     "error": error, "trace": receipt, "model_requests": calls,
+                    "repeated_read_only_calls": consecutive_read_only_calls,
                     "state_checks": state_checks,
                     "stdout_sha256": hashlib.sha256(result.get("stdout", "").encode()).hexdigest(),
                     "exit_code": result.get("exit_code"), "cleanup": cleanup,
@@ -335,7 +383,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                     "elapsed_seconds": round(time.monotonic() - case_start, 3)}
         event("case_completed", {**evidence, "phase": phase, "model": model,
                                  "adapted": bool(profile.instructions)})
-        if error in {"cancelled", "run_timeout", "inference_budget_exhausted", "sandbox_timeout",
+        if error in {"cancelled", "run_timeout", "inference_budget_exhausted",
+                     "case_request_limit_exhausted", "sandbox_timeout",
                      "sandbox_cleanup_unverified", "sandbox_or_provider_error"} or (error and error.startswith(
                          ("Vultr request returned HTTP", "model identity mismatch"))):
             raise RunStopped(error)
