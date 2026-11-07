@@ -1,4 +1,1 @@
-{
-  "action": "deploy",
-  "reason": "Release Firefox-verified containment of mobile comparison scrolling"
-}
+{"action":"deploy","reason":"Release the tested durable account migration queue and budget reservations"}
