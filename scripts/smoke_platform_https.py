@@ -55,13 +55,29 @@ def check(origin: str) -> dict:
                 raise AssertionError("Unexpectedly large response")
             return response.status, response.headers, raw.decode("utf-8")
 
-    status, headers, page = get("/bring")
-    assert status == 200 and "Bring your agent" in page and "Sign in" in page
-    assert headers.get("Cache-Control") == "no-store"
+    demo_status, _, demo_body = get("/api/application/demo")
+    if demo_status == 200:
+        example = json.loads(demo_body)
+        assert example["public_sample"] and example["run"]["id"] == "demo-python-2026-11-07"
+        assert example["run"]["status"] == "compatible_on_sample"
+        for route in ("/", "/docs", "/login", "/signup", "/bring", "/app",
+                      "/app/agents", "/app/agents/new", "/app/runs",
+                      "/app/runs/demo-python-2026-11-07"):
+            status, headers, page = get(route)
+            assert status == 200, (route, status)
+            assert headers.get("Cache-Control") == "no-store"
+            if route.startswith("/app") or route == "/bring":
+                assert 'id="page"' in page, route
+        observations.append({"check": "guest_workspace_and_recorded_demo", "state": "open"})
+    else:
+        # A source push may precede VM promotion. Verify the older deployed
+        # release without falsely reporting the new guest feature as active.
+        status, headers, page = get("/bring")
+        assert status == 200 and "Bring your agent" in page and "Sign in" in page
+        assert headers.get("Cache-Control") == "no-store"
+        observations.append({"check": "guest_workspace", "state": "awaiting_host_promotion"})
     assert "frame-ancestors 'none'" in headers.get("Content-Security-Policy", "")
     assert "max-age=" in headers.get("Strict-Transport-Security", "")
-    observations.append({"check": "public_application", "status": status})
-
     status, _, response = get("/api/application/session")
     session = json.loads(response)
     assert status == 200 and session == {"mode": "account", "username": None}

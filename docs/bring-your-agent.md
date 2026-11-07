@@ -1,16 +1,25 @@
 # Bring your agent
 
 Refit has two separate services on the same Vultr VM: the public **HTTP
-read-only evidence site** and the **HTTPS invite-only application** at
-https://80.240.30.92/bring. The application imports source, executes the
+read-only evidence site** and the **public HTTPS application** at
+https://80.240.30.92/app. Anyone can open the workspace, inspect a previously
+verified public Python migration and download its published model-only export.
+Guest mode never reads private user data or runs paid inference.
+Authenticated developers can import source and execute it with the
 original program against two Vultr models in gVisor, verifies the generated
 configuration in a fresh native process and enforces account ownership.
 The original loopback operator mode is retained for administration.
 
 ## Public HTTPS account access
 
-**For an invited developer or judge:** open
-https://80.240.30.92/bring in a normal browser, register using a
+**For any visitor or judge:** open https://80.240.30.92/app to browse a
+read-only workspace with an archived, real Python migration. Navigate to
+Runs or Evidence, compare the original and replacement cases, and inspect
+the published export without creating an account. This is a recorded run,
+not a fresh execution or a claim of unrestricted compatibility.
+
+**For an invited developer wishing to execute a new migration:** use
+https://80.240.30.92/signup in a normal browser, register using a
 one-time invite, sign in and import a pinned public GitHub repository or
 ZIP. Confirm the agent invocation and three independent evaluation cases,
 choose the source and replacement models, authorize a capped run, then
@@ -27,8 +36,9 @@ sudo -u refit-application python3 -m scripts.application_accounts \
 ```
 
 Give each judge their own invite privately; never commit invite or
-session tokens. Anonymous visits can load the sign-in page but cannot
-read another account's project, run, event stream, evidence or export.
+session tokens. Anonymous visitors can inspect only the explicitly
+published example. They cannot read another account's project, run,
+event stream, evidence, or private export.
 The HTTPS TLS certificate is a short-lived Let's Encrypt IP-address
 certificate with an automatic renewal timer.
 

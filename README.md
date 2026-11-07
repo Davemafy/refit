@@ -4,8 +4,11 @@
 
 ## Bring Your Agent — live application
 
-The **invite-only HTTPS application** is at **https://80.240.30.92/bring**.
-It is separate from the read-only HTTP evidence site. Authorized developers
+The **public HTTPS application** is at **https://80.240.30.92/app**.
+Anyone can explore its workspace and review a sanitized, real November 7
+Python migration without signing in. The guest experience is read-only:
+no private projects, sandbox launches, or billable inference are exposed.
+It is separate from the read-only HTTP evidence site. Invited developers
 can import pinned public GitHub repositories or ZIP archives, configure
 evaluation cases, authorize a bounded live migration, inspect run evidence and
 download a native export only after fresh verification. Projects, runs, streams,
@@ -22,8 +25,8 @@ paid DeepSeek evaluation **failed** the required read-file behavior and
 correctly produced **no export**. TypeScript model compatibility is not
 yet proven by a successful paid migration.
 
-The public application requires an invitation: there is **no anonymous
-billable execution**. Operators can issue a one-time account invitation on
+Importing your own source and running live migrations require an invitation:
+there is **no anonymous billable execution**. Operators can issue a one-time account invitation on
 the Vultr VM; no SSH tunnel or shared operator token is required on an invited
 developer's machine. See [HTTPS operator and judge access](docs/bring-your-agent.md#public-https-account-access).
 

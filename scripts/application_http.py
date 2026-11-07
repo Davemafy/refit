@@ -6,6 +6,7 @@ import base64
 import binascii
 from datetime import datetime, timezone
 import fcntl
+import gzip
 from http.cookies import CookieError, SimpleCookie
 from http.server import ThreadingHTTPServer
 import json
@@ -45,6 +46,72 @@ def reserved_requests(run):
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+DEMO_ID = "demo-python-2026-11-07"
+
+
+def public_example():
+    """Allowlisted, previously verified migration evidence only.
+
+    Never serialize live user runs, raw imported source, private tool outputs,
+    model prompts, auth state, or privileged sandbox/host receipts.
+    """
+    path = ROOT / "data/evaluations/application-browser-generic-2026-11-07.json.gz"
+    with gzip.open(path, "rt", encoding="utf-8") as stream:
+        original = json.load(stream)
+    source = original["run"]
+    result = {key: source.get(key) for key in (
+        "status", "started_at", "finished_at", "source", "target",
+        "budget", "model_requests", "execution_seconds"
+    )}
+    result.update(
+        id=DEMO_ID, demo=True, export_available=bool(source.get("export")),
+        import_={"discovery": {"runtime": "python"}},
+    )
+    result["import"] = result.pop("import_")
+    result["verification"] = [
+        {"case": check.get("case"), "passed": check.get("passed")}
+        for check in source.get("verification", [])
+    ]
+    events = []
+    allowed = {"run_started", "runtime_ready", "phase_started",
+               "phase_completed", "sandbox_started", "sandbox_cleanup",
+               "inference_requested", "inference_completed",
+               "case_completed", "terminal"}
+    for event in original["events"]:
+        kind = event.get("type")
+        if kind not in allowed:
+            continue
+        detail = event.get("details", {})
+        fields = ("case", "phase", "model", "passed", "error",
+                  "stdout_sha256", "number", "tools_called", "status",
+                  "total", "seconds")
+        sanitized = {key: detail[key] for key in fields if key in detail}
+        if kind == "case_completed":
+            verdict = detail.get("verdict", {})
+            sanitized["verdict"] = {
+                "required_tool_observed": verdict.get("required_tool_observed")
+            }
+        if kind == "sandbox_cleanup":
+            sanitized["receipt"] = {
+                "verified": bool(detail.get("receipt", {}).get("verified"))
+            }
+        events.append({
+            "seq": event.get("seq"),
+            "type": kind,
+            "time": event.get("time"),
+            "details": sanitized,
+        })
+    export = source.get("export")
+    artifact = None
+    if isinstance(export, dict):
+        allowed_export = ("format", "model", "source_sha256", "module",
+                          "args", "instructions", "seam", "environment",
+                          "integrity_sha256")
+        artifact = {key: export[key] for key in allowed_export if key in export}
+    return {"run": result, "events": events, "artifact": artifact,
+            "recorded": True, "public_sample": True}
 
 
 class ApplicationService:
@@ -361,15 +428,15 @@ class ApplicationHandler(RefitHandler):
                 "/app/evidence": "app.html", "/app/settings": "app.html",
             }
             filename = page_files.get(page)
-            if filename is None and re.fullmatch(r"/app/runs/app-[0-9a-f]{16}", page):
+            if filename is None and (page == "/app/runs/" + DEMO_ID or
+                                     re.fullmatch(r"/app/runs/app-[0-9a-f]{16}", page)):
                 filename = "app.html"
             if filename is not None:
                 # Browsing requires a session, but ownership enforcement always
                 # remains on the API and applies to every request.
-                if filename == "app.html" and self.public() and not self.service.accounts.resolve(self.session_secret()):
-                    from urllib.parse import quote
-                    return self.redirect("/login?next=" + quote(page, safe="/"))
                 return self.send_page(filename, "text/html; charset=utf-8")
+            if url.path == "/api/application/demo" and self.public():
+                return self._send(200, public_example())
             if url.path == "/api/application/session":
                 if not self.public():
                     return self._send(200, {"mode": "operator"})

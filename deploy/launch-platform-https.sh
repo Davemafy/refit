@@ -94,16 +94,18 @@ for _ in {1..15}; do
   session="$(curl -fsS --max-time 2 -H 'X-Refit-Public: 1' http://127.0.0.1:8098/api/application/session 2>/dev/null || true)"
   login="$(curl -fsS --max-time 2 -H 'X-Refit-Public: 1' http://127.0.0.1:8098/login 2>/dev/null || true)"
   app_code="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H 'X-Refit-Public: 1' http://127.0.0.1:8098/app 2>/dev/null || true)"
+  demo_code="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H 'X-Refit-Public: 1' http://127.0.0.1:8098/api/application/demo 2>/dev/null || true)"
   if [[ "$session" == *'"mode": "account"'* &&
         "$login" == *'id="authForm"'* &&
-        "$app_code" == 302 ]]; then
+        "$app_code" == 200 &&
+        "$demo_code" == 200 ]]; then
     READY=1
     break
   fi
   sleep 1
 done
 if [[ "$READY" != 1 ]]; then
-  echo 'New application routes not ready: expected /login 200 and /app redirect.' >&2
+  echo 'Public app not ready: expected /login, /app and the sanitized demo to return 200.' >&2
   systemctl --no-pager --full status refit-application || true
   exit 1
 fi
