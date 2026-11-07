@@ -34,7 +34,7 @@ certificate with an automatic renewal timer.
 
 The externally executed zero-inference check
 [`scripts/smoke_platform_https.py`](../scripts/smoke_platform_https.py)
-validates TLS, public sign-in, session mode, anonymous access rejection,
+validates TLS, the public sign-in page, anonymous session mode and access rejection,
 operator-token bypass rejection and certificate freshness on each main push.
 The browser sign-in-to-export acceptance was separately performed by the
 operator on November 7 with two invited accounts and a Python application,
@@ -42,6 +42,10 @@ using seven real inference requests; that account-run browser artifact
 has not yet been independently archived in this repository.
 
 ## Judge-facing live walkthrough
+
+The following is the **legacy operator-only tunnel option**. Invited judges
+should use the public HTTPS account path above; they do not need SSH or the
+operator access token.
 
 1. Using an SSH account authorized to forward ports to the Vultr VM, open
    `ssh -N -L 8098:127.0.0.1:8098 root@80.240.30.92`.
@@ -57,9 +61,9 @@ has not yet been independently archived in this repository.
 5. Download the verified configuration when the fresh export check passes.
    On failure, download the evidence and inspect the failed phase.
 
-The operator service requires authentication and binds to loopback. For a
-non-SSH deployment, put it behind an authenticated HTTPS ingress with SSE
-buffering disabled. Never expose port 8098 directly. The host installer is
+The operator service requires authentication and binds to loopback. The
+separate public account ingress on port 443 is already deployed with HTTPS,
+account scoping and SSE buffering disabled. Never expose port 8098 directly. The host installer is
 `bash deploy/launch-application.sh` from a checkout under `/opt`, with Docker,
 gVisor and `/etc/refit/inference.env` configured. It allows one active run,
 up to 24 requests per run and 48 request slots reserved per UTC day. There
