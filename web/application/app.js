@@ -194,7 +194,9 @@ function setupFields(discovery){
  (advanced?'':'<div id="guidedSetup">'+
  '<label class="field">'+(node?"Node entry file":"Python module")+'<input id="entryPoint" class="control" value="'+safe(selected)+'"></label>'+
  '<label class="field">Command arguments, one per line<span class="hint">Use {prompt} for the case input and {model} if your CLI accepts a model argument.</span><textarea id="runtimeArgs" class="control" rows="2">'+safe((config.args||["{prompt}"]).join("\n"))+'</textarea></label>'+
- '<div class="hint-note">The agent must use OPENAI_BASE_URL and OPENAI_MODEL with non-streaming Chat Completions.</div>'+
+ '<label class="field">Provider environment variables<span class="hint">Choose the variable names the original agent reads. Both use non-streaming Chat Completions.</span><select id="providerEnv" class="control">'+
+ '<option value="openai">OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL</option>'+
+ '<option value="generic" '+(config.provider_env==="generic"?"selected":"")+'>BASE_URL, API_KEY, MODEL</option></select></label>'+
  '<h3>Evaluation cases</h3><p class="hint">Use different inputs for training, validation and holdout. Expected outcomes stay outside the agent container.</p>'+
  '<div id="caseFields">'+items.map((item,index)=>caseFields(item,item.split,index>=3,index===0)).join("")+'</div>'+
  '<div class="hstack"><label class="field">Additional case split<select id="extraSplit" class="control"><option>train</option><option>validation</option><option>holdout</option></select></label><button class="btn" type="button" data-action="add-case">Add case</button></div>'+
@@ -221,6 +223,7 @@ function readSetup(discovery){
    }
    return item;
   })};
+ if(el("providerEnv").value!=="openai")setup.provider_env=el("providerEnv").value;
  if(el("instructionEnv").value||el("instructionBase").value){
   setup.instruction_env=el("instructionEnv").value.trim();
   setup.instruction_base=el("instructionBase").value;
@@ -883,7 +886,7 @@ document.addEventListener("click",async event=>{
    const setup=readSetup(d);
    if(state.wizard.advanced){
     const field=d.runtime==="typescript"?"entry":"module";
-    const fields=["format","mode",field,"args","cases","instruction_env","instruction_base"];
+    const fields=["format","mode",field,"args","cases","instruction_env","instruction_base","provider_env"];
     const caseKeys=["name","split","prompt","stdout","json_contains","tool","tool_arguments","tool_result","forbidden_tools","state"];
     if(!setup||typeof setup!=="object"||Object.keys(setup).some(key=>!fields.includes(key))||
        (setup.mode&&setup.mode!=="managed")||(setup.format&&setup.format!=="refit.agent.v1")||

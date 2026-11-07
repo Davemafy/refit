@@ -66,8 +66,10 @@ def configuration(snapshot, supplied=None):
         if supplied.pop("mode", "managed") != "managed":
             raise ValueError("This server executes managed applications. Use a managed contract.")
     supplied_keys = set(supplied) if isinstance(supplied, dict) else set()
-    if not required <= supplied_keys or supplied_keys - required not in (set(), optional_seam):
+    if not required <= supplied_keys or supplied_keys - required - {"provider_env"} not in (set(), optional_seam):
         raise ValueError(snapshot["discovery"]["setup"] or "Provide an entry, arguments and evaluation cases.")
+    if "provider_env" in supplied_keys and supplied["provider_env"] not in ("openai", "generic"):
+        raise ValueError("Choose the OpenAI-prefixed or generic Chat Completions environment variables.")
     if optional_seam <= supplied_keys:
         instruction_env = supplied["instruction_env"]
         instruction_base = supplied["instruction_base"]
@@ -158,6 +160,10 @@ def native_export(snapshot, setup, model, instructions=""):
     else:
         config["environment"] = {"OPENAI_MODEL": model,
             "OPENAI_BASE_URL": ENDPOINT.removesuffix("/chat/completions")}
+        if setup.get("provider_env") == "generic":
+            config["provider_env"] = "generic"
+            config["environment"] = {"MODEL": model, "BASE_URL": ENDPOINT.removesuffix("/chat/completions")}
+            config["credential_env"] = "API_KEY"
         if setup["seam"] == "instruction-env":
             config["environment"][setup["instruction_env"]] = (
                 setup["instruction_base"] +
@@ -286,7 +292,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
             send(proc, {"local_python": runtime.get("python", local_python),
                         "test_service": runtime.get("test_service", test_service),
                         "service_bearer": service_bearer, "state_paths": state_paths, "files": snapshot["files"], "module": runtime.get("module"),
-                        "entry": runtime.get("entry"), "args": args,
+                        "entry": runtime.get("entry"), "args": args, "provider_env": runtime.get("provider_env"),
                         "model": model, "prompt": case["prompt"], "seam": runtime["seam"],
                         "instruction_env": runtime.get("instruction_env"),
                         "instruction_base": runtime.get("instruction_base"),

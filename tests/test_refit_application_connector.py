@@ -59,6 +59,20 @@ class ApplicationConnectorTests(unittest.TestCase):
         result = self.check_migration(setup, "local_connector", local_python=sys.executable)
         self.assertEqual(result["export"]["python"], sys.executable)
 
+    def test_generic_provider_variables_survive_native_export(self):
+        source = PROGRAM.replace(b"OPENAI_BASE_URL", b"BASE_URL").replace(
+            b"OPENAI_MODEL", b"MODEL").replace(b"OPENAI_API_KEY", b"API_KEY")
+        self.snapshot = make_snapshot({"agent.py": base64.b64encode(source).decode()}, None, None, "", [])
+        contract = {"module": "agent", "args": ["{prompt}"], "cases": self.cases}
+        with self.assertRaisesRegex(ValueError, "environment variables"):
+            configuration(self.snapshot, {**contract, "provider_env": "PATH"})
+        setup = configuration(self.snapshot, {**contract, "provider_env": "generic"})
+        result = self.check_migration(setup, "local_connector", local_python=sys.executable)
+        export = result["export"]
+        self.assertEqual(export["credential_env"], "API_KEY")
+        self.assertEqual(set(export["environment"]), {"BASE_URL", "MODEL"})
+        self.assertEqual(export["environment"]["MODEL"], MODELS[1])
+
     def test_authorized_test_service_brokers_original_requests(self):
         bearer = "test-service-token-not-a-vultr-key"
         seen = []

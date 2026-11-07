@@ -152,6 +152,8 @@ def main():
                "OPENAI_BASE_URL": endpoint, "OPENAI_MODEL": cfg["model"],
                "OPENAI_API_KEY": broker_token, "OPENAI_MAX_RETRIES": "0",
                "LLM_USER_PATH": str(home)}
+        if cfg.get("provider_env") == "generic":
+            env.update(BASE_URL=endpoint, MODEL=cfg["model"], API_KEY=broker_token)
         env.update(instruction_environment(cfg))
         if cfg["seam"] == "llm":
             (home / "extra-openai-models.yaml").write_text(json.dumps([{
