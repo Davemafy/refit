@@ -6,38 +6,45 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import zipfile
 
-from .application_import import ARCHIVE_LIMIT, EXPANDED_LIMIT, FILE_LIMIT, sensitive
+from .application_import import EXPANDED_LIMIT, FILE_LIMIT, SOURCE_FILE_LIMIT, ZIP_UPLOAD_LIMIT, default_exclusion, sensitive
 from .application_run import MODELS
 
 
-def local_zip(path, excluded=None):
+def write_local_zip(buffer, path, excluded=None):
     if not path.is_dir():
         raise ValueError("Project must be a directory.")
-    buffer = io.BytesIO()
     total = count = 0
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for directory, subdirs, files in os.walk(path):
             root = Path(directory)
             subdirs[:] = [name for name in subdirs if not (root / name).is_symlink()
-                          and not sensitive((root / name).relative_to(path))]
+                          and not sensitive((root / name).relative_to(path))
+                          and not default_exclusion((root / name / "_").relative_to(path))]
             for name in files:
                 file = root / name
                 relative = file.relative_to(path)
-                if file.is_symlink() or sensitive(relative) or not file.is_file() or file.resolve() == excluded:
+                if (file.is_symlink() or sensitive(relative) or default_exclusion(relative)
+                        or not file.is_file() or file.resolve() == excluded):
                     continue
                 size = file.stat().st_size
                 total += size
                 count += 1
-                if size > 512 * 1024 or total > EXPANDED_LIMIT or count > FILE_LIMIT:
+                if size > SOURCE_FILE_LIMIT or total > EXPANDED_LIMIT or count > FILE_LIMIT:
                     raise ValueError("Select a smaller project directory.")
                 archive.write(file, relative.as_posix())
-    if buffer.tell() > ARCHIVE_LIMIT:
-        raise ValueError("Project ZIP exceeds 4 MiB.")
+    if buffer.tell() > ZIP_UPLOAD_LIMIT:
+        raise ValueError("Project ZIP exceeds 32 MiB.")
+
+
+def local_zip(path, excluded=None):
+    buffer = io.BytesIO()
+    write_local_zip(buffer, path, excluded)
     return base64.b64encode(buffer.getvalue()).decode()
 
 
@@ -55,10 +62,14 @@ def main():
     if not token:
         parser.error("Set REFIT_APPLICATION_TOKEN for your local service.")
 
-    def api(path, payload=None):
+    def api(path, payload=None, *, archive=None):
+        headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
         body = json.dumps(payload).encode() if payload is not None else None
-        request = Request(f"http://127.0.0.1:{args.port}/api/application" + path, data=body,
-                          headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+        if archive is not None:
+            headers.update({"Content-Type": "application/zip", "Content-Length": str(archive.tell())})
+            archive.seek(0)
+            body = archive
+        request = Request(f"http://127.0.0.1:{args.port}/api/application" + path, data=body, headers=headers)
         try:
             with urlopen(request, timeout=30) as response:
                 return json.load(response)
@@ -66,7 +77,9 @@ def main():
             raise ValueError(json.load(error)["error"]["message"]) from error
 
     try:
-        imported = api("/imports", {"method": "zip", "archive": local_zip(args.project, args.setup.resolve() if args.setup else None)})
+        with tempfile.TemporaryFile() as archive:
+            write_local_zip(archive, args.project, args.setup.resolve() if args.setup else None)
+            imported = api("/imports/zip", archive=archive)
         print(json.dumps(imported), flush=True)
         if args.authorize_requests is None:
             return

@@ -80,8 +80,8 @@ are no automatic paid retries.
 
 | Entry | Contract |
 | --- | --- |
-| GitHub | Public pinned commit. For a private repository, supply a scoped read token for the archive request. The service discards the token after the request and strips it on redirect to GitHub's signed archive URL. |
-| Project ZIP | At most 4 MiB compressed, 12 MiB expanded, 1,500 entries and 512 KiB per file. Traversal, symlinks, special files, known credential files and dependency caches are rejected. |
+| GitHub | Refit reads the pinned tree, filters build output, caches and assets, then verifies the selected blobs against Git object IDs. Set an application directory or list required files under Advanced options. For private source, supply a scoped read token. Refit sends it only to the GitHub API and discards it after the request. |
+| Project ZIP | Up to 32 MiB compressed, streamed to a temporary file. The selected source in either mode is limited to 12 MiB, 1,500 files and 512 KiB per file. Unsafe paths, special files and encrypted ZIP members are rejected. |
 | Local CLI | `python -m scripts.application_cli /path/to/project --port 8098` imports to a locally running operator service. Set its `REFIT_APPLICATION_TOKEN`. Supply `--authorize-requests 24` to start and `--export config.json` to save a verified result. Source can stay on the developer's machine with local Docker and the same gVisor image. |
 
 The production-verified native runtime is Python 3.11, a Python module
@@ -225,7 +225,7 @@ read-only browser checks did not start inference.
 
 The generic ZIP contains unmodified application source and wiki files from
 [`rma67274-boop/wulianwang_zuoye_mrp` at `78e234c09412cabf6a1d6f901329c5b66360d946`](https://github.com/rma67274-boop/wulianwang_zuoye_mrp/tree/78e234c09412cabf6a1d6f901329c5b66360d946).
-The full repository includes a 5.1 MB PDF and exceeds the 4 MiB import cap.
+The full repository includes a 5.1 MB PDF. Tree-based GitHub ingestion can select the agent without downloading that PDF.
 A runtime-only ZIP preserves the original entry point and data. The
 browser supplies three operator-owned checks for different source formulas
 and page citations. The application archive excludes those checks and

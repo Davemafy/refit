@@ -48,7 +48,6 @@ proxy_set_header Host $host;
 proxy_set_header X-Refit-Public 1;
 proxy_set_header Authorization "";
 proxy_buffering off;
-proxy_read_timeout 30s;
 proxy_hide_header Server;
 NGINX
 cat > /etc/nginx/sites-available/refit-platform <<NGINX
@@ -63,6 +62,7 @@ server {
     server_tokens off;
     client_max_body_size 6m;
     client_body_timeout 15s;
+    proxy_read_timeout 30s;
     limit_conn refit_connections 12;
     add_header Strict-Transport-Security "max-age=86400" always;
 
@@ -79,6 +79,16 @@ server {
         limit_req zone=refit_login burst=6 nodelay;
         limit_req_status 429;
         client_max_body_size 2k;
+        include snippets/refit-platform-proxy.conf;
+    }
+    location = /api/application/imports/zip {
+        client_max_body_size 32m;
+        proxy_request_buffering off;
+        proxy_read_timeout 120s;
+        include snippets/refit-platform-proxy.conf;
+    }
+    location = /api/application/imports {
+        proxy_read_timeout 120s;
         include snippets/refit-platform-proxy.conf;
     }
     location /api/application/ { include snippets/refit-platform-proxy.conf; }

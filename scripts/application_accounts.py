@@ -128,6 +128,12 @@ class Accounts:
             row = db.execute("SELECT snapshot,summary FROM projects WHERE owner=? AND id=?", (owner, ident)).fetchone()
             return tuple(map(json.loads, row)) if row else None
 
+    def source_report(self, owner, ident):
+        with self.db() as db:
+            row = db.execute("SELECT json_extract(snapshot, '$.source_report') FROM projects WHERE owner=? AND id=?",
+                             (owner, ident)).fetchone()
+            return json.loads(row[0]) if row and row[0] else ([] if row else None)
+
     def remove_project(self, owner, ident):
         with self.db() as db:
             return db.execute("DELETE FROM projects WHERE owner=? AND id=?", (owner, ident)).rowcount == 1

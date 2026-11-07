@@ -127,6 +127,10 @@ def native_export(snapshot, setup, model, instructions=""):
               "revision": snapshot["revision"], "args": setup["args"],
               **{key: setup[key] for key in ("entry", "module") if key in setup},
               "instructions": instructions, "seam": setup["seam"]}
+    if snapshot.get("snapshot_sha256"):
+        config["snapshot_sha256"] = snapshot["snapshot_sha256"]
+    if snapshot.get("directory"):
+        config["directory"] = snapshot["directory"]
     if setup["seam"] == "instruction-env":
         config["instruction_env"] = setup["instruction_env"]
         config["instruction_base"] = setup["instruction_base"]

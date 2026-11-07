@@ -1,13 +1,12 @@
 """Pinned default-branch GitHub import with no live network or inference."""
-import io
+import hashlib
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
-import zipfile
 
-from scripts.application_import import ImportProblem, resolve_default_revision
+from scripts.application_import import ImportProblem, github_snapshot, make_snapshot, resolve_default_revision
 from scripts.application_http import ApplicationService
 
 
@@ -68,30 +67,55 @@ class GithubPinTests(unittest.TestCase):
                         resolve_default_revision("owner/repo")
 
     def test_application_pins_revision_before_importing_source(self):
-        archive = io.BytesIO()
-        with zipfile.ZipFile(archive, "w") as zipped:
-            zipped.writestr("source-123/agent.py", "print('hello')")
+        snapshot = make_snapshot({"agent.py": "cGFzcw=="}, "owner/repo", SHA, "", [])
         with TemporaryDirectory() as root:
             service = ApplicationService(
                 Path(root), "local-testing-private-token-32chars", "image",
                 public_origin="https://refit.test"
             )
             owner = "account-test"
-            # Records a project only after its pinned archive passes inspection.
+            # Records a project only after its pinned tree passes inspection.
             with patch("scripts.application_http.resolve_default_revision", return_value=SHA) as pin, \
-                 patch("scripts.application_http.github_archive", return_value=archive.getvalue()) as fetch, \
+                 patch("scripts.application_http.github_snapshot", return_value=snapshot) as fetch, \
                  patch.object(service.accounts, "save_project") as saved:
                 project = service.add_import(
                     {"method":"github", "repository":"owner/repo", "revision":"", "token":""},
                     owner
                 )
             pin.assert_called_once_with("owner/repo", "")
-            fetch.assert_called_once_with("owner/repo", SHA, "")
+            fetch.assert_called_once_with("owner/repo", SHA, "", "", None)
             self.assertEqual(project["revision"], SHA)
             self.assertEqual(project["repository"], "owner/repo")
             saved.assert_called_once()
             self.assertEqual(saved.call_args.args[2]["revision"], SHA)
             service.process_lock.close()
+
+    def test_tree_skips_large_files_and_verifies_selected_blob(self):
+        source = b"print('hello')"
+        blob = hashlib.sha1(f"blob {len(source)}\0".encode() + source).hexdigest()
+        subtree = "f" * 40
+        commit = json.dumps({"sha": SHA, "tree": {"sha": "c" * 40}}).encode()
+        root = {"tree": [{"path": "app", "type": "tree", "sha": subtree}]}
+        scoped = {"tree": [
+            {"path": "agent.py", "mode": "100644", "type": "blob", "sha": blob, "size": len(source)},
+            {"path": "demo.pdf", "mode": "100644", "type": "blob", "sha": "e"*40, "size": 5*1024*1024},
+        ]}
+        with patch("scripts.application_import.github_read", side_effect=[
+            commit, json.dumps(root).encode(), json.dumps(scoped).encode(), source,
+        ]) as read:
+            snapshot = github_snapshot("owner/repo", SHA, directory="app")
+        self.assertEqual(snapshot["revision"], SHA)
+        self.assertEqual(snapshot["selection_counts"], {"included": 1, "excluded": 1})
+        self.assertEqual(list(snapshot["files"]), ["agent.py"])
+        self.assertEqual(read.call_count, 4)
+        self.assertTrue(read.call_args_list[2].args[0].endswith(f"/trees/{subtree}?recursive=1"))
+        self.assertTrue(read.call_args_list[3].args[0].endswith(f"/{SHA}/app/agent.py"))
+        with patch("scripts.application_import.github_read", side_effect=[
+            commit, json.dumps(scoped).encode(), b"x" * len(source),
+        ]):
+            with self.assertRaisesRegex(ImportProblem, "does not match the pinned tree"):
+                github_snapshot("owner/repo", SHA)
+
 
 
 if __name__ == "__main__":

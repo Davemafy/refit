@@ -50,7 +50,8 @@ const statusChip=status=>{
 function notify(message){const old=el("pageError");if(old)old.remove();const note=document.createElement("div");note.className="notice";note.id="pageError";note.textContent=message;page.prepend(note);note.scrollIntoView({block:"nearest"});}
 async function req(suffix,body,signal){
  const options={credentials:"same-origin",signal};
- if(body!==undefined)Object.assign(options,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+ if(body instanceof Blob)Object.assign(options,{method:"POST",headers:{"Content-Type":"application/zip"},body});
+ else if(body!==undefined)Object.assign(options,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
  const response=await fetch(API+suffix,options);
  const payload=await response.json().catch(()=>({}));
  if(response.status===401){
@@ -233,20 +234,28 @@ async function flow(){
    '<section class="import-panel"><div class="import-panel-header"><div><h2>Where is your agent?</h2><p>Point Refit to the existing source. No code changes yet.</p></div><span class="import-privacy">'+ico("lock")+' Your workspace</span></div>'+
    '<div class="import-tabs" role="group" aria-label="Source type"><button type="button" class="import-tab active" data-import-mode="github" aria-pressed="true">'+ico("git")+' GitHub repository</button><button type="button" class="import-tab" data-import-mode="zip" aria-pressed="false">'+ico("upload")+' Upload ZIP</button></div>'+
    '<form id="importForm"><input type="hidden" id="method" value="github">'+
-   '<div class="import-form-body"><div id="githubFields"><label class="field" for="repository">Repository URL</label><div class="import-input-wrap"><span class="import-input-icon">'+ico("git")+'</span><input class="import-primary-input" id="repository" type="url" placeholder="https://github.com/owner/repository" autocomplete="url" spellcheck="false" required></div><p class="import-helper">Refit pins the latest commit. For repositories over 4 MiB compressed, upload a ZIP with just the agent and the files it needs to run.</p></div>'+
-   '<div id="zipField" hidden><label class="field" for="zip">Source archive</label><input id="zip" class="control import-file" type="file" accept=".zip,application/zip"><p class="import-helper">Up to 4 MiB compressed. Only supported source files are inspected.</p></div>'+
-   '<details class="import-advanced" id="advancedImport"><summary>Advanced options '+ico("arrow")+'</summary><div class="import-advanced-fields"><label class="field" for="revision">Exact commit SHA <span class="hint">Optional · overrides latest commit</span></label><input class="control mono" id="revision" placeholder="40-character commit hash" maxlength="40" autocomplete="off" spellcheck="false"><label class="field" for="repoToken">Private repository token <span class="hint">Optional · used only for this import</span></label><input type="password" id="repoToken" class="control mono" placeholder="GitHub read token" autocomplete="new-password" spellcheck="false" data-lpignore="true"></div></details></div>'+
+   '<div class="import-form-body"><div id="githubFields"><label class="field" for="repository">Repository URL</label><div class="import-input-wrap"><span class="import-input-icon">'+ico("git")+'</span><input class="import-primary-input" id="repository" type="url" placeholder="https://github.com/owner/repository" autocomplete="url" spellcheck="false" required></div><p class="import-helper">Refit pins the commit and downloads selected source files. Build output, caches and binary assets are skipped by default.</p></div>'+
+   '<div id="zipField" hidden><label class="field" for="zip">Source archive</label><input id="zip" class="control import-file" type="file" accept=".zip,application/zip"><p class="import-helper">Up to 32 MiB compressed. Refit reads eligible files within the 12 MiB source budget.</p></div>'+
+   '<details class="import-advanced" id="advancedImport"><summary>Advanced options '+ico("arrow")+'</summary><div class="import-advanced-fields"><label class="field" for="revision">Exact commit SHA <span class="hint">Optional · overrides latest commit</span></label><input class="control mono" id="revision" placeholder="40-character commit hash" maxlength="40" autocomplete="off" spellcheck="false"><label class="field" for="repoToken">Private repository token <span class="hint">Optional · used only for this import</span></label><input type="password" id="repoToken" class="control mono" placeholder="GitHub read token" autocomplete="new-password" spellcheck="false" data-lpignore="true"><label class="field" for="sourceDirectory">Application directory <span class="hint">Optional · relative to repository root</span></label><input class="control mono" id="sourceDirectory" placeholder="apps/support-agent" spellcheck="false"><label class="field" for="sourceFiles">Source file override <span class="hint">Optional · one path per line relative to the application directory</span></label><textarea class="control mono" id="sourceFiles" rows="3" spellcheck="false"></textarea></div></details></div>'+
    '<div class="import-actions"><p>'+ico("shield")+' Private inspection. No model calls or sandbox execution at this step.</p><button class="btn primary" type="submit">Inspect agent '+ico("arrow")+'</button></div></form></section>'+importPathSteps+'</div>';
   return;
  }
  const p=state.wizard.project,d=p.discovery||{};
  if(step===1){
-   const features=[["Agent entry point",d.entry||"Not confidently detected"],["Runtime",d.runtime||"Unknown"],["Provider",d.provider||"Not detected"],["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],["Tools",d.tool||"Not independently enumerated"]];
+   const features=[["Agent entry point",d.entry||"Not confidently detected"],["Runtime",d.runtime||"Unknown"],["Provider",d.provider||"Not detected"],["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],["Tools",d.tool||"Not independently enumerated"],["Provider signals",d.provider_signals?.join(", ")||"Not detected"]];
    const files=d.evaluation_files||[];
    page.innerHTML=lead("Inspect your agent","Review the detected runtime and confirm the original entry point.")+
    '<section class="card"><div class="repo-card-head"><div class="repo-mark">'+ico("git")+'</div><div style="flex:1"><h3>'+safe(p.repository||"Uploaded ZIP")+'</h3><p class="small mono">'+safe(p.revision||p.id)+'</p></div><span class="chip bordered">'+safe(p.file_count)+' files inspected</span></div>'+
    '<div class="split-panel"><div>'+features.map(f=>'<div class="fact"><span class="muted">'+ico(f[0]==="Runtime"?"code":f[0]==="Tools"?"layers":"box")+'</span><strong>'+safe(f[0])+'</strong><span class="value">'+safe(f[1])+'</span></div>').join("")+'</div>'+
    '<div><h3 style="margin-bottom:12px">Possible test files</h3><p class="small">These are static hints. Confirm the entry point and choose independent checks before authorizing a run.</p><div class="file-list" style="margin-top:14px">'+(files.length?files.map(f=>'<div>'+ico("file")+' '+safe(f)+'</div>').join(""):'<div>No individual test-file paths reported.</div>')+'</div></div></div></section>'+
+   (p.selection_counts?'<section class="card inner" style="margin-top:16px"><h3>Source selection</h3>'+
+     (p.directory?'<p class="small">Scope: <code>'+safe(p.directory)+'</code></p>':'')+
+     '<div class="hstack" style="flex-wrap:wrap;margin-top:10px">'+["included","excluded","unsupported"].map(status=>
+       '<button type="button" class="btn" data-action="source-report" data-status="'+status+'">'+safe(p.selection_counts[status]||0)+' '+status+'</button>').join("")+
+     (p.repository?'<button type="button" class="btn" data-action="adjust-source">Adjust source scope</button>':'')+
+     '</div><div id="sourceReport" aria-live="polite"></div>'+
+     '<details class="case-options" style="margin-top:12px"><summary>Detected source signals</summary>'+[["Entry candidates",d.entry_candidates],["Imports",d.imports],["Configuration",d.configuration_files]].map(([label,items])=>
+       '<p class="small"><strong>'+label+'</strong> '+safe(items?.join(", ")||"None detected")+'</p>').join("")+'</details></section>':'')+
    (d.runnable===false?'<div class="notice" style="margin-top:18px">'+safe(d.setup||"Unsupported runtime")+'</div>':d.setup?'<p style="margin-top:16px;font-size:13px">'+safe(d.setup)+'</p>':'')+
    '<div class="flow-footer"><button class="btn" data-action="flow-back">'+ico("back")+' Back</button><button class="btn primary" data-action="flow-config" '+(d.runnable===false?"disabled":"")+'>Continue to configuration '+ico("arrow")+'</button></div>';
    return;
@@ -273,7 +282,7 @@ async function importProject(){
  const btn=page.querySelector('#importForm button[type="submit"]');
  if(btn)btn.disabled=true;
  try{
-   const kind=el("method").value;let body={method:kind};
+   const kind=el("method").value;let body={method:kind}, endpoint="/imports";
    if(kind==="github"){
      const input=el("repository").value.trim();
      const parsed=input.match(/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\/)?$/i);
@@ -284,15 +293,17 @@ async function importProject(){
      if(body.revision&&!/^[a-f0-9]{40}$/.test(body.revision))
        throw Error("An exact commit must be a 40-character SHA. Otherwise leave it blank.");
      body.token=el("repoToken").value;
+     body.directory=el("sourceDirectory").value.trim();
+     const selected=el("sourceFiles").value.split("\n").map(path=>path.trim()).filter(Boolean);
+     if(selected.length)body.files=selected;
+     el("repoToken").value="";
    }else{
      const file=el("zip").files[0];
-     if(!file||file.size>4*1024*1024)throw Error("Select a ZIP no larger than 4 MiB.");
-     const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
-     for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
-     body.archive=btoa(binary);
+     if(!file||!file.size||file.size>32*1024*1024)throw Error("Select a nonempty ZIP no larger than 32 MiB.");
+     endpoint="/imports/zip";
+     body=file;
    }
-   if(el("repoToken"))el("repoToken").value="";
-   const project=await req("/imports",body);
+   const project=await req(endpoint,body);
    state.wizard={step:1,project,source:null,target:null,setup:"",budget:null};
    await refreshWorkspace();
    await flow();
@@ -513,6 +524,28 @@ document.addEventListener("click",async event=>{
    navigate("/app/agents/new");
   }
   else if(action==="show-runs")navigate("/app/runs");
+  else if(action==="source-report"){
+   const p=state.wizard.project,status=button.dataset.status,offset=Number(button.dataset.offset||0);
+   const output=el("sourceReport");
+   const result=await req("/projects/"+p.id+"/source?status="+encodeURIComponent(status)+"&offset="+offset);
+   if(!output?.isConnected)return;
+   if(!offset)output.innerHTML='<div class="file-list" style="margin-top:12px"></div>';
+   else button.remove();
+   output.querySelector(".file-list").insertAdjacentHTML("beforeend",result.files.length?result.files.map(file=>
+    '<div><code>'+safe(file.path)+'</code> <span class="hint">'+safe(file.reason)+'</span></div>').join(""):'<div>No '+safe(status)+' files.</div>');
+   const next=offset+result.files.length;
+   if(next<result.total)output.insertAdjacentHTML("beforeend",'<button type="button" class="btn" data-action="source-report" data-status="'+status+'" data-offset="'+next+'">Show more</button>');
+  }
+  else if(action==="adjust-source"){
+   const project=state.wizard.project;
+   state.wizard=null;
+   await flow();
+   el("repository").value="https://github.com/"+project.repository;
+   el("revision").value=project.revision;
+   el("sourceDirectory").value=project.directory||"";
+   el("advancedImport").open=true;
+   el("sourceDirectory").focus();
+  }
   else if(action==="run")navigate("/app/runs/"+id);
   else if(action==="project")await chooseProject(id);
   else if(action==="remove"){

@@ -34,7 +34,7 @@
 </div>
 <label>Repository read token, for private source<input id="repoToken" type="password" autocomplete="off"></label>
 </div>
-<label id="zipField" hidden>Project ZIP, up to 4 MiB<input id="zip" type="file" accept=".zip,application/zip"></label>
+<label id="zipField" hidden>Project ZIP, up to 32 MiB<input id="zip" type="file" accept=".zip,application/zip"></label>
 <button type="submit">Inspect source</button>
 </form>
 <p id="inspection" role="status" hidden></p>
@@ -92,8 +92,8 @@ const runPath = id => path + "/runs/" + id;
 const auth = () => accountMode ? {} : ({Authorization:"Bearer "+$("token").value});
 async function api(url, data, signal) {
   const options = {headers:auth(), signal};
-  if (data !== undefined) Object.assign(options,{method:"POST",body:JSON.stringify(data),
-    headers:{...options.headers,"Content-Type":"application/json"}});
+  if (data !== undefined) Object.assign(options,{method:"POST",body:data instanceof Blob?data:JSON.stringify(data),
+    headers:{...options.headers,"Content-Type":data instanceof Blob?"application/zip":"application/json"}});
   const response = await fetch(url,options);
   if (!response.ok) {
     const payload = await response.json().catch(()=>null);
@@ -185,12 +185,10 @@ $("importForm").onsubmit=async event=>{
       revision:$("revision").value.trim(),token:$("repoToken").value});
     else {
       const file=$("zip").files[0];
-      if (!file || file.size>4*1024*1024) throw Error("Select a ZIP no larger than 4 MiB.");
-      const bytes=new Uint8Array(await file.arrayBuffer()); let encoded="";
-      for(let i=0;i<bytes.length;i+=32768) encoded+=String.fromCharCode(...bytes.subarray(i,i+32768));
-      data.archive=btoa(encoded);
+      if (!file || !file.size || file.size>32*1024*1024) throw Error("Select a nonempty ZIP no larger than 32 MiB.");
+      showImport(await api(path+"/imports/zip",file),capabilities);
     }
-    showImport(await api(path+"/imports",data),capabilities);
+    if(data.method==="github")showImport(await api(path+"/imports",data),capabilities);
     await refreshWorkspace();
   } catch(error) { report(error); }
   finally { $("repoToken").value=""; busy(event.target,false); }

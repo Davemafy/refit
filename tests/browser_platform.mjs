@@ -6,6 +6,8 @@ import { firefox } from "playwright";
 
 const origin = process.env.REFIT_PLATFORM_URL || "https://80.240.30.92";
 const archive = process.env.REFIT_PLATFORM_ARCHIVE;
+const github = process.env.REFIT_PLATFORM_GITHUB;
+const revision = process.env.REFIT_PLATFORM_REVISION;
 const setupFile = process.env.REFIT_PLATFORM_SETUP;
 const output = process.env.REFIT_PLATFORM_OUTPUT || "artifacts/platform-browser";
 const paid = process.argv.includes("--execute");
@@ -13,7 +15,8 @@ const path = "/api/application";
 const runtime = process.env.REFIT_PLATFORM_RUNTIME || "typescript";
 const cap = runtime === "python" ? 8 : 16;
 assert(new URL(origin).protocol === "https:");
-assert(archive && setupFile);
+assert((archive || github) && setupFile);
+if (github) assert.match(revision || "", /^[a-f0-9]{40}$/);
 await mkdir(output, { recursive: true });
 const browser = await firefox.launch();
 const errors = [];
@@ -46,11 +49,28 @@ try {
     pages.push(page);
   }
   const [owner, other] = pages;
-  await owner.getByRole("button", { name: "Upload ZIP" }).click();
-  await owner.locator("#zip").setInputFiles(archive);
-  const importing = owner.waitForResponse(r => r.url().endsWith(path + "/imports"));
+  if (github) {
+    await owner.getByLabel("Repository URL").fill(github);
+    await owner.locator("#advancedImport summary").click();
+    await owner.locator("#revision").fill(revision);
+  } else {
+    await owner.getByRole("button", { name: "Upload ZIP" }).click();
+    await owner.locator("#zip").setInputFiles(archive);
+  }
+  const importing = owner.waitForResponse(r => r.url().endsWith(path + (github ? "/imports" : "/imports/zip")));
   await owner.getByRole("button", { name: /Inspect agent/ }).click();
-  const imported = await (await importing).json();
+  const importResponse = await importing;
+  assert.equal(importResponse.status(), 201, await importResponse.text());
+  const imported = await importResponse.json();
+  if (github) {
+    assert.equal(imported.revision, revision);
+    assert.match(imported.snapshot_sha256, /^sha256:[a-f0-9]{64}$/);
+    assert.ok(imported.selection_counts.excluded > 0);
+    await owner.getByRole("button", { name: /[0-9]+ excluded/ }).click();
+    await owner.locator("#sourceReport").getByText(/Asset or binary excluded/).first().waitFor();
+    console.log(JSON.stringify({ imported: imported.id, revision, selection: imported.selection_counts,
+      entry: imported.discovery.entry, snapshot: imported.snapshot_sha256, importSeconds: imported.import_seconds }));
+  }
   assert.equal(imported.discovery.runtime, runtime);
   if (runtime === "typescript") await owner.getByText(/Vercel AI SDK/).waitFor();
   else await owner.getByText(/python -m src.qa/).waitFor();
@@ -66,6 +86,7 @@ try {
   }
 
   assert.equal((await request(other, "/projects")).body.projects.length, 0);
+  assert.equal((await request(other, "/projects/" + imported.id + "/source")).status, 404);
   const runInput = { import_id: imported.id, source, target, budget: cap, authorize: true, setup };
   assert.equal((await request(other, "/runs", runInput)).status, 404);
   assert.equal((await request(other, "/projects/" + imported.id + "/remove", {})).status, 404);
@@ -123,12 +144,17 @@ try {
     assert.ok(receipts.every(e => e.details.receipt.verified));
     const cases = evidence.events.filter(e => e.type === "case_completed");
     assert.equal(cases.length, 7);
+    assert.ok(cases.every(e => e.details.runtime === "runsc"));
     if (runtime === "typescript") assert.ok(cases.every(e => e.details.verdict.required_tool_observed));
     const config = await download("Export verified configuration", "artifact");
     assert.deepEqual(config, evidence.run.export);
     if (runtime === "typescript") assert.equal(config.entry, "invoke.ts");
     else assert.equal(config.module, "src.qa");
     assert.equal(config.environment.OPENAI_MODEL, target);
+    if (github) {
+      assert.equal(config.revision, revision);
+      assert.equal(config.snapshot_sha256, imported.snapshot_sha256);
+    }
     await owner.screenshot({ path: `${output}/${accepted.id}.jpg`, type: "jpeg", quality: 62, fullPage: true });
     await owner.goto(origin + "/app/runs");
     await owner.getByRole("button", { name: accepted.id, exact: true }).click();

@@ -15,13 +15,17 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import tempfile
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
 from .api_service import ApiProblem
 from .application_accounts import Accounts, SESSION_TTL
-from .application_import import ARCHIVE_LIMIT, ImportProblem, github_archive, resolve_default_revision, source_snapshot
+from .application_import import (
+    ARCHIVE_LIMIT, ZIP_UPLOAD_LIMIT, ImportProblem, github_snapshot, resolve_default_revision,
+    source_snapshot, unpack_zip,
+)
 from .application_run import BUDGET_LIMIT, MODELS, RunStopped, configuration, run_migration
 from .docker_cleanup import remove_and_verify
 from .durable_store import RunStore
@@ -130,6 +134,7 @@ class ApplicationService:
         self.daily_budget = daily_budget
         self.lock = threading.RLock()
         self.streams = threading.BoundedSemaphore(8)
+        self.import_slots = threading.BoundedSemaphore(2)
         self.imports = {}
         self.runs = {}
         self.store = RunStore(directory / "runs")
@@ -165,12 +170,12 @@ class ApplicationService:
         started = time.monotonic()
         if not isinstance(data, dict):
             raise ImportProblem("Provide an import object.")
-        if data.get("method") == "github" and set(data) <= {"method", "repository", "revision", "token"}:
+        if data.get("method") == "github" and set(data) <= {"method", "repository", "revision", "token", "directory", "files"}:
             repo, revision = data.get("repository"), data.get("revision")
             token = data.get("token", "")
             if revision in (None, ""):
                 revision = resolve_default_revision(repo, token)
-            snapshot = source_snapshot(github_archive(repo, revision, token), repo, revision)
+            snapshot = github_snapshot(repo, revision, token, data.get("directory", ""), data.get("files"))
         elif data.get("method") == "zip" and set(data) == {"method", "archive"}:
             try:
                 archive = base64.b64decode(data["archive"], validate=True)
@@ -179,8 +184,11 @@ class ApplicationService:
             snapshot = source_snapshot(archive)
         else:
             raise ImportProblem("Choose a pinned GitHub repository or a ZIP upload.")
+        return self.save_import(snapshot, owner, started)
+
+    def save_import(self, snapshot, owner, started):
         ident = "import-" + secrets.token_hex(8)
-        summary = {k: v for k, v in snapshot.items() if k != "files"}
+        summary = {k: v for k, v in snapshot.items() if k not in {"files", "source_report"}}
         summary.update(id=ident, file_count=len(snapshot["files"]),
                        file_paths=sorted(snapshot["files"])[:160],
                        file_paths_truncated=len(snapshot["files"]) > 160,
@@ -242,7 +250,7 @@ class ApplicationService:
                    "started_at": now(), "source": source, "target": target, "budget": budget,
                    "owner": owner, "import": summary, "model_requests": 0, "export": None,
                    "configuration_sha256": fingerprint({"source": source, "target": target, "budget": budget,
-                       "source_sha256": snapshot["source_sha256"], "setup": setup})}
+                       "source_sha256": snapshot.get("snapshot_sha256", snapshot["source_sha256"]), "setup": setup})}
             self.runs[ident] = (run, [])
             self.emit(ident, "run_started", {"source": source, "target": target, "budget": budget})
             if owner == "operator":
@@ -344,13 +352,36 @@ class ApplicationHandler(RefitHandler):
                                 f"Max-Age={SESSION_TTL}")
         return self._send(201 if registering else 200, {"signed_in": True, "username": data["username"]})
 
-    def body(self, limit=BODY_LIMIT):
+    def content_length(self, limit):
         value = self.headers.get("Content-Length", "")
         if not value.isascii() or not value.isdecimal() or len(value) > 8 or not 1 <= int(value) <= limit:
             raise ApiProblem(413, "body_limit", "The request exceeds the upload limit.")
+        if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
+            raise ApiProblem(400, "invalid_length", "Use a single Content-Length for this request.")
+        return int(value)
+
+    def body(self, limit=BODY_LIMIT):
+        length = self.content_length(limit)
         if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
             raise ApiProblem(415, "json_required", "Use application/json.")
-        return json.loads(self.rfile.read(int(value)))
+        return json.loads(self.rfile.read(length))
+
+    def upload_zip(self, owner):
+        if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/zip":
+            raise ApiProblem(415, "zip_required", "Use application/zip.")
+        remaining = self.content_length(ZIP_UPLOAD_LIMIT)
+        started = time.monotonic()
+        with tempfile.TemporaryFile() as archive:
+            while remaining:
+                if time.monotonic() - started > 90:
+                    raise TimeoutError("ZIP upload deadline exceeded.")
+                chunk = self.rfile.read1(min(65536, remaining))
+                if not chunk:
+                    raise ImportProblem("The ZIP upload ended before all bytes arrived.")
+                archive.write(chunk)
+                remaining -= len(chunk)
+            archive.seek(0)
+            return self.service.save_import(unpack_zip(archive), owner, started)
 
     def do_HEAD(self):
         self._send(404, {"error": {"code": "not_found"}})
@@ -364,13 +395,17 @@ class ApplicationHandler(RefitHandler):
                 if path in ("/api/application/register", "/api/application/login", "/api/application/logout"):
                     return self.account_action(path)
             owner = self.authorize()
-            if path == "/api/application/imports":
-                if not self.service.streams.acquire(blocking=False):
+            if path in {"/api/application/imports", "/api/application/imports/zip"}:
+                if not self.service.import_slots.acquire(blocking=False):
                     raise ApiProblem(429, "operator_busy", "Try the import again when a connection closes.")
                 try:
-                    return self._send(201, self.service.add_import(self.body(), owner))
+                    if path.endswith("/zip"):
+                        imported = self.upload_zip(owner)
+                    else:
+                        imported = self.service.add_import(self.body(), owner)
+                    return self._send(201, imported)
                 finally:
-                    self.service.streams.release()
+                    self.service.import_slots.release()
             if path == "/api/application/runs":
                 return self._send(202, self.service.start(self.body(), owner))
             match = re.fullmatch(r"/api/application/runs/(app-[0-9a-f]{16})/cancel", path)
@@ -456,6 +491,19 @@ class ApplicationHandler(RefitHandler):
             if url.path == "/api/application":
                 return self._send(200, {"models": MODELS,
                     "max_requests": BUDGET_LIMIT if owner == "operator" else ACCOUNT_BUDGET})
+            source = re.fullmatch(r"/api/application/projects/(import-[0-9a-f]{16})/source", url.path)
+            if source and owner != "operator":
+                query = parse_qs(url.query)
+                status = query.get("status", ["included"])[0]
+                offset = query.get("offset", ["0"])[0]
+                if status not in {"included", "excluded", "unsupported"} or not re.fullmatch(r"[0-9]{1,5}", offset):
+                    raise ApiProblem(400, "invalid_selection", "Choose a source status and valid offset.")
+                rows = self.service.accounts.source_report(owner, source[1])
+                if rows is None:
+                    raise ApiProblem(404, "not_found", "Project not found.")
+                rows = [row for row in rows if row["status"] == status]
+                start = int(offset)
+                return self._send(200, {"files": rows[start:start + 100], "total": len(rows)})
             if url.path == "/api/application/projects" and owner != "operator":
                 return self._send(200, {"projects": self.service.accounts.list_projects(owner)})
             if url.path == "/api/application/runs":

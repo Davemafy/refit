@@ -63,7 +63,7 @@ try {
   async function inspect(buffer) {
     await page.locator("#method").selectOption("zip");
     await page.locator("#zip").setInputFiles({ name: "agent.zip", mimeType: "application/zip", buffer });
-    const received = page.waitForResponse(r => r.url().endsWith("/api/application/imports"));
+    const received = page.waitForResponse(r => r.url().endsWith("/api/application/imports/zip"));
     await page.getByRole("button", { name: "Inspect source" }).click();
     assert.equal((await received).status(), 201);
   }
