@@ -20,6 +20,19 @@ class SSHBridgeTests(unittest.TestCase):
         self.assertIn('merge --ff-only', command)
         self.assertIn('REFIT_APPLICATION_DAILY_BUDGET', command)
 
+
+    def test_devmcp_gateway_public_key_is_time_limited_and_forced(self):
+        path = ROOT / 'deploy/setup-devmcp-host-access.sh'
+        subprocess.run(['bash','-n',str(path)],check=True,timeout=5)
+        source = path.read_text()
+        self.assertIn('restrict,expiry-time=', source)
+        self.assertIn('command="%s"', source)
+        self.assertIn('refit-devmcp-gateway', source)
+        self.assertIn('ssh-keygen -lf', source)
+        self.assertIn('refit-host-ssh-command.sh', source)
+        self.assertIn('REFIT_APPLICATION_DAILY_BUDGET', source)
+        self.assertNotIn('BEGIN OPENSSH PRIVATE KEY', source)
+
     def test_workflow_never_requests_root_shell(self):
         workflow = (ROOT/'.github/workflows/refit-host-ssh.yml').read_text()
         self.assertIn('workflow_dispatch:', workflow)
