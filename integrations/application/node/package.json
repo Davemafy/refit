@@ -1,0 +1,1 @@
+{"name":"refit-reviewed-node-runtime","private":true,"dependencies":{"ai":"7.0.155","@ai-sdk/openai-compatible":"3.0.80","@ai-sdk/openai":"4.0.85","@ai-sdk/google":"4.0.90","ollama-ai-provider-v2":"4.0.1","zod":"4.5.4","tsx":"4.23.13","dotenv":"17.2.3"}}

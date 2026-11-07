@@ -1,9 +1,11 @@
 """Application-native execution through the existing gVisor and Vultr boundaries."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import secrets
 import subprocess
@@ -19,6 +21,8 @@ BUDGET_LIMIT = 24
 CASE_SECONDS = 45
 RUN_SECONDS = 360
 CASE_CALLS = 4
+NODE_PACKAGES = json.loads((Path(__file__).resolve().parents[1] /
+    "integrations/application/node/package.json").read_text())["dependencies"]
 
 
 class RunStopped(RuntimeError):
@@ -43,12 +47,38 @@ def configuration(snapshot, supplied=None):
     preset = snapshot["discovery"]["preset"]
     if preset and supplied is None:
         return {**llm_setup(), "seam": "llm"}
-    if not isinstance(supplied, dict) or set(supplied) != {"module", "args", "cases"}:
-        raise ValueError(snapshot["discovery"]["setup"] or "Provide a module, arguments and evaluation cases.")
-    module, args, cases = (supplied[key] for key in ("module", "args", "cases"))
-    if (not isinstance(module, str) or len(module) > 120
-            or not re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", module)
-            or not any(module.replace(".", "/") + suffix in snapshot["files"]
+    runtime = snapshot["discovery"]["runtime"]
+    key = "entry" if runtime == "typescript" else "module"
+    if not isinstance(supplied, dict) or set(supplied) != {key, "args", "cases"}:
+        raise ValueError(snapshot["discovery"]["setup"] or "Provide an entry, arguments and evaluation cases.")
+    entry, args, cases = (supplied[name] for name in (key, "args", "cases"))
+    if runtime == "typescript":
+        if (not isinstance(entry, str) or entry not in snapshot["files"]
+                or not entry.endswith((".ts", ".mts", ".js", ".mjs"))
+                or entry.endswith(".d.ts")):
+            raise ValueError("Choose a TypeScript or JavaScript CLI file present in the imported source.")
+        if "package.json" not in snapshot["files"]:
+            raise ValueError("TypeScript execution is unavailable without a package.json declaring its runtime dependencies.")
+        try:
+            package = json.loads(base64.b64decode(snapshot["files"]["package.json"]))
+            deps = package.get("dependencies", {})
+            if not isinstance(deps, dict) or not all(isinstance(v, str) for v in deps.values()):
+                raise ValueError
+        except (ValueError, AttributeError):
+            raise ValueError("Provide a valid package.json with runtime dependencies.") from None
+        for dependency, spec in sorted(deps.items()):
+            pinned = NODE_PACKAGES.get(dependency)
+            parsed = re.fullmatch(r"(\^)?(\d+)\.(\d+)\.(\d+)", spec)
+            if pinned and parsed:
+                minimum = tuple(map(int, parsed.groups()[1:]))
+                available = tuple(map(int, pinned.split(".")))
+                if minimum == available or (parsed[1] and minimum[0] == available[0] and minimum <= available):
+                    continue
+            raise ValueError(f"Dependency {dependency} ({spec}) is outside the reviewed Node runtime. "
+                             "Upload a CLI-only source snapshot with its required dependencies.")
+    elif (not isinstance(entry, str) or len(entry) > 120
+            or not re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", entry)
+            or not any(entry.replace(".", "/") + suffix in snapshot["files"]
                        for suffix in (".py", "/__main__.py"))):
         raise ValueError("Choose a Python module present in the uploaded source.")
     if (not isinstance(args, list) or len(args) > 24 or
@@ -60,7 +90,7 @@ def configuration(snapshot, supplied=None):
     names = set()
     prompts = set()
     for case in cases:
-        if (not isinstance(case, dict) or set(case) != {"name", "split", "prompt", "stdout"}
+        if (not isinstance(case, dict) or set(case) not in ({"name", "split", "prompt", "stdout"}, {"name", "split", "prompt", "stdout", "tool", "tool_result"})
                 or any(not isinstance(value, str) or not 1 <= len(value) <= 4096 or "\x00" in value
                        for value in case.values())
                 or not re.fullmatch(r"[a-zA-Z0-9_-]{1,50}", case["name"])
@@ -77,7 +107,8 @@ def configuration(snapshot, supplied=None):
 def native_export(snapshot, setup, model, instructions=""):
     config = {"format": "refit.application-export.v1", "model": model,
               "source_sha256": snapshot["source_sha256"], "repository": snapshot["repository"],
-              "revision": snapshot["revision"], "module": setup["module"], "args": setup["args"],
+              "revision": snapshot["revision"], "args": setup["args"],
+              **{key: setup[key] for key in ("entry", "module") if key in setup},
               "instructions": instructions, "seam": setup["seam"]}
     if setup["seam"] == "llm":
         config["extra-openai-models.yaml"] = [{"model_id": model, "model_name": model,
@@ -113,6 +144,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
         receipt = []
         calls = 0
         observed = False
+        tool_ids = set()
         result = {}
         error = None
         cleanup = None
@@ -132,7 +164,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
             args = runtime["args"]
             if profile.instructions:
                 args = ["prompt", "--system", profile.instructions, *args[1:]]
-            send(proc, {"files": snapshot["files"], "module": runtime["module"], "args": args,
+            send(proc, {"files": snapshot["files"], "module": runtime.get("module"),
+                        "entry": runtime.get("entry"), "args": args,
                         "model": model, "prompt": case["prompt"], "seam": runtime["seam"],
                         "timeout": CASE_SECONDS}, min(limit, time.monotonic() + 12))
             event("sandbox_started", {"case": case["name"], "phase": phase, "model": model, "container": name})
@@ -153,7 +186,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                     raise ValueError("unexpected_worker_frame")
                 body = value["body"]
                 if (body.get("model") != model or body.get("stream", False) is not False
-                        or body.get("tool_choice", "auto") != "auto"):
+                        or body.get("tool_choice", "auto") not in ("auto", "none")):
                     raise ValueError("unsupported_model_request: use selected model, non-streaming chat and auto tools")
                 messages = body["messages"]
                 tools = body.get("tools")
@@ -161,9 +194,6 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 if calls >= CASE_CALLS or broker.requests >= broker.max_requests:
                     raise RunStopped("inference_budget_exhausted")
                 # The oracle checks the original tool observation, not only model prose.
-                tool_ids = {item["id"] for msg in messages if msg.get("role") == "assistant"
-                            for item in (msg.get("tool_calls") or [])
-                            if item["function"]["name"] == case.get("tool")}
                 observed = observed or any(
                     msg.get("role") == "tool" and msg.get("tool_call_id") in tool_ids
                     and str(msg.get("content", "")).strip().strip('"') == case.get("tool_result")
@@ -173,9 +203,21 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 requested_at = time.monotonic()
                 event("inference_requested", {"model": model, "case": case["name"],
                                               "number": broker.requests + 1})
-                message = broker.complete(model, messages, tools, max_tokens=512)
+                options = {}
+                if body.get("tool_choice") == "none":
+                    options["tool_choice"] = "none"
+                response_format = body.get("response_format")
+                if response_format is not None:
+                    if (not isinstance(response_format, dict)
+                            or response_format.get("type") not in ("text", "json_object", "json_schema")
+                            or len(json.dumps(response_format)) > 12_000):
+                        raise ValueError("unsupported_model_request: invalid response format")
+                    options["response_format"] = response_format
+                message = broker.complete(model, messages, tools, max_tokens=512, **options)
                 check()
-                tools_used = [x["function"]["name"] for x in (message.get("tool_calls") or [])]
+                model_calls = message.get("tool_calls") or []
+                tools_used = [x["function"]["name"] for x in model_calls]
+                tool_ids.update(x["id"] for x in model_calls if x["function"]["name"] == case.get("tool"))
                 inference = {"number": broker.requests, "model": model, "tools_called": tools_used,
                              "request_sha256": fingerprint(body), "response_sha256": fingerprint(message),
                              "seconds": round(time.monotonic() - requested_at, 3)}

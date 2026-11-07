@@ -76,9 +76,15 @@ def main():
             }]))
         argv = [arg.replace("{model}", cfg["model"]).replace("{prompt}", cfg["prompt"])
                 for arg in cfg["args"]]
+        if cfg.get("entry"):
+            (root / "node_modules").symlink_to("/opt/refit/node/node_modules", target_is_directory=True)
+            invocation = ["/usr/local/bin/node", "--import", "/opt/refit/node/node_modules/tsx/dist/loader.mjs",
+                          "./" + cfg["entry"], *argv]
+        else:
+            invocation = [sys.executable, "-B", "-m", cfg["module"], *argv]
         # Files bound output growth by the container's writable tmpfs limit.
         with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
-            proc = subprocess.Popen([sys.executable, "-B", "-m", cfg["module"], *argv],
+            proc = subprocess.Popen(invocation,
                 cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
             try:
                 proc.wait(timeout=cfg["timeout"])

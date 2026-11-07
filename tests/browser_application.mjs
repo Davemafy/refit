@@ -111,7 +111,7 @@ try {
       await page.locator("#zip").setInputFiles(genericArchive);
       await page.getByRole("button", { name: "Inspect source" }).click();
       await page.getByText(/Provide a Python module/).waitFor();
-      await page.getByText("Python entry and verification cases").click();
+      await page.getByText("Runtime entry and verification cases").click();
       await page.getByLabel("Application contract JSON").fill(JSON.stringify(genericSetup));
       await page.getByLabel("Maximum Vultr requests").fill(String(cap));
     }

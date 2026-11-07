@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 from pathlib import PurePosixPath
 import re
 import stat
@@ -121,7 +122,16 @@ def inspect(files):
     except ValueError:
         project = {}
     python = any(name.endswith(".py") for name in files)
-    typescript = any(name.endswith((".ts", ".tsx")) for name in files)
+    node_files = [name for name in files if name.endswith((".ts", ".mts", ".js", ".mjs"))
+                  and not name.endswith(".d.ts")]
+    typescript = any(name.endswith((".ts", ".tsx", ".mts")) for name in files) or (
+        "package.json" in files and bool(node_files))
+    try:
+        package = json.loads(read("package.json"))
+        if not isinstance(package, dict):
+            package = {}
+    except ValueError:
+        package = {}
     runtime = "python" if python and not typescript else "typescript" if typescript else "unknown"
     if project.get("name") == "llm" and project.get("version") == "0.37.1" and "llm/__main__.py" in files:
         return {"runtime": "python", "setup": None, "preset": "llm-0.37.1",
@@ -129,7 +139,20 @@ def inspect(files):
                 "entry": "python -m llm", "tool": "llm_version",
                 "evaluation": "Exact stdout and observed original llm_version tool result"}
     if runtime == "typescript":
-        setup = "TypeScript execution is unavailable. Supply a Python command-line boundary that uses an OpenAI-compatible endpoint, or keep this project in inspection only."
+        if "package.json" not in files:
+            return {"runtime": "typescript", "setup": "TypeScript execution is unavailable without a package.json declaring its runtime dependencies.",
+                    "runnable": False, "preset": None, "entry": None, "provider": None, "dependencies": []}
+        dependencies = package.get("dependencies", {})
+        dependencies = sorted(dependencies) if isinstance(dependencies, dict) else []
+        advertised = package.get("main")
+        entry = advertised.removeprefix("./") if isinstance(advertised, str) else None
+        if entry not in node_files:
+            entry = node_files[0] if len(node_files) == 1 else None
+        return {"runtime": "typescript", "setup": (
+            "Supply an existing Node CLI entry file, its arguments, and train, validation and holdout cases. "
+            "Use OPENAI_BASE_URL and OPENAI_MODEL with non-streaming Chat Completions."),
+            "preset": None, "entry": entry, "provider": "Vercel AI SDK" if "ai" in dependencies else None,
+            "dependencies": dependencies[:40]}
     else:
         setup = "Provide a Python module, its arguments, and train, validation, and holdout cases with exact expected stdout. The agent must use OPENAI_BASE_URL and OPENAI_MODEL, with streaming disabled."
     candidates = []

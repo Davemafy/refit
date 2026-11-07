@@ -6,6 +6,9 @@ on:
       - 'scripts/application*.py'
       - 'scripts/smoke_application.py'
       - 'integrations/application/**'
+      - 'experiments/ai-sdk-file-agent/**'
+      - 'scripts/verify_application_typescript.py'
+      - 'scripts/refit_vultr_probe.py'
       - 'web/application/**'
       - 'tests/browser_application*.mjs'
       - '.github/workflows/application.yml'
@@ -26,6 +29,10 @@ jobs:
         run: |
           sudo bash deploy/install-gvisor.sh
           docker build -f integrations/application/Dockerfile -t refit-application .
+      - name: Verify upstream TypeScript tool loop and fresh export with a zero-inference test broker
+        run: |
+          bash experiments/ai-sdk-file-agent/prepare.sh /tmp/refit-ai-sdk-agent.zip
+          python -m scripts.verify_application_typescript /tmp/refit-ai-sdk-agent.zip experiments/ai-sdk-file-agent/setup.json
       - name: Verify HTTP import and disposable containment without inference
         env:
           REFIT_APPLICATION_TOKEN: test-only-operator-application-ci-token

@@ -195,7 +195,7 @@ class VultrInference:
         self.max_requests = max_requests
 
     def complete(self, model: str, messages: list[dict], tools: list[dict] | None = None,
-                 max_tokens: int = 512, tool_choice: Any = "auto"):
+                 max_tokens: int = 512, tool_choice: Any = "auto", response_format=None):
         if self.requests >= self.max_requests:
             raise RuntimeError("live inference request budget exhausted")
         if not 1 <= max_tokens <= 4096:
@@ -204,6 +204,8 @@ class VultrInference:
                                    "max_tokens": max_tokens}
         if tools:
             payload.update(tools=tools, tool_choice=tool_choice)
+        if response_format is not None:
+            payload["response_format"] = response_format
         req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode(),
               headers={"Authorization": "Bearer " + self._key, "Content-Type": "application/json"})
         self.requests += 1

@@ -1,0 +1,9 @@
+{
+  "entry": "invoke.ts",
+  "args": ["{prompt}"],
+  "cases": [
+    {"name": "order", "split": "train", "prompt": "Use read_file to read order.txt. Report its exact contents as summary and an empty written array. Do not write.", "stdout": "RFT-ORDER-274", "tool": "read_file", "tool_result": "RFT-ORDER-274"},
+    {"name": "invoice", "split": "validation", "prompt": "Use read_file to read invoice.txt. Report its exact contents as summary and an empty written array. Do not write.", "stdout": "RFT-INVOICE-618", "tool": "read_file", "tool_result": "RFT-INVOICE-618"},
+    {"name": "receipt", "split": "holdout", "prompt": "Use read_file to read receipt.txt. Report its exact contents as summary and an empty written array. Do not write.", "stdout": "RFT-RECEIPT-943", "tool": "read_file", "tool_result": "RFT-RECEIPT-943"}
+  ]
+}
