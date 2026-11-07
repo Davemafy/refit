@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Release native generic provider environment support and verify with an independent GitHub agent"
+  "reason": "Pin the systemd sandbox worker to the image built for this deployment"
 }

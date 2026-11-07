@@ -23,7 +23,7 @@ class SSHBridgeTests(unittest.TestCase):
         self.assertIn('merge --ff-only', command)
         self.assertIn('REFIT_APPLICATION_DAILY_BUDGET', command)
 
-    def test_application_launcher_replaces_stale_checkout_override(self):
+    def test_application_launcher_replaces_stale_checkout_and_worker_override(self):
         launcher = (ROOT/'deploy/launch-application.sh').read_text()
         subprocess.run(['bash','-n',str(ROOT/'deploy/launch-application.sh')],
                        check=True,timeout=5)
@@ -31,6 +31,11 @@ class SSHBridgeTests(unittest.TestCase):
         self.assertIn('WorkingDirectory=$REPO', launcher)
         self.assertIn('Environment=REFIT_DEPLOYED_REVISION=$REVISION', launcher)
         self.assertIn('SERVICE_DIRECTORY', launcher)
+        override = launcher.split('<<OVERRIDE\n', 1)[1].split('\nOVERRIDE', 1)[0]
+        self.assertIn('ExecStart=\nExecStart=$APP_COMMAND', override)
+        self.assertIn('--image $IMAGE_ID', launcher)
+        self.assertIn('docker image inspect', launcher)
+        self.assertIn('argv[]=$APP_COMMAND', launcher)
         self.assertIn('api/application/release', launcher)
         self.assertIn('[[ "$installed" == "$REVISION" ]]', launcher)
 

@@ -20,6 +20,9 @@ ACCOUNT_BUDGET="${REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET:-16}"
   ((BUDGET >= 1 && BUDGET <= 2048 &&
     ACCOUNT_BUDGET >= 1 && ACCOUNT_BUDGET <= 512))
 docker build -f "$REPO/integrations/application/Dockerfile" -t "$IMAGE" "$REPO"
+IMAGE_ID="$(docker image inspect --format='{{.Id}}' "$IMAGE")"
+[[ "$IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]]
+APP_COMMAND="/usr/bin/python3 -m scripts.application_http --state /var/lib/refit-application --port 8098 --image $IMAGE_ID --daily-budget $BUDGET --account-daily-budget $ACCOUNT_BUDGET"
 getent group docker >/dev/null
 id refit-application >/dev/null 2>&1 || useradd --system --home-dir /var/lib/refit-application --shell /usr/sbin/nologin refit-application
 install -d -m 0700 -o refit-application -g refit-application /var/lib/refit-application
@@ -44,7 +47,7 @@ EnvironmentFile=/etc/refit/application.env
 EnvironmentFile=-/etc/refit/application-public.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
-ExecStart=/usr/bin/python3 -m scripts.application_http --state /var/lib/refit-application --port 8098 --image $IMAGE --daily-budget $BUDGET --account-daily-budget $ACCOUNT_BUDGET
+ExecStart=$APP_COMMAND
 UMask=0077
 Restart=on-failure
 RestartSec=3
@@ -60,19 +63,26 @@ TasksMax=64
 WantedBy=multi-user.target
 UNIT
 # A prior release installed the service from an immutable /opt/refit-release-* checkout.
-# Existing systemd drop-ins can override a newly written base unit. Take ownership of
-# this one field explicitly rather than removing unrelated host-managed overrides.
+# Existing systemd drop-ins can also pin the old worker image. Keep the checkout
+# and immutable image together without removing unrelated host overrides.
 install -d -m 0755 /etc/systemd/system/refit-application.service.d
 cat > /etc/systemd/system/refit-application.service.d/zz-refit-managed-checkout.conf <<OVERRIDE
 [Service]
 WorkingDirectory=$REPO
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
+ExecStart=
+ExecStart=$APP_COMMAND
 OVERRIDE
 systemctl daemon-reload
 SERVICE_DIRECTORY="$(systemctl show refit-application --property=WorkingDirectory --value)"
 if [[ "$SERVICE_DIRECTORY" != "$REPO" ]]; then
   printf 'Refit service checkout mismatch: expected %s, got %s.\n' "$REPO" "$SERVICE_DIRECTORY" >&2
   systemctl cat refit-application >&2
+  exit 1
+fi
+SERVICE_COMMAND="$(systemctl show refit-application --property=ExecStart --value)"
+if [[ "$SERVICE_COMMAND" != *"argv[]=$APP_COMMAND ;"* ]]; then
+  printf 'Refit service command does not point at the newly built worker %s.\n' "$IMAGE_ID" >&2
   exit 1
 fi
 systemctl enable --now refit-application
@@ -83,7 +93,7 @@ for attempt in {1..15}; do
     python3 -c 'import json,sys; print(json.load(sys.stdin).get("revision", ""))' 2>/dev/null || true)"
   if [[ "$installed" == "$REVISION" ]] &&
      curl --max-time 2 -fsS http://127.0.0.1:8098/bring >/dev/null; then
-    echo "Refit operator service is ready on 127.0.0.1:8098 at revision $REVISION."
+    echo "Refit operator service is ready on 127.0.0.1:8098 at revision $REVISION with worker $IMAGE_ID."
     exit 0
   fi
   sleep 1
