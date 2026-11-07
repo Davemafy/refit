@@ -37,7 +37,7 @@ jobs:
             --output /tmp/refit-public-smoke.json
       - name: Verify the deployed HTTPS application without inference
         env:
-          EXPECTED_APPLICATION_REVISION: ${{ inputs.expected_application_revision || 'afe357d33fbc3b7268c891f623c781d09ca523db' }}
+          EXPECTED_APPLICATION_REVISION: ${{ inputs.expected_application_revision || 'e4e631abd0eea41628b0c851dcce79639b972a8b' }}
         run: |
           python -m scripts.smoke_platform_https \
             --url https://80.240.30.92 \
