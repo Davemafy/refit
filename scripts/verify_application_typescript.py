@@ -8,6 +8,12 @@ from .application_import import source_snapshot
 from .application_run import MODELS, configuration, run_migration
 
 
+def original_turn(messages, options):
+    assert "response_format" not in options, "Tool turns must not use provider schema constraints"
+    assert messages[-1]["role"] == "system" and "For the final response only" in messages[-1]["content"]
+    return messages[-2]
+
+
 class TestBroker:
     requests = 0
     max_requests = 16
@@ -15,14 +21,15 @@ class TestBroker:
     def complete(self, model, messages, tools, **options):
         self.requests += 1
         assert tools and any(t["function"]["name"] == "read_file" for t in tools)
-        if messages[-1]["role"] == "tool":
-            result = messages[-1]["content"]
+        last = original_turn(messages, options)
+        if last["role"] == "tool":
+            result = last["content"]
             try:
                 result = json.loads(result)
             except ValueError:
                 pass
             return {"role": "assistant", "content": json.dumps({"summary": result, "written": []})}
-        path = re.search(r"(order|invoice|receipt)\.txt", messages[-1]["content"]).group(0)
+        path = re.search(r"(order|invoice|receipt)\.txt", last["content"]).group(0)
         return {"role": "assistant", "content": None, "tool_calls": [
             {"id": "call_" + str(self.requests), "type": "function",
              "function": {"name": "read_file", "arguments": json.dumps({"path": path})}}]}
@@ -40,11 +47,12 @@ class ExtendedReadBroker(TestBroker):
     def complete(self, model, messages, tools, **options):
         self.requests += 1
         assert tools and any(t["function"]["name"] == "read_file" for t in tools)
+        last = original_turn(messages, options)
         user_prompt = next(m["content"] for m in messages if m["role"] == "user")
         path = re.search(r"(order|invoice|receipt)\.txt", user_prompt).group(0)
         read_count = sum(m.get("role") == "tool" for m in messages)
         if read_count >= 4:
-            result = messages[-1]["content"]
+            result = last["content"]
             try:
                 result = json.loads(result)
             except ValueError:

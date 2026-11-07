@@ -6,6 +6,7 @@ on:
       - 'scripts/application*.py'
       - 'scripts/smoke_application.py'
       - 'integrations/application/**'
+      - 'integrations/openai-compatible/**'
       - 'experiments/ai-sdk-file-agent/**'
       - 'scripts/verify_application_typescript.py'
       - 'scripts/refit_vultr_probe.py'

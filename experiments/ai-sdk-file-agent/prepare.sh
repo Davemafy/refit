@@ -17,6 +17,8 @@ with ZipFile(dest, "x") as zip_file:
     for name in ("src/agent/agent-aisdk.ts", "src/agent/tools.ts", "src/models.ts"):
         zip_file.write(source / name, name)
     zip_file.write(here / "invoke.ts", "invoke.ts")
+    zip_file.write(here.parents[1] / "integrations/openai-compatible/tool-structured-output.mjs",
+                   "tool-structured-output.mjs")
     zip_file.writestr("package.json", '{"type":"module","dependencies":{"ai":"^7.0.127","@ai-sdk/google":"^4.0.87","@ai-sdk/openai-compatible":"^3.0.62","ollama-ai-provider-v2":"^4.0.1","zod":"^4.5.4"}}')
     for name, value in (("order", "RFT-ORDER-274"), ("invoice", "RFT-INVOICE-618"), ("receipt", "RFT-RECEIPT-943")):
         zip_file.writestr("records/" + name + ".txt", value)
