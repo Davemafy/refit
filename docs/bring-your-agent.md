@@ -1,8 +1,45 @@
 # Bring your agent
 
-The private Vultr operator service imports application source, runs the original
-application with two Vultr models and verifies a portable export in a fresh
-native process. The public evidence site is a separate service.
+Refit has two separate services on the same Vultr VM: the public **HTTP
+read-only evidence site** and the **HTTPS invite-only application** at
+https://80.240.30.92/bring. The application imports source, executes the
+original program against two Vultr models in gVisor, verifies the generated
+configuration in a fresh native process and enforces account ownership.
+The original loopback operator mode is retained for administration.
+
+## Public HTTPS account access
+
+**For an invited developer or judge:** open
+https://80.240.30.92/bring in a normal browser, register using a
+one-time invite, sign in and import a pinned public GitHub repository or
+ZIP. Confirm the agent invocation and three independent evaluation cases,
+choose the source and replacement models, authorize a capped run, then
+inspect live evidence and download a verified artifact or an explicit
+failure report. No SSH tunnel or shared operator token is needed.
+
+**For the host operator only:** generate a short-lived one-time invite
+from the deployed checkout under /opt, running the command as the
+`refit-application` service user:
+
+```bash
+sudo -u refit-application python3 -m scripts.application_accounts \
+  --state /var/lib/refit-application
+```
+
+Give each judge their own invite privately; never commit invite or
+session tokens. Anonymous visits can load the sign-in page but cannot
+read another account's project, run, event stream, evidence or export.
+The HTTPS TLS certificate is a short-lived Let's Encrypt IP-address
+certificate with an automatic renewal timer.
+
+The externally executed zero-inference check
+[`scripts/smoke_platform_https.py`](../scripts/smoke_platform_https.py)
+validates TLS, public sign-in, session mode, anonymous access rejection,
+operator-token bypass rejection and certificate freshness on each main push.
+The browser sign-in-to-export acceptance was separately performed by the
+operator on November 7 with two invited accounts and a Python application,
+using seven real inference requests; that account-run browser artifact
+has not yet been independently archived in this repository.
 
 ## Judge-facing live walkthrough
 
@@ -36,17 +73,22 @@ are no automatic paid retries.
 | Project ZIP | At most 4 MiB compressed, 12 MiB expanded, 1,500 entries and 512 KiB per file. Traversal, symlinks, special files, known credential files and dependency caches are rejected. |
 | Local CLI | `python -m scripts.application_cli /path/to/project --port 8098` imports to a locally running operator service. Set its `REFIT_APPLICATION_TOKEN`. Supply `--authorize-requests 24` to start and `--export config.json` to save a verified result. Source can stay on the developer's machine with local Docker and the same gVisor image. |
 
-The supported runtime is Python 3.11, a Python module entry point and
-non-streaming OpenAI-compatible Chat Completions. The reviewed image includes
-LLM 0.37.1 and its dependencies. It does not install imported projects or
-execute build hooks. The LLM preset discovers the native CLI and uses its
+The production-verified native runtime is Python 3.11, a Python module
+entry point and non-streaming OpenAI-compatible Chat Completions. The
+reviewed image includes LLM 0.37.1 and its dependencies. A reviewed Node
+runtime additionally supports pinned TypeScript/JavaScript CLI programs using
+the Vercel AI SDK 7 tool loop and approved dependencies, without running
+untrusted dependency-install scripts. It passes the original tool loop,
+training/validation/holdout and fresh export in a **zero-inference gVisor
+preflight**, but the first paid DeepSeek run failed to call the required
+`read_file` tool and Refit correctly withheld export. Do not describe this as
+a successful paid TypeScript migration. The LLM preset discovers the native CLI and uses its
 `extra-openai-models.yaml` seam. Other Python agents may supply
 `{"module":"agent","args":["{prompt}"],"cases":[...]}` in the form or through
 `--setup setup.json`. Each case includes a unique `name`, a `split` of
 `train`, `validation` or `holdout`, a `prompt` and expected `stdout`.
 Supply all three splits. Store evaluation files outside the source ZIP.
-The application must honor `OPENAI_BASE_URL` and `OPENAI_MODEL`. Native
-TypeScript, streaming, custom provider protocols, arbitrary dependencies,
+The application must honor `OPENAI_BASE_URL` and `OPENAI_MODEL`. Unreviewed TypeScript dependencies, streaming, custom provider protocols,
 live external tools and persistent production services require additional
 runtime support.
 

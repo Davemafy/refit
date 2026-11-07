@@ -2,6 +2,31 @@
 
 **Change the model. Keep the behavior.**
 
+## Bring Your Agent — live application
+
+The **invite-only HTTPS application** is at **https://80.240.30.92/bring**.
+It is separate from the read-only HTTP evidence site. Authorized developers
+can import pinned public GitHub repositories or ZIP archives, configure
+evaluation cases, authorize a bounded live migration, inspect run evidence and
+download a native export only after fresh verification. Projects, runs, streams,
+evidence and exports are isolated per account. The Vultr inference key remains
+on the host; imported code runs in disposable gVisor containers.
+
+The **verified production Python 3.11 path** supports non-streaming
+OpenAI-compatible Chat Completions. Two browser-initiated, independently
+verified Python examples and original-runtime exports are recorded in the
+[application engineering guide](docs/bring-your-agent.md). A reviewed
+**Node/TypeScript + AI SDK 7** runtime now passes the original upstream tool
+loop and native-export check with a zero-inference test broker. Its first
+paid DeepSeek evaluation **failed** the required read-file behavior and
+correctly produced **no export**. TypeScript model compatibility is not
+yet proven by a successful paid migration.
+
+The public application requires an invitation: there is **no anonymous
+billable execution**. Operators can issue a one-time account invitation on
+the Vultr VM; no SSH tunnel or shared operator token is required on an invited
+developer's machine. See [HTTPS operator and judge access](docs/bring-your-agent.md#public-https-account-access).
+
 Refit finds and repairs tool-use regressions when migrating an AI agent to a
 different language model. It compares actual stateful outcomes, proposes
 bounded model-facing changes, and tests them against independent scenarios.
@@ -76,11 +101,12 @@ and refuses to approve a migration if containment/cleanup proof is absent.
 The optional `--publish` flag copies **finished evidence** into the
 unprivileged public API without enabling browser-side inference.
 
-The public site remains read-only until HTTPS and properly authenticated
-server-side job submission exist. These reviewed synthetic business agents
-are built-in demonstration agents. The separate
-[external CLI](integrations/retail/README.md) supports the reviewed original
-retail agent; the public site does not accept arbitrary agent uploads.
+The **HTTP evidence site** remains read-only, including paid actions. The
+separate **HTTPS account application** now supports authenticated live Python
+imports, original-runtime verification and export. The synthetic business
+agents are independently tested engine examples, not the public application's
+entire compatibility scope. The [external CLI](integrations/retail/README.md)
+continues to support the reviewed retail agent.
 
 ## Current engine — one implementation, two independent agent domains
 
