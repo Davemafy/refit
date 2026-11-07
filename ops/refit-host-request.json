@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Deploy verified Refit main after 48-hour host authorization and refreshed GitHub Actions SSH credentials"
+  "reason": "Retry Vultr release with fixed systemd checkout pin and exact revision health gate"
 }
