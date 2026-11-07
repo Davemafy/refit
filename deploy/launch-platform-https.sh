@@ -2,6 +2,13 @@
 # Add the authenticated platform on :443 beside the existing HTTP evidence site.
 set -euo pipefail
 test "$(id -u)" -eq 0
+REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SERVICE_DIRECTORY="$(systemctl show refit-application --property=WorkingDirectory --value)"
+if [[ "$SERVICE_DIRECTORY" != "$REPO" ]]; then
+  printf 'Application service uses %s, but this checkout is %s.\n' "$SERVICE_DIRECTORY" "$REPO" >&2
+  echo 'First run bash deploy/launch-application.sh from this updated checkout.' >&2
+  exit 1
+fi
 IP="${REFIT_PUBLIC_IP:?Set REFIT_PUBLIC_IP to the public IPv4 address of this VM}"
 python3 -c 'import ipaddress,sys; assert ipaddress.IPv4Address(sys.argv[1]).is_global' "$IP"
 CERTBOT="${REFIT_CERTBOT:-/opt/refit-certbot/bin/certbot}"
@@ -80,17 +87,26 @@ server {
 NGINX
 umask 077
 printf 'REFIT_PUBLIC_ORIGIN=https://%s\n' "$IP" > /etc/refit/application-public.env
-# Enable account enforcement before opening the HTTPS proxy.
+# Validate the new SaaS routes after service restart, not just the old /bring.
 systemctl restart refit-application
+READY=0
 for _ in {1..15}; do
-  if curl -fsS -H 'X-Refit-Public: 1' http://127.0.0.1:8098/api/application/session |
-    python3 -c 'import json,sys; assert json.load(sys.stdin)["mode"] == "account"' 2>/dev/null; then
+  session="$(curl -fsS --max-time 2 -H 'X-Refit-Public: 1' http://127.0.0.1:8098/api/application/session 2>/dev/null || true)"
+  login="$(curl -fsS --max-time 2 -H 'X-Refit-Public: 1' http://127.0.0.1:8098/login 2>/dev/null || true)"
+  app_code="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H 'X-Refit-Public: 1' http://127.0.0.1:8098/app 2>/dev/null || true)"
+  if [[ "$session" == *'"mode": "account"'* &&
+        "$login" == *'id="authForm"'* &&
+        "$app_code" == 302 ]]; then
     READY=1
     break
   fi
   sleep 1
 done
-test "${READY:-}" = 1
+if [[ "$READY" != 1 ]]; then
+  echo 'New application routes not ready: expected /login 200 and /app redirect.' >&2
+  systemctl --no-pager --full status refit-application || true
+  exit 1
+fi
 ln -sfn /etc/nginx/sites-available/refit-platform /etc/nginx/sites-enabled/refit-platform
 if ! nginx -t; then
   rm -f /etc/nginx/sites-enabled/refit-platform
