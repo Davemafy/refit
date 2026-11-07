@@ -13,7 +13,7 @@
 *{box-sizing:border-box}html,body{height:100%;margin:0;background:#050607;color:var(--ink);font:16px/1.4 Geist,Inter,system-ui,sans-serif;overflow:hidden}
 button{font:inherit;cursor:pointer}a{color:inherit;text-decoration:none}.mono{font-family:GeistMono,ui-monospace,monospace}
 #viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden;background:#050607}
-#film{width:1600px;height:900px;position:absolute;overflow:hidden;transform-origin:center center;background:var(--bg);box-shadow:0 0 160px #000}
+#film{width:1600px;height:900px;position:absolute;left:50%;top:50%;overflow:hidden;transform-origin:center center;background:var(--bg);box-shadow:0 0 160px #000}
 #film:before{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 50% 60%,#19212318,transparent 58%),linear-gradient(#24262621 1px,transparent 1px),linear-gradient(90deg,#24262621 1px,transparent 1px);background-size:auto,96px 96px,96px 96px;opacity:.36;pointer-events:none;z-index:0}
 #film:after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 170px #050607bb;pointer-events:none;z-index:9}
 .top{position:absolute;z-index:8;left:76px;right:76px;top:53px;display:flex;align-items:center;justify-content:space-between}
@@ -154,7 +154,7 @@ var offsets=[0],total=0;scenes.forEach(function(s){total+=Number(s.dataset.durat
 var t=0,prev=0,playing=false,speed=1,index=-1;
 var scrub=document.querySelector("#scrub"),time=document.querySelector("#time"),label=document.querySelector("#sceneLabel"),toggle=document.querySelector("#toggle"),caption=document.querySelector("#captions");
 scrub.max=String(total);
-function resize(){var scale=Math.min(innerWidth/W,innerHeight/H);film.style.transform="scale("+scale+")"}
+function resize(){var scale=Math.min(innerWidth/W,innerHeight/H);film.style.transform="translate(-50%, -50%) scale("+scale+")"}
 function fmt(v){v=Math.max(0,Math.floor(v));return String(Math.floor(v/60)).padStart(2,"0")+":"+String(v%60).padStart(2,"0")}
 function setScene(i){
  if(index===i)return;
