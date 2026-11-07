@@ -21,7 +21,8 @@ await mkdir(output, { recursive: true });
 const browser = await firefox.launch();
 const errors = [];
 const { model: source, replacement: target } = {
-  model: "deepseek-v4.1-flash-1017", replacement: "glm-5.2"
+  model: process.env.REFIT_TEST_SOURCE || "deepseek-v4.1-flash-1017",
+  replacement: process.env.REFIT_TEST_TARGET || "glm-5.2"
 };
 
 try {
@@ -72,8 +73,13 @@ try {
       entry: imported.discovery.entry, snapshot: imported.snapshot_sha256, importSeconds: imported.import_seconds }));
   }
   assert.equal(imported.discovery.runtime, runtime);
-  if (runtime === "typescript") await owner.getByText(/Vercel AI SDK/).waitFor();
-  else await owner.getByText("python -m src.qa", { exact: true }).first().waitFor();
+  if (runtime === "typescript") {
+    const candidate = imported.discovery.applications.findIndex(app => app.entry === "invoke.ts");
+    assert.ok(candidate >= 0, "The TypeScript CLI must be discoverable");
+    await owner.getByLabel("Application boundary").selectOption(String(candidate));
+  } else {
+    await owner.getByText("python -m src.qa", { exact: true }).first().waitFor();
+  }
   const setup = JSON.parse(await readFile(setupFile, "utf8"));
 
   async function request(page, suffix, data) {
