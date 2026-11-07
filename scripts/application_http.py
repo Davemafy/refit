@@ -456,9 +456,11 @@ class ApplicationHandler(RefitHandler):
             assets = {
                 "/assets/ui.css": ("ui.css", "text/css; charset=utf-8"),
                 "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                "/assets/run-outcome.js": ("run-outcome.js", "text/javascript; charset=utf-8"),
                 "/assets/auth.js": ("auth.js", "text/javascript; charset=utf-8"),
                 "/assets/geist-sans.woff2": ("geist-sans.woff2", "font/woff2"),
                 "/assets/geist-mono.woff2": ("geist-mono.woff2", "font/woff2"),
+                "/assets/spline-sans-latin.woff2": ("spline-sans-latin.woff2", "font/woff2"),
             }
             if page in assets:
                 filename, mime = assets[page]

@@ -103,7 +103,7 @@ async function refreshWorkspace(){
 const lead=(title,subtitle,right="")=>'<div class="page-lead"><div><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
 const empty=(title,desc,button)=>'<div class="empty"><div class="empty-icon">'+ico("layers")+'</div><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
 const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
-const guestNote='<div class="hint-note" style="margin-bottom:22px">'+ico("eye")+' Public, read-only preview. This example comes from a verified November 7 Vultr migration; no inference runs while you browse. <a href="/login?next=/app/agents/new" style="text-decoration:underline;color:#fff">Sign in to import your own agent</a>.</div>';
+const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Explore a recorded, verified November 7 Vultr migration. No inference runs while browsing.</span><a href="/login?next=/app/agents/new">Sign in to import your own agent</a></div>';
 async function overview(){
  header("Overview");
  await refreshWorkspace();
@@ -345,42 +345,42 @@ async function startMigration(){
  }catch(e){notify(e.message);}finally{if(btn?.isConnected)btn.disabled=false;}
 }
 function renderComparison(cases,source,target,report){
- const base=cases.filter(e=>e.details?.phase!=="fresh_export");
+ const rows=RefitOutcomes.pairs({source,target},cases);
+ if(!rows.length)return '<p class="comparison-empty">No case comparisons have been recorded yet. Results will appear when the application finishes a case.</p>';
  const repair=!!report?.proposal;
- const names=[...new Set(base.map(e=>e.details?.case).filter(Boolean))];
- if(!names.length)return '<div class="hint-note">No source/replacement case comparisons have been recorded yet.</div>';
  const checkLabels={stdout_matches:"Exact output",json_matches:"Structured output",
-   required_tool_called:"Required tool called",required_tool_observed:"Required tool result",
-   forbidden_tools_absent:"Forbidden tools absent",tool_arguments_match:"Required tool arguments",state_checks_passed:"Application state"};
- const cell=d=>{
-  if(!d)return '<span class="muted">Pending</span>';
+  required_tool_called:"Required tool called",required_tool_observed:"Required tool result",
+  forbidden_tools_absent:"Forbidden tools absent",tool_arguments_match:"Required tool arguments",
+  state_checks_passed:"Application state"};
+ const cell=observation=>{
+  const d=observation?.details;
+  if(!d)return '<span class="muted">Not recorded</span>';
   const checks=Object.entries(checkLabels).filter(([key])=>typeof d.verdict?.[key]==="boolean");
-  const tools=(d.trace||[]).flatMap(call=>call.tools_called||[]);
+  const tools=(Array.isArray(d.trace)?d.trace:[]).flatMap(call=>call.tools_called||[]);
   return (d.passed?'<span class="chip good">'+ico("check")+' Passed</span>':
-    '<span class="chip bad">'+ico("alert")+' Failed</span>')+
-    '<details class="case-options comparison-checks"><summary>Case evidence</summary><ul>'+
-    checks.map(([key,label])=>'<li class="'+(d.verdict[key]?"sub":"error")+'">'+
-      safe(label)+(d.verdict[key]?" passed":" failed")+'</li>').join("")+
-    (d.state_checks||[]).map(check=>'<li class="'+(check.passed?"sub":"error")+'">'+
-      safe(check.path+" · "+check.op.replaceAll("_"," ")+" · "+check.before.status+" → "+check.after.status+(check.passed?" · passed":" · failed"))+'</li>').join("")+
-    (tools.length?'<li class="sub">Model requested '+safe(tools.join(", "))+'</li>':"")+
-    (Number.isInteger(d.model_requests)?'<li class="sub">'+safe(d.model_requests)+' model requests</li>':"")+
-    (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul></details>';
+   '<span class="chip bad">'+ico("alert")+' Failed</span>')+
+   '<details class="case-options comparison-checks"><summary>View checks</summary><ul>'+
+   checks.map(([key,label])=>'<li class="'+(d.verdict[key]?"sub":"error")+'">'+safe(label)+(d.verdict[key]?" passed":" failed")+'</li>').join("")+
+   (Array.isArray(d.state_checks)?d.state_checks:[]).map(check=>'<li class="'+(check.passed?"sub":"error")+'">'+
+    safe(check.path+" · "+check.op.replaceAll("_"," ")+" · "+(check.before?.status||"unknown")+" → "+(check.after?.status||"unknown")+(check.passed?" · passed":" · failed"))+'</li>').join("")+
+   (tools.length?'<li class="sub">Model requested '+safe(tools.join(", "))+'</li>':"")+
+   (Number.isInteger(d.model_requests)?'<li class="sub">'+safe(d.model_requests)+' model requests</li>':"")+
+   (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul></details>';
  };
- return '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Test case</th><th>Original · '+safe(source)+'</th><th>Replacement · '+safe(target)+'</th>'+(repair?'<th>Adapted replacement</th>':'')+'<th>Comparison</th></tr></thead><tbody>'+
- names.map(name=>{
-  const original=base.find(e=>e.details.case===name&&e.details.model===source)?.details;
-  const targetRuns=base.filter(e=>e.details.case===name&&e.details.model===target);
-  const replacement=targetRuns.find(e=>!e.details.adapted)?.details;
-  const adapted=targetRuns.filter(e=>e.details.adapted).at(-1)?.details;
-  const identical=!!original?.stdout_sha256&&original.stdout_sha256===replacement?.stdout_sha256;
-  const bothPassed=original?.passed&&replacement?.passed;
-  return '<tr><td><strong>'+safe(name)+'</strong></td><td>'+cell(original)+'</td><td>'+cell(replacement)+'</td>'+(repair?'<td>'+cell(adapted)+'</td>':'')+'<td>'+
-   (bothPassed&&identical?'<span class="chip good">Matching stdout</span>':
-    bothPassed?'<span class="chip good">Both meet the checks</span>':
-    original?.passed&&replacement&&!replacement.passed?'<span class="chip bad">Behavior regressed</span>':
-    original&&replacement?'<span class="chip warn">Checks failed</span>':'<span class="muted">Incomplete</span>')+
-   '</td></tr>';
+ return '<div class="comparison-scroll"><table class="table comparison-table"><thead><tr><th>Case</th><th>Original · '+safe(source)+'</th><th>Replacement · '+safe(target)+'</th>'+
+ (repair?'<th>Adapted replacement</th>':'')+'<th>Observed result</th></tr></thead><tbody>'+
+ rows.map(row=>{
+  const original=row.source?.details,replacement=row.target?.details,adapted=row.adapted?.details;
+  const inspection=row.status==="source_failed"?row.source:row.target||row.source;
+  const description=row.status==="regression"?"Replacement failed required checks":
+   row.status==="source_failed"?"Original baseline failed":
+   row.status==="both_passed"?(row.identicalOutput?"Both passed · same output":"Both passed · outputs differ"):
+   row.status==="target_failed"?"Replacement checks failed":"Awaiting both results";
+  return '<tr class="'+(["regression","source_failed","target_failed"].includes(row.status)?"comparison-failed":"")+'"><td>'+
+   '<strong>'+safe(row.name)+'</strong><span class="comparison-phase">'+safe(RefitOutcomes.phaseName(row.phase))+'</span></td>'+
+   '<td>'+cell(row.source)+'</td><td>'+cell(row.target)+'</td>'+(repair?'<td>'+cell(row.adapted)+'</td>':'')+
+   '<td><span class="comparison-result '+(["regression","source_failed","target_failed"].includes(row.status)?"is-failed":"")+'">'+safe(description)+'</span>'+
+   (inspection?'<button class="evidence-jump" type="button" data-action="inspect-evidence" data-key="case-'+safe(inspection.seq)+'">Inspect evidence '+ico("arrow")+'</button>':'')+'</td></tr>';
  }).join("")+'</tbody></table></div>';
 }
 
@@ -474,6 +474,74 @@ function evidenceExplorer(run,events){
   evidenceDetail(selected)+'</section></div>';
 }
 
+// One visual narrative, computed from the observed run and its events.
+function decisionSurface(run,events){
+ const o=RefitOutcomes.summarize(run,events);
+ const exportText=o.exportState==="available"?"Verified artifact available":
+  o.exportState==="pending"?"Verification pending":"No verified export";
+ const activeLabel=o.active&&o.stage.phase?o.stage.phase+" · "+o.stage.event:
+  o.stage.event;
+ const attention=o.regressions.length?o.regressions:
+  o.baselineFailures.length?o.baselineFailures:o.otherFailures;
+ const focus=o.focus?
+  '<button class="decision-cta" type="button" data-action="inspect-evidence" data-key="'+safe(o.focus.key)+'">'+
+  (o.failedCount?"Inspect failing evidence":"Inspect recorded evidence")+ico("arrow")+'</button>':"";
+ const count=o.total?o.bothPassed+" / "+o.total:"—";
+ const detail=o.total?"Paired cases where both models met the required checks":"No paired cases complete yet";
+ const summary=attention.length?
+  '<div class="decision-findings"><div class="decision-findings-head"><span>'+safe(attention.length)+
+  ' observed case'+(attention.length===1?"":"s")+' needing attention</span><span>Open the underlying evidence</span></div>'+
+  attention.slice(0,4).map(row=>{
+   const e=row.status==="source_failed"?row.source:row.target||row.source;
+   return '<button class="finding" type="button" data-action="inspect-evidence" data-key="case-'+safe(e.seq)+'">'+
+    '<span class="finding-sign" aria-hidden="true"></span><span class="finding-name">'+safe(row.name)+'</span>'+
+    '<span class="finding-phase">'+safe(RefitOutcomes.phaseName(row.phase))+'</span>'+
+    '<span class="finding-reason">'+safe(row.status==="regression"?"Replacement regression":row.status==="source_failed"?"Original baseline failed":"Replacement failed")+'</span>'+
+    ico("arrow")+'</button>';
+  }).join("")+'</div>':
+  '<p class="decision-note">'+(o.kind==="compatible"?"Every recorded comparison met the declared requirements. Review individual assertions and fresh export evidence below.":
+  o.kind==="running"?"The interface shows only completed observations. New evidence appears as the run progresses.":
+  o.kind==="repaired"?"The backend reports a verified adaptation. Inspect its test evidence and the exact accepted instructions.":
+  "Review the recorded checks and execution history before making a migration decision.")+'</p>';
+ return '<section class="decision-surface '+safe(o.kind)+'" aria-label="Migration outcome" data-verdict="'+safe(o.kind)+'">'+
+ '<div class="decision-main"><div class="decision-state"><span class="decision-light"></span>'+
+ safe(o.active?"Live execution":"Migration decision")+'</div><h2>'+safe(o.title)+'</h2><p>'+safe(o.description)+'</p>'+
+ '<div class="decision-actions">'+focus+'</div></div>'+
+ '<div class="decision-aside"><div class="decision-stat"><span>Observed comparison</span><strong class="mono">'+safe(count)+'</strong><small>'+safe(detail)+'</small></div>'+
+ '<div class="decision-meta"><span>Latest recorded activity</span><strong>'+safe(activeLabel)+'</strong>'+
+ (o.stage.case?'<small>Case: '+safe(o.stage.case)+'</small>':'')+'</div>'+
+ '<div class="decision-meta"><span>Export gate</span><strong>'+safe(exportText)+'</strong></div>'+
+ '<div class="decision-meta"><span>Sandbox cleanup receipts</span><strong>'+safe(o.cleanupCount?o.cleaned+" / "+o.cleanupCount:"Not recorded")+'</strong></div></div></section>'+summary;
+}
+function recentRunEvents(events,active){
+ const items=events.slice(-6).reverse();
+ return '<section class="card inner run-activity"><div class="between"><h3>Execution activity</h3>'+
+ (active?'<span class="live-indicator"><span></span>Live</span>':
+  '<span class="muted small">'+safe(events.length)+' events</span>')+'</div>'+
+ (items.length?'<ol class="activity-entries">'+items.map(e=>{
+  const d=e.details||{},when=e.time?e.time.slice(11,19):"";
+  return '<li><span class="activity-point"></span><div><strong>'+safe(RefitOutcomes.eventLabel(e.type))+'</strong>'+
+   '<span>'+safe([d.phase,d.case,d.model].filter(Boolean).join(" · ")||"Recorded by the runtime")+'</span></div>'+
+   '<time class="mono">'+safe(when)+'</time></li>';
+ }).join("")+'</ol>':'<p class="small sub" style="margin-top:15px">Waiting for recorded execution events.</p>')+'</section>';
+}
+function snapshotRunView(){
+ const details={};
+ document.querySelectorAll(".comparison-checks").forEach((d,i)=>{if(d.open)details[i]=true});
+ const entry=document.querySelector(".evidence-index"),inspector=document.querySelector(".evidence-inspector"),log=document.querySelector(".log");
+ return {scrollX:window.scrollX,scrollY:window.scrollY,details,
+  evidenceScroll:entry?.scrollTop||0,inspectorScroll:inspector?.scrollTop||0,logScroll:log?.scrollTop||0,
+  activeId:document.activeElement?.id||null};
+}
+function restoreRunView(view){
+ if(!view)return;
+ document.querySelectorAll(".comparison-checks").forEach((d,i)=>{if(view.details[i])d.open=true});
+ const entry=document.querySelector(".evidence-index"),inspector=document.querySelector(".evidence-inspector"),log=document.querySelector(".log");
+ if(entry)entry.scrollTop=view.evidenceScroll;
+ if(inspector)inspector.scrollTop=view.inspectorScroll;
+ if(log)log.scrollTop=view.logScroll;
+ window.scrollTo(view.scrollX,view.scrollY);
+}
 function runLog(events){if(!events.length)return "No events received yet.";
  return events.slice(-75).map(e=>{
   const d=e.details||{},time=(e.time||"").slice(11,19);
@@ -490,16 +558,8 @@ async function showRun(id,refreshOnly=false){
    await Promise.all([req("/runs/"+id),req("/runs/"+id+"/evidence")]);
  if(location.pathname!=="/app/runs/"+id)return;
  state.runRevision++;
+ const previousView=refreshOnly?snapshotRunView():null;
  const events=evidence.events||[],cases=events.filter(e=>e.type==="case_completed");
- const baseCases=cases.filter(e=>e.details?.phase!=="fresh_export");
- const names=[...new Set(baseCases.map(e=>e.details?.case).filter(Boolean))];
- const matched=names.filter(name=>{
-  const original=baseCases.find(e=>e.details.case===name&&e.details.model===run.source)?.details;
-  const replacement=baseCases.find(e=>e.details.case===name&&e.details.model===run.target&&!e.details.adapted)?.details;
-  return original?.passed&&replacement?.passed;
- }).length;
- const cleanups=events.filter(e=>e.type==="sandbox_cleanup");
- const cleaned=cleanups.filter(e=>e.details?.receipt?.verified).length;
  const active=!ended(run.status);
  header(active?"Run migration":"Migration review",active?3:4,"Agents / "+(run.import?.repository||"Imported agent")+" / "+(active?"Run":"Review"));
  const report=evidence.run?.report;
@@ -512,27 +572,23 @@ async function showRun(id,refreshOnly=false){
    '</p></div>':
   currentTab==="traces"?'<pre class="log">'+safe(runLog(events))+'</pre>':
   evidenceExplorer(run,events);
- page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration "+run.id)+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
+ page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration review")+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
  (active?'<button data-action="cancel-run" data-id="'+safe(id)+'" class="btn">Cancel</button>':"")+
  '<button data-action="evidence-download" data-id="'+safe(id)+'" class="btn">'+ico("download")+' Download evidence</button>'+
  (run.export_available?'<button data-action="artifact-download" data-id="'+safe(id)+'" class="btn primary">'+ico("download")+' Export verified configuration</button>':"")+
  '</div></div>'+
- (run.error?'<div class="notice" style="margin-bottom:18px">'+safe("Execution result: "+run.error.replaceAll("_"," "))+'</div>':"")+
- '<div class="run-layout"><div class="stack"><section class="card inner"><div class="between"><div><h2>'+(active?"Executing migration":"Review migration results")+'</h2><p style="font-size:13px;margin-top:5px">'+(active?"Live execution with recorded inference, case outcomes and cleanup.":"Only observed cases and verified artifacts are shown.")+'</p></div><span class="chip bordered">'+safe(run.model_requests??run.request_attempts_logged??0)+' / '+safe(run.budget)+' requests</span></div>'+
- '<div class="metrics" style="margin-top:20px"><div class="metric"><strong>'+matched+' / '+names.length+'</strong><span>Both models passed</span></div><div class="metric"><strong>'+cleaned+' / '+cleanups.length+'</strong><span>Sandbox cleanup receipts</span></div><div class="metric"><strong>'+safe(formatDuration(run.execution_seconds))+'</strong><span>Execution duration</span></div><div class="metric"><strong>'+((run.verification||[]).filter(v=>v.passed).length)+' / '+((run.verification||[]).length)+'</strong><span>Fresh export checks</span></div></div>'+
+ (run.error?'<div class="notice" style="margin-bottom:18px">'+safe("Execution result: "+String(run.error).replaceAll("_"," "))+'</div>':"")+
+ decisionSurface(run,events)+
+ '<div class="run-layout"><div class="stack"><section class="card inner comparison-card"><div class="between"><div><h2>'+(active?"Executing migration":"Review migration results")+'</h2><p style="font-size:13px;margin-top:5px">Case outcomes, original traces and verification receipts from this run.</p></div><span class="chip bordered">'+safe(run.model_requests??run.request_attempts_logged??0)+' / '+safe(run.budget)+' requests</span></div>'+
  '<div class="tabs" style="margin-top:19px">'+tabs.map(t=>'<button class="tab '+(t===currentTab?"active":"")+'" data-action="tab" data-tab="'+t+'">'+(t==="traces"?"Trace":t.charAt(0).toUpperCase()+t.slice(1))+'</button>').join("")+'</div>'+
  '<div class="tab-panel" id="runPanel">'+panel+'</div></section>'+
  (active?'<div class="hint-note">'+ico("clock")+' This run is persisted. You can leave this page and reopen it from Runs. Inference is never automatically retried.</div>':
  run.export_available?'<div class="hint-note">'+ico("check")+' Export is available only because the original application passed the fresh verification gate. Compatibility is established for the evaluated cases, not every possible behavior.</div>':
  '<div class="hint-note">'+ico("alert")+' No verified export is available. Review the failed baseline, model calls and verification evidence.</div>')+'</div>'+
  '<aside class="stack"><section class="card inner side-facts"><h3>Run details</h3><div class="pair-line"><span class="sub">Run ID</span><span class="mono">'+safe(run.id)+'</span></div><div class="pair-line"><span class="sub">Source</span><span>'+safe(run.source)+'</span></div><div class="pair-line"><span class="sub">Target</span><span>'+safe(run.target)+'</span></div><div class="pair-line"><span class="sub">Started</span><span>'+safe(formatTime(run.started_at))+'</span></div><div class="pair-line"><span class="sub">Requests</span><span>'+safe(run.model_requests??0)+'</span></div><div class="pair-line"><span class="sub">Export</span><span>'+(run.export_available?"Verified":"Withheld")+'</span></div></section>'+
- '<section class="card inner"><h3 style="margin-bottom:17px">Execution timeline</h3><div class="timeline">'+
- [["runtime_ready","Sandbox image prepared"],["sandbox_started","Application sandbox started"],["inference_completed","Vultr inference completed"],["case_completed","Evaluation case completed"],["sandbox_cleanup","Sandbox cleaned up"]].map(([key,label])=>{
-  const done=events.some(e=>e.type===key);
-  return '<div class="timeline-item '+(done?"done":"")+'"><span class="small-dot"></span>'+label+'</div>';
- }).join("")+'</div></section>'+
- '<section class="card inner side-facts"><h3>Environment</h3><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(run.import?.discovery?.runtime||"Imported application")+'</span></div><div class="pair-line"><span class="sub">Isolation</span><span>gVisor</span></div><div class="pair-line"><span class="sub">Network</span><span>Restricted</span></div></section></aside></div>'+
+ recentRunEvents(events,active)+ '<section class="card inner side-facts"><h3>Environment</h3><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(run.import?.discovery?.runtime||"Imported application")+'</span></div><div class="pair-line"><span class="sub">Isolation</span><span>gVisor</span></div><div class="pair-line"><span class="sub">Network</span><span>Restricted</span></div></section></aside></div>'+
  '<div class="flow-footer"><button class="btn" data-action="show-runs">'+ico("back")+' Back to runs</button></div>';
+ restoreRunView(previousView);
  if(active)subscribe(id);else stopStream();
 }
 function subscribe(id){
@@ -711,6 +767,7 @@ document.addEventListener("click",async event=>{
    });
   }
   else if(action==="evidence-download"||action==="artifact-download")await download(id,action==="evidence-download"?"evidence":"artifact");
+  else if(action==="inspect-evidence"){state.tab="evidence";state.evidenceSelected=button.dataset.key;await showRun(location.pathname.split("/").pop());page.querySelector("#runPanel")?.scrollIntoView({block:"start",behavior:"smooth"});}
   else if(action==="tab"){state.tab=button.dataset.tab;const runId=location.pathname.split("/").pop();await showRun(runId);}
   else if(action==="signout"){await req("/logout",{});location.assign("/");}
  }catch(e){notify(e.message);}

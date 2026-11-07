@@ -72,7 +72,7 @@ class SaaSRoutes(unittest.TestCase):
                     self.assertEqual(status, 200)
                     self.assertIn('id="authForm"', body)
                     self.assertNotIn('id="invite"', body)
-                for route in ("/assets/ui.css", "/assets/app.js", "/assets/auth.js"):
+                for route in ("/assets/ui.css", "/assets/app.js", "/assets/run-outcome.js", "/assets/auth.js"):
                     status, _, _, body = call("GET", route)
                     self.assertEqual(status, 200)
                     self.assertGreater(len(body), 100)

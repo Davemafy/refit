@@ -27,13 +27,36 @@ class FixtureHandler(ApplicationHandler):
         return super().do_POST()
 
     def do_GET(self):
-        if urlsplit(self.path).path == "/__fixture__/seed":
+        route = urlsplit(self.path).path
+        if route in ("/__fixture__/seed", "/__fixture__/seed-failure"):
             owner = self.authorize()
             with gzip.open("data/evaluations/application-browser-generic-2026-11-07.json.gz", "rt") as source:
                 archived = json.load(source)
             run, events = archived["run"].copy(), archived["events"]
             run["id"] = "app-" + secrets.token_hex(8)
             run["owner"] = owner
+            if route == "/__fixture__/seed-failure":
+                # UI-only adversarial fixture; not a real migration or production endpoint.
+                run["status"] = "failed"
+                run["export"] = None
+                run["verification"] = []
+                run["report"] = None
+                run["error"] = "required_tool_missing"
+                events = json.loads(json.dumps(events))
+                changed = 0
+                for event in events:
+                    if (event["type"] == "case_completed"
+                            and event.get("details", {}).get("phase") == "train"
+                            and event["details"].get("model") == run["target"]
+                            and changed == 0):
+                        event["details"]["passed"] = False
+                        event["details"]["verdict"]["stdout_matches"] = False
+                        event["details"]["verdict"]["required_tool_observed"] = False
+                        event["details"]["error"] = "required_tool_missing"
+                        changed += 1
+                    if event["type"] == "terminal":
+                        event["details"]["status"] = "failed"
+                assert changed == 1
             with self.service.lock:
                 self.service.runs[run["id"]] = (run, events)
                 self.service.store.save(run["id"], run, events)
