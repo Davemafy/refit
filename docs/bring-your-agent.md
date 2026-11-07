@@ -20,9 +20,11 @@ not a fresh execution or a claim of unrestricted compatibility.
 
 **For any developer wishing to execute a new migration:** open
 https://80.240.30.92/signup in a normal browser, choose a username and
-password, and sign in. **No invitation is required.** Import a pinned GitHub
-repository or ZIP, confirm independent evaluation cases and the original
-application entry point, select models and authorize a bounded migration.
+password, and sign in. **No invitation is required.** Paste a GitHub
+repository URL; Refit resolves and pins the default branch's current commit SHA.
+An exact 40-character SHA and private repository read token are optional advanced
+settings. ZIP import remains supported. Confirm independent evaluation cases
+and the original entry point, select models, and authorize a bounded migration.
 
 New accounts are subject to the same authentication, project isolation,
 per-account daily inference allowance (16 reserved requests) and global

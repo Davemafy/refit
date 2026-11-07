@@ -36,6 +36,48 @@ class GitHubArchiveRedirect(HTTPRedirectHandler):
         return Request(newurl, headers={"User-Agent": "Refit application import"})
 
 
+class NoGitHubApiRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ImportProblem("GitHub revision discovery was redirected unexpectedly.")
+
+
+def validate_repo_token(repo, token):
+    if (not isinstance(repo, str) or not REPOSITORY.fullmatch(repo) or
+            any(part in {".", ".."} for part in repo.split("/"))):
+        raise ImportProblem("Enter a GitHub repository such as owner/repository.")
+    if (not isinstance(token, str) or len(token) > 512 or
+            (token and not re.fullmatch(r"[A-Za-z0-9_]+", token))):
+        raise ImportProblem("Use a GitHub read token or leave it blank for public source.")
+
+
+def resolve_default_revision(repo, token=""):
+    """Pin the default branch to an immutable SHA using a fixed GitHub API URL."""
+    validate_repo_token(repo, token)
+    request = Request(
+        f"https://api.github.com/repos/{repo}/commits?per_page=1",
+        headers={"User-Agent": "Refit application import",
+                 "Accept": "application/vnd.github+json"}
+    )
+    if token:
+        request.add_unredirected_header("Authorization", f"Bearer {token}")
+    try:
+        with build_opener(NoGitHubApiRedirect()).open(request, timeout=12) as response:
+            payload = response.read(64 * 1024 + 1)
+        if len(payload) > 64 * 1024:
+            raise ImportProblem("GitHub returned an unexpectedly large commit response.")
+        commits = json.loads(payload)
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
+        raise ImportProblem(
+            "Could not resolve the repository's latest commit. Check the URL and read access."
+        ) from exc
+    if not isinstance(commits, list) or not commits or not isinstance(commits[0], dict):
+        raise ImportProblem("This repository has no accessible default-branch commit.")
+    sha = commits[0].get("sha")
+    if not isinstance(sha, str) or not REVISION.fullmatch(sha):
+        raise ImportProblem("GitHub did not provide a valid pinned commit SHA.")
+    return sha
+
+
 def github_archive(repo, revision, token=""):
     if not isinstance(repo, str) or not REPOSITORY.fullmatch(repo) or any(
         part in {".", ".."} for part in repo.split("/")

@@ -148,26 +148,32 @@ async function settings(){
  '<div class="card inner" style="max-width:800px"><h3>Account</h3><div class="fact"><span>'+ico("lock")+'</span><span class="sub">Signed in as</span><strong>'+safe(state.username)+'</strong></div><div class="fact"><span>'+ico("shield")+'</span><span class="sub">Isolation</span><strong>Owner-scoped projects and runs</strong></div><div class="fact"><span>'+ico("clock")+'</span><span class="sub">Per-run limit</span><strong>'+safe(config.max_requests)+' requests</strong></div><div class="fact"><span>'+ico("box")+'</span><span class="sub">Worker</span><strong>Isolated gVisor execution</strong></div><p class="small" style="margin:18px 0">Releases, limits and supported runtimes are documented publicly. Live execution requires explicit authorization and is subject to a shared global ceiling.</p><button class="btn" data-action="signout">Sign out</button></div>';
 }
 function wizardIntro(){
- return '<div class="page-lead"><div><h1>Bring your agent</h1><p>Import existing source, configure its evaluation and verify a model change.</p></div></div>';
+ return '<div class="import-header"><div><h1>Bring your agent</h1><p>Start with the code you already have. We’ll inspect the agent before changing anything.</p></div></div>';
 }
+const importPathSteps='<div class="import-next"><div><span>'+ico("code")+'</span><strong>Inspect</strong><p>Identify the original runtime and model boundary.</p></div><div><span>'+ico("layers")+'</span><strong>Configure</strong><p>Choose models and independent evaluation cases.</p></div><div><span>'+ico("shield")+'</span><strong>Verify</strong><p>Compare real execution before exporting.</p></div></div>';
 async function flow(){
  let step=state.wizard?.step||0;
  if(!step)header("Import agent",1);
  if(step===1)header("Inspect your agent",1);
  if(step===2)header("Configure migration",2);
  if(step===0 && state.guest){
-   page.innerHTML=guestNote+wizardIntro()+
-   '<section class="card inner" style="max-width:940px"><h3>Explore an existing migration</h3><p style="margin:12px 0 21px">See how Refit inspects an independent Python application, compares DeepSeek and GLM, and verifies the export. This is recorded evidence, not a simulated execution.</p><div class="button-row"><button class="btn primary" data-action="example-agent">Inspect published example '+ico("arrow")+'</button><a href="/login?next=/app/agents/new" class="btn">Sign in to import your own agent</a></div></section>';
+   page.innerHTML='<div class="import-shell">'+wizardIntro()+
+   '<section class="import-panel"><div class="import-panel-header"><div><h2>See a real migration</h2><p>Explore the evidence before bringing your own agent.</p></div><span class="import-privacy">'+ico("eye")+' Public example</span></div>'+
+   '<div class="import-example"><div class="import-example-mark">'+ico("code")+'</div><div><strong>Python knowledge-base agent</strong><p>DeepSeek → GLM · 3 independently verified cases</p></div><span class="chip good">Verified</span></div>'+
+   '<div class="import-actions"><p>Recorded execution from November 7. No inference is used to browse.</p><button class="btn primary" data-action="example-agent">Inspect this agent '+ico("arrow")+'</button></div></section>'+
+   '<div class="import-signin">Want to bring your own agent? <a href="/signup">Create an account</a> or <a href="/login?next=/app/agents/new">sign in</a>.</div>'+
+   importPathSteps+'</div>';
    return;
  }
  if(step===0){
-  page.innerHTML=wizardIntro()+
-   '<div class="card inner" style="max-width:960px"><div class="between"><div><h3>Import existing source</h3><p style="margin-top:6px">Use a pinned GitHub commit or a source ZIP. No model requests are made during inspection.</p></div><span class="chip bordered">'+ico("shield")+' Private to your account</span></div>'+
-   '<form id="importForm" class="stack" style="margin-top:24px"><label class="field">Import from<select class="control" id="method"><option value="github">GitHub repository</option><option value="zip">Project ZIP</option></select></label>'+
-   '<div id="githubFields" class="form-grid"><label class="field">Repository<input class="control" id="repository" placeholder="owner/repository" autocomplete="off" required></label><label class="field">Pinned commit SHA<input class="control mono" id="revision" placeholder="40-character commit hash" maxlength="40" required></label><label class="field span-two">Private repository read token <span class="hint">Optional. Never stored.</span><input type="password" autocomplete="off" id="repoToken" class="control" placeholder="Scoped read token"></label></div>'+
-   '<label class="field" id="zipField" hidden>Source ZIP (up to 4 MiB)<input id="zip" class="control" type="file" accept=".zip,application/zip"></label>'+
-   '<div class="button-row"><button class="btn primary" type="submit">Inspect source '+ico("arrow")+'</button><a class="btn" href="/docs">Import requirements</a></div></form></div>'+
-   '<div class="hint-note" style="max-width:960px;margin-top:18px">Inspection reports detected runtime and entry points. It does not imply the agent is compatible or ready to execute.</div>';
+  page.innerHTML='<div class="import-shell">'+wizardIntro()+
+   '<section class="import-panel"><div class="import-panel-header"><div><h2>Where is your agent?</h2><p>Point Refit to the existing source. No code changes yet.</p></div><span class="import-privacy">'+ico("lock")+' Your workspace</span></div>'+
+   '<div class="import-tabs" role="group" aria-label="Source type"><button type="button" class="import-tab active" data-import-mode="github" aria-pressed="true">'+ico("git")+' GitHub repository</button><button type="button" class="import-tab" data-import-mode="zip" aria-pressed="false">'+ico("upload")+' Upload ZIP</button></div>'+
+   '<form id="importForm"><input type="hidden" id="method" value="github">'+
+   '<div class="import-form-body"><div id="githubFields"><label class="field" for="repository">Repository URL</label><div class="import-input-wrap"><span class="import-input-icon">'+ico("git")+'</span><input class="import-primary-input" id="repository" type="url" placeholder="https://github.com/owner/repository" autocomplete="url" spellcheck="false" required></div><p class="import-helper">Refit resolves the latest commit and pins its exact SHA for reproducible evaluation.</p></div>'+
+   '<div id="zipField" hidden><label class="field" for="zip">Source archive</label><input id="zip" class="control import-file" type="file" accept=".zip,application/zip"><p class="import-helper">Up to 4 MiB compressed. Only supported source files are inspected.</p></div>'+
+   '<details class="import-advanced" id="advancedImport"><summary>Advanced options '+ico("arrow")+'</summary><div class="import-advanced-fields"><label class="field" for="revision">Exact commit SHA <span class="hint">Optional · overrides latest commit</span></label><input class="control mono" id="revision" placeholder="40-character commit hash" maxlength="40" autocomplete="off" spellcheck="false"><label class="field" for="repoToken">Private repository token <span class="hint">Optional · used only for this import</span></label><input type="password" id="repoToken" class="control mono" placeholder="GitHub read token" autocomplete="new-password" spellcheck="false" data-lpignore="true"></div></details></div>'+
+   '<div class="import-actions"><p>'+ico("shield")+' Private inspection. No model calls or sandbox execution at this step.</p><button class="btn primary" type="submit">Inspect agent '+ico("arrow")+'</button></div></form></section>'+importPathSteps+'</div>';
   return;
  }
  const p=state.wizard.project,d=p.discovery||{};
@@ -207,7 +213,15 @@ async function importProject(){
  try{
    const kind=el("method").value;let body={method:kind};
    if(kind==="github"){
-     body.repository=el("repository").value.trim();body.revision=el("revision").value.trim();body.token=el("repoToken").value;
+     const input=el("repository").value.trim();
+     const parsed=input.match(/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\/)?$/i);
+     if(!parsed)throw Error("Paste a GitHub repository URL like https://github.com/owner/repository.");
+     const owner=parsed[1],name=parsed[2].replace(/\.git$/i,"");
+     body.repository=owner+"/"+name;
+     body.revision=el("revision").value.trim().toLowerCase();
+     if(body.revision&&!/^[a-f0-9]{40}$/.test(body.revision))
+       throw Error("An exact commit must be a 40-character SHA. Otherwise leave it blank.");
+     body.token=el("repoToken").value;
    }else{
      const file=el("zip").files[0];
      if(!file||file.size>4*1024*1024)throw Error("Select a ZIP no larger than 4 MiB.");
@@ -436,12 +450,20 @@ document.addEventListener("click",async event=>{
   else if(action==="signout"){await req("/logout",{});location.assign("/");}
  }catch(e){notify(e.message);}
 });
-document.addEventListener("change",event=>{
- if(event.target.id==="method"){
-  const zip=event.target.value==="zip";
-  el("zipField").hidden=!zip;el("githubFields").hidden=zip;
-  for(const id of ["repository","revision"]){el(id).required=!zip;}
-  el("zip").required=zip;
+document.addEventListener("click",event=>{
+ const tab=event.target.closest("[data-import-mode]");
+ if(!tab)return;
+ const mode=tab.dataset.importMode;
+ if(!el("method"))return;
+ el("method").value=mode;
+ const zip=mode==="zip";
+ el("zipField").hidden=!zip;el("githubFields").hidden=zip;
+ el("repository").required=!zip;el("zip").required=zip;
+ el("advancedImport").hidden=zip;
+ for(const item of document.querySelectorAll("[data-import-mode]")){
+   const selected=item.dataset.importMode===mode;
+   item.classList.toggle("active",selected);
+   item.setAttribute("aria-pressed",String(selected));
  }
 });
 document.addEventListener("submit",async event=>{

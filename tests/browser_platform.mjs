@@ -46,10 +46,10 @@ try {
     pages.push(page);
   }
   const [owner, other] = pages;
-  await owner.locator("#method").selectOption("zip");
+  await owner.getByRole("button", { name: "Upload ZIP" }).click();
   await owner.locator("#zip").setInputFiles(archive);
   const importing = owner.waitForResponse(r => r.url().endsWith(path + "/imports"));
-  await owner.getByRole("button", { name: /Inspect source/ }).click();
+  await owner.getByRole("button", { name: /Inspect agent/ }).click();
   const imported = await (await importing).json();
   assert.equal(imported.discovery.runtime, runtime);
   if (runtime === "typescript") await owner.getByText(/Vercel AI SDK/).waitFor();

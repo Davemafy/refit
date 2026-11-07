@@ -15,6 +15,12 @@ download a native export only after fresh verification. Projects, runs, streams,
 evidence and exports are isolated per account. The Vultr inference key remains
 on the host; imported code runs in disposable gVisor containers.
 
+The workspace uses locally served Geist Sans and Geist Mono (OFL-1.1),
+with an import-first layout: paste a GitHub URL, let the server pin the
+default-branch commit, then inspect the detected runtime and entry point.
+You can supply an exact SHA or read-scoped token in Advanced options.
+ZIP import and the original operator workflow remain supported.
+
 The **verified production Python 3.11 path** supports non-streaming
 OpenAI-compatible Chat Completions. Two browser-initiated, independently
 verified Python examples and original-runtime exports are recorded in the

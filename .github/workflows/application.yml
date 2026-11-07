@@ -14,6 +14,7 @@ on:
       - 'tests/browser_saas.mjs'
       - 'tests/saas_fixture_server.py'
       - 'tests/test_refit_saas_routes.py'
+      - 'tests/test_refit_github_pin.py'
       - 'deploy/launch-application.sh'
       - 'deploy/launch-platform-https.sh'
       - '.github/workflows/application.yml'

@@ -43,7 +43,7 @@ try{
  await page.getByText(/Public, read-only preview/).first().waitFor();
  await page.screenshot({path:"artifacts/saas-ui/00-guest-workspace.png",fullPage:true});
  await page.goto(url+"/app/agents/new");
- await page.getByRole("button",{name:/Inspect published example/}).click();
+ await page.getByRole("button",{name:/Inspect this agent/}).click();
  await page.getByRole("heading",{name:"Inspect your agent"}).waitFor();
  await page.getByText("python -m src.qa").waitFor();
  await page.getByRole("button",{name:/Continue to configuration/}).click();
@@ -74,9 +74,53 @@ try{
  await page.getByRole("button",{name:/Import agent/}).first().click();
  await page.waitForURL(url+"/app/agents/new");
  await page.getByRole("heading",{name:"Bring your agent"}).waitFor();
- await page.locator("#method").selectOption("zip");
+ await page.screenshot({path:"artifacts/saas-ui/07-authenticated-import.png",fullPage:true});
+ const mobileSigned=await browser.newContext({
+   ignoreHTTPSErrors:true,viewport:{width:390,height:844},
+   storageState:await context.storageState()
+ });
+ const mobileSignedPage=await mobileSigned.newPage();
+ await mobileSignedPage.goto(url+"/app/agents/new");
+ await mobileSignedPage.getByRole("heading",{name:"Bring your agent"}).waitFor();
+ const responsive=await mobileSignedPage.evaluate(()=>({
+   overflow:document.documentElement.scrollWidth>innerWidth,
+   buttonVisible:!!document.querySelector('#importForm button[type="submit"]')
+ }));
+ assert.equal(responsive.overflow,false,"Signed-in import must fit mobile viewport");
+ assert.equal(responsive.buttonVisible,true);
+ await mobileSignedPage.screenshot({path:"artifacts/saas-ui/08-authenticated-import-mobile.png",fullPage:true});
+ await mobileSigned.close();
+ await page.evaluate(async()=>{
+   await Promise.all([document.fonts.load('450 14px Geist'),document.fonts.load('450 12px "Geist Mono"')]);
+ });
+ const fontState=await page.evaluate(()=>({
+   sans:document.fonts.check('450 14px Geist'),
+   mono:document.fonts.check('450 12px "Geist Mono"'),
+   family:getComputedStyle(document.body).fontFamily,
+   overflow:document.documentElement.scrollWidth>innerWidth
+ }));
+ assert.ok(fontState.sans&&fontState.mono,fontState);
+ assert.ok(fontState.family.includes("Geist"),fontState);
+ for(const fontName of ["geist-sans", "geist-mono"]){
+   const response=await context.request.get(url+"/assets/"+fontName+".woff2");
+   assert.equal(response.status(),200);
+   assert.match(response.headers()["content-type"], /^font\/woff2/);
+ }
+ assert.equal(fontState.overflow,false,"Import screen must not overflow desktop viewport");
+ const repo=page.locator("#repository");
+ assert.ok(await repo.isVisible(),"Primary repository URL field must be visible");
+ assert.ok(!(await page.locator("#advancedImport").getAttribute("open")),"Advanced fields must start collapsed");
+ await page.screenshot({path:"artifacts/saas-ui/05-import-desktop.png",fullPage:true});
+ const mobile=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844}});
+ const mobilePage=await mobile.newPage();
+ await mobilePage.goto(url+"/app/agents/new");
+ await mobilePage.getByRole("heading",{name:"Bring your agent"}).waitFor();
+ assert.equal(await mobilePage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,"Mobile horizontal overflow");
+ await mobilePage.screenshot({path:"artifacts/saas-ui/06-import-mobile.png",fullPage:true});
+ await mobile.close();
+ await page.getByRole("button",{name:"Upload ZIP"}).click();
  await page.locator("#zip").setInputFiles({name:"agent.zip",mimeType:"application/zip",buffer:zip});
- await page.getByRole("button",{name:/Inspect source/}).click();
+ await page.getByRole("button",{name:/Inspect agent/}).click();
  await page.getByRole("heading",{name:"Inspect your agent"}).waitFor();
  await page.getByText("python -m agent").waitFor();
  await page.screenshot({path:"artifacts/saas-ui/02-inspection.png",fullPage:true});

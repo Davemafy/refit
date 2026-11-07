@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .api_service import ApiProblem
 from .application_accounts import Accounts, SESSION_TTL
-from .application_import import ARCHIVE_LIMIT, ImportProblem, github_archive, source_snapshot
+from .application_import import ARCHIVE_LIMIT, ImportProblem, github_archive, resolve_default_revision, source_snapshot
 from .application_run import BUDGET_LIMIT, MODELS, RunStopped, configuration, run_migration
 from .docker_cleanup import remove_and_verify
 from .durable_store import RunStore
@@ -167,7 +167,10 @@ class ApplicationService:
             raise ImportProblem("Provide an import object.")
         if data.get("method") == "github" and set(data) <= {"method", "repository", "revision", "token"}:
             repo, revision = data.get("repository"), data.get("revision")
-            snapshot = source_snapshot(github_archive(repo, revision, data.get("token", "")), repo, revision)
+            token = data.get("token", "")
+            if revision in (None, ""):
+                revision = resolve_default_revision(repo, token)
+            snapshot = source_snapshot(github_archive(repo, revision, token), repo, revision)
         elif data.get("method") == "zip" and set(data) == {"method", "archive"}:
             try:
                 archive = base64.b64decode(data["archive"], validate=True)
@@ -392,7 +395,7 @@ class ApplicationHandler(RefitHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy",
             "default-src 'none'; script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; "
             "form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
@@ -413,6 +416,8 @@ class ApplicationHandler(RefitHandler):
                 "/assets/ui.css": ("ui.css", "text/css; charset=utf-8"),
                 "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
                 "/assets/auth.js": ("auth.js", "text/javascript; charset=utf-8"),
+                "/assets/geist-sans.woff2": ("geist-sans.woff2", "font/woff2"),
+                "/assets/geist-mono.woff2": ("geist-mono.woff2", "font/woff2"),
             }
             if page in assets:
                 filename, mime = assets[page]
