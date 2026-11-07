@@ -287,6 +287,7 @@ class ApplicationService:
 
 
 class ApplicationHandler(RefitHandler):
+    deployed_revision = None
     service: ApplicationService
 
     def setup(self):
@@ -440,6 +441,10 @@ class ApplicationHandler(RefitHandler):
                 # Browsing requires a session, but ownership enforcement always
                 # remains on the API and applies to every request.
                 return self.send_page(filename, "text/html; charset=utf-8")
+            if page == "/api/application/release":
+                if self.deployed_revision:
+                    return self._send(200, {"revision": self.deployed_revision})
+                raise ApiProblem(503, "revision_unavailable", "No deployed revision was configured.")
             if url.path == "/api/application/demo" and self.public():
                 return self._send(200, public_example())
             if url.path == "/api/application/session":
@@ -517,7 +522,10 @@ def main():
         parser.error("Public origin must be an exact HTTPS origin.")
     service = ApplicationService(args.state, os.getenv("REFIT_APPLICATION_TOKEN", ""),
                                  args.image, args.daily_budget, args.public_origin)
-    handler = type("Handler", (ApplicationHandler,), {"service": service})
+    revision = os.getenv("REFIT_DEPLOYED_REVISION", "")
+    if revision and not re.fullmatch(r"[0-9a-f]{40}", revision):
+        parser.error("REFIT_DEPLOYED_REVISION must be a full Git commit SHA.")
+    handler = type("Handler", (ApplicationHandler,), {"service": service, "deployed_revision": revision})
     with ThreadingHTTPServer(("127.0.0.1", args.port), handler) as server:
         server.serve_forever()
 

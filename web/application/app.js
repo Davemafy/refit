@@ -151,6 +151,69 @@ function wizardIntro(){
  return '<div class="import-header"><div><h1>Bring your agent</h1><p>Start with the code you already have. We’ll inspect the agent before changing anything.</p></div></div>';
 }
 const importPathSteps='<div class="import-next"><div><span>'+ico("code")+'</span><strong>Inspect</strong><p>Identify the original runtime and model boundary.</p></div><div><span>'+ico("layers")+'</span><strong>Configure</strong><p>Choose models and independent evaluation cases.</p></div><div><span>'+ico("shield")+'</span><strong>Verify</strong><p>Compare real execution before exporting.</p></div></div>';
+function caseFields(item={},split="train",removable=false){
+ const value=key=>safe(item[key]||"");
+ return '<fieldset class="setup-case"><legend>'+safe(item.split||split)+'</legend>'+
+ '<input type="hidden" data-case="split" value="'+safe(item.split||split)+'">'+
+ '<label class="field">Case name<input class="control" data-case="name" placeholder="lookup-order" value="'+value("name")+'"></label>'+
+ '<label class="field">Agent input<textarea class="control" data-case="prompt" rows="2">'+value("prompt")+'</textarea></label>'+
+ '<label class="field">Expected output<textarea class="control" data-case="stdout" rows="2">'+value("stdout")+'</textarea></label>'+
+ '<details class="case-options" '+(item.json_contains||item.tool?"open":"")+'><summary>Structured output and tools</summary>'+
+ '<label class="field">Expected JSON fields<textarea class="control" data-case="json_contains" rows="2">'+safe(item.json_contains?JSON.stringify(item.json_contains):"")+'</textarea></label>'+
+ '<label class="field">Required tool<input class="control" data-case="tool" value="'+value("tool")+'"></label>'+
+ '<label class="field">Expected tool arguments (JSON object)<textarea class="control" data-case="tool_arguments" rows="2">'+safe(item.tool_arguments?JSON.stringify(item.tool_arguments):"")+'</textarea></label>'+
+ '<label class="field">Expected tool result<input class="control" data-case="tool_result" value="'+value("tool_result")+'"></label>'+
+ '<label class="field">Forbidden tools, one per line<textarea class="control" data-case="forbidden_tools" rows="2">'+safe((item.forbidden_tools||[]).join("\n"))+'</textarea></label>'+
+ '</details>'+(removable?'<button class="btn" type="button" data-action="remove-case">Remove case</button>':'')+'</fieldset>';
+}
+function setupFields(discovery){
+ const stored=state.wizard.setup;
+ let config={};
+ try{config=JSON.parse(stored||"{}")||{};}catch{}
+ const node=discovery.runtime==="typescript";
+ const field=node?"entry":"module";
+ const suggested=(discovery.entry||"").replace(/^python -m /,"");
+ const selected=config[field]||(node||discovery.entry?.startsWith("python -m ")?suggested:"");
+ const items=Array.isArray(config.cases)&&config.cases.length?config.cases:["train","validation","holdout"].map(split=>({split}));
+ const advanced=state.wizard.advanced===true;
+ return '<section class="setup-fields"><div class="between setup-heading"><div><h3>Application contract</h3><p class="hint">Confirm the original invocation and define the behaviors that must pass.</p></div>'+
+ '<button class="btn" type="button" data-action="toggle-setup">'+(advanced?"Use guided setup":"Edit JSON")+'</button></div>'+
+ (advanced?'':'<div id="guidedSetup">'+
+ '<label class="field">'+(node?"Node entry file":"Python module")+'<input id="entryPoint" class="control" value="'+safe(selected)+'"></label>'+
+ '<label class="field">Command arguments, one per line<span class="hint">Use {prompt} for the case input and {model} if your CLI accepts a model argument.</span><textarea id="runtimeArgs" class="control" rows="2">'+safe((config.args||["{prompt}"]).join("\n"))+'</textarea></label>'+
+ '<div class="hint-note">The agent must use OPENAI_BASE_URL and OPENAI_MODEL with non-streaming Chat Completions.</div>'+
+ '<h3>Evaluation cases</h3><p class="hint">Use different inputs for training, validation and holdout. Expected outcomes stay outside the agent container.</p>'+
+ '<div id="caseFields">'+items.map((item,index)=>caseFields(item,item.split,index>=3)).join("")+'</div>'+
+ '<div class="hstack"><label class="field">Additional case split<select id="extraSplit" class="control"><option>train</option><option>validation</option><option>holdout</option></select></label><button class="btn" type="button" data-action="add-case">Add case</button></div>'+
+ '<details class="case-options" '+(config.instruction_env?"open":"")+'><summary>Permit instruction adaptation</summary>'+
+ '<label class="field">Existing instruction environment variable<input id="instructionEnv" class="control" value="'+safe(config.instruction_env||"")+'"></label>'+
+ '<label class="field">Original instructions<textarea id="instructionBase" class="control" rows="3">'+safe(config.instruction_base||"")+'</textarea></label></details></div>')+
+ '<label id="advancedSetup" class="field" '+(!advanced?"hidden":"")+'>Application contract JSON<textarea id="setup" class="control" spellcheck="false" rows="10">'+safe(stored||"")+'</textarea></label></section>';
+}
+function readSetup(discovery){
+ if(state.wizard.advanced){
+  try{return JSON.parse(el("setup").value);}catch{throw Error("Enter valid application contract JSON.");}
+ }
+ const field=discovery.runtime==="typescript"?"entry":"module";
+ const setup={format:"refit.agent.v1",[field]:el("entryPoint").value.trim(),
+  args:el("runtimeArgs").value.split("\n"),
+  cases:[...el("caseFields").querySelectorAll(".setup-case")].map(group=>{
+   const item={};
+   for(const input of group.querySelectorAll("[data-case]")){
+    const key=input.dataset.case,value=input.value;
+    if(!value&&!(["split","name","prompt"].includes(key)))continue;
+    if(key==="json_contains"||key==="tool_arguments"){
+     try{item[key]=JSON.parse(value);}catch{throw Error("Expected JSON fields and tool arguments must be valid JSON.");}
+    }else item[key]=key==="forbidden_tools"?value.split("\n").map(x=>x.trim()).filter(Boolean):value;
+   }
+   return item;
+  })};
+ if(el("instructionEnv").value||el("instructionBase").value){
+  setup.instruction_env=el("instructionEnv").value.trim();
+  setup.instruction_base=el("instructionBase").value;
+ }
+ return setup;
+}
 async function flow(){
  let step=state.wizard?.step||0;
  if(!step)header("Import agent",1);
@@ -179,11 +242,11 @@ async function flow(){
  const p=state.wizard.project,d=p.discovery||{};
  if(step===1){
    const features=[["Agent entry point",d.entry||"Not confidently detected"],["Runtime",d.runtime||"Unknown"],["Provider",d.provider||"Not detected"],["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],["Tools",d.tool||"Not independently enumerated"]];
-   const files=p.file_paths||d.evaluation_files||[];
-   page.innerHTML=lead("Inspect your agent","Review what was actually discovered. Confirm setup before authorizing any execution.")+
+   const files=d.evaluation_files||[];
+   page.innerHTML=lead("Inspect your agent","Review the detected runtime and confirm the original entry point.")+
    '<section class="card"><div class="repo-card-head"><div class="repo-mark">'+ico("git")+'</div><div style="flex:1"><h3>'+safe(p.repository||"Uploaded ZIP")+'</h3><p class="small mono">'+safe(p.revision||p.id)+'</p></div><span class="chip bordered">'+safe(p.file_count)+' files inspected</span></div>'+
    '<div class="split-panel"><div>'+features.map(f=>'<div class="fact"><span class="muted">'+ico(f[0]==="Runtime"?"code":f[0]==="Tools"?"layers":"box")+'</span><strong>'+safe(f[0])+'</strong><span class="value">'+safe(f[1])+'</span></div>').join("")+'</div>'+
-   '<div><h3 style="margin-bottom:12px">Available inspection detail</h3><p class="small">Source filenames are shown from your authenticated import. File contents and tool definitions are not exposed by this API.</p><div class="file-list" style="margin-top:14px">'+(files.length?files.map(f=>'<div>'+ico("file")+' '+safe(f)+'</div>').join(""):'<div>No individual test-file paths reported.</div>')+'</div></div></div></section>'+
+   '<div><h3 style="margin-bottom:12px">Possible test files</h3><p class="small">These are static hints. Confirm the entry point and choose independent checks before authorizing a run.</p><div class="file-list" style="margin-top:14px">'+(files.length?files.map(f=>'<div>'+ico("file")+' '+safe(f)+'</div>').join(""):'<div>No individual test-file paths reported.</div>')+'</div></div></div></section>'+
    (d.runnable===false?'<div class="notice" style="margin-top:18px">'+safe(d.setup||"Unsupported runtime")+'</div>':d.setup?'<p style="margin-top:16px;font-size:13px">'+safe(d.setup)+'</p>':'')+
    '<div class="flow-footer"><button class="btn" data-action="flow-back">'+ico("back")+' Back</button><button class="btn primary" data-action="flow-config" '+(d.runnable===false?"disabled":"")+'>Continue to configuration '+ico("arrow")+'</button></div>';
    return;
@@ -198,9 +261,8 @@ async function flow(){
  page.innerHTML=lead("Configure migration","Choose the source and replacement models, then supply independent evaluation cases.")+
  '<div class="flow-grid"><section class="card inner stack"><label class="field">Original model <span class="hint">The model used for baseline execution.</span><select class="control" id="source">'+models.map(m=>'<option '+(source===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
  '<label class="field">Replacement model <span class="hint">The model whose behavior will be verified.</span><select class="control" id="target">'+models.map(m=>'<option '+(target===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
- '<label class="field">Evaluation scope<span class="hint">Independent train, validation, and holdout cases are required. Quick checks are not substituted for these gates.</span></label>'+
  (d.preset?'<div class="hint-note">'+safe(d.evaluation||"Reviewed native evaluation preset will be used.")+'</div>':
-  '<label class="field">Original runtime and evaluation contract JSON <span class="hint">3–6 independent cases, with actual expected stdout and at least one case per split.</span><textarea id="setup" class="control" spellcheck="false" placeholder=\'{"module":"src.qa","args":["{prompt}"],"cases":[...]}\'>'+safe(state.wizard.setup||"")+'</textarea></label>')+
+  setupFields(d))+
  '<label class="field">Maximum Vultr requests<input type="number" id="budget" class="control" min="1" max="'+safe(state.capabilities.max_requests)+'" value="'+safe(state.wizard.budget||state.capabilities.max_requests)+'"></label>'+
  '<label class="hstack" style="font-size:13px"><input id="authorize" type="checkbox" style="width:17px;height:17px"> I authorize this bounded live inference run.</label></section>'+
  '<aside class="card inner side-facts"><h3>Migration summary</h3><hr><div class="pair-line"><span class="sub">Source</span><span>'+safe(p.repository||"Uploaded ZIP")+'</span></div><div class="pair-line"><span class="sub">Entry point</span><span>'+safe(d.entry||"Operator-configured")+'</span></div><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(d.runtime)+'</span></div><div class="pair-line"><span class="sub">Verification</span><span>Original-runtime fresh check</span></div><div class="hint-note">'+ico("shield")+' Untrusted source runs inside a bounded disposable gVisor container. No production services are enabled by default.</div></aside></div>'+
@@ -253,33 +315,47 @@ async function startMigration(){
    const budget=Number(el("budget").value);
    if(!Number.isInteger(budget)||budget<1||budget>state.capabilities.max_requests)throw Error("Choose a valid request budget.");
    const body={import_id:p.id,source,target,budget,authorize:true};
-   if(!d.preset){
-      let setup;try{setup=JSON.parse(el("setup").value);}catch(e){throw Error("Provide valid application contract JSON, including independent evaluation cases.");}
-      body.setup=setup;
-   }
+   if(!d.preset)body.setup=readSetup(d);
    state.wizard.source=source;state.wizard.target=target;state.wizard.budget=budget;
    if(body.setup)state.wizard.setup=JSON.stringify(body.setup,null,2);
    const run=await req("/runs",body);
    navigate("/app/runs/"+run.id);
  }catch(e){notify(e.message);}finally{if(btn?.isConnected)btn.disabled=false;}
 }
-function renderComparison(cases,source,target){
+function renderComparison(cases,source,target,report){
  const base=cases.filter(e=>e.details?.phase!=="fresh_export");
+ const repair=!!report?.proposal;
  const names=[...new Set(base.map(e=>e.details?.case).filter(Boolean))];
  if(!names.length)return '<div class="hint-note">No source/replacement case comparisons have been recorded yet.</div>';
- const cell=d=>d?(d.passed?'<span class="chip good">'+ico("check")+' Passed</span>':'<span class="chip bad">'+ico("alert")+' Failed</span>')+
-  (d.verdict?.required_tool_observed===true?'<div class="small sub">Required tool observed</div>':
-  d.verdict?.required_tool_observed===false?'<div class="small error">Required tool not observed</div>':"")+
-  (d.error?'<div class="small error">'+safe(d.error)+'</div>':""):'<span class="muted">Not run</span>';
- return '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Test case</th><th>Original · '+safe(source)+'</th><th>Replacement · '+safe(target)+'</th><th>Comparison</th></tr></thead><tbody>'+
+ const checkLabels={stdout_matches:"Exact output",json_matches:"Structured output",
+   required_tool_called:"Required tool called",required_tool_observed:"Required tool result",
+   forbidden_tools_absent:"Forbidden tools absent",tool_arguments_match:"Required tool arguments"};
+ const cell=d=>{
+  if(!d)return '<span class="muted">Pending</span>';
+  const checks=Object.entries(checkLabels).filter(([key])=>typeof d.verdict?.[key]==="boolean");
+  const tools=(d.trace||[]).flatMap(call=>call.tools_called||[]);
+  return (d.passed?'<span class="chip good">'+ico("check")+' Passed</span>':
+    '<span class="chip bad">'+ico("alert")+' Failed</span>')+
+    '<details class="case-options comparison-checks"><summary>Case evidence</summary><ul>'+
+    checks.map(([key,label])=>'<li class="'+(d.verdict[key]?"sub":"error")+'">'+
+      safe(label)+(d.verdict[key]?" passed":" failed")+'</li>').join("")+
+    (tools.length?'<li class="sub">Model requested '+safe(tools.join(", "))+'</li>':"")+
+    (Number.isInteger(d.model_requests)?'<li class="sub">'+safe(d.model_requests)+' model requests</li>':"")+
+    (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul></details>';
+ };
+ return '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Test case</th><th>Original · '+safe(source)+'</th><th>Replacement · '+safe(target)+'</th>'+(repair?'<th>Adapted replacement</th>':'')+'<th>Comparison</th></tr></thead><tbody>'+
  names.map(name=>{
   const original=base.find(e=>e.details.case===name&&e.details.model===source)?.details;
-  const replacement=base.find(e=>e.details.case===name&&e.details.model===target)?.details;
+  const targetRuns=base.filter(e=>e.details.case===name&&e.details.model===target);
+  const replacement=targetRuns.find(e=>!e.details.adapted)?.details;
+  const adapted=targetRuns.filter(e=>e.details.adapted).at(-1)?.details;
   const identical=!!original?.stdout_sha256&&original.stdout_sha256===replacement?.stdout_sha256;
   const bothPassed=original?.passed&&replacement?.passed;
-  return '<tr><td><strong>'+safe(name)+'</strong></td><td>'+cell(original)+'</td><td>'+cell(replacement)+'</td><td>'+
+  return '<tr><td><strong>'+safe(name)+'</strong></td><td>'+cell(original)+'</td><td>'+cell(replacement)+'</td>'+(repair?'<td>'+cell(adapted)+'</td>':'')+'<td>'+
    (bothPassed&&identical?'<span class="chip good">Matching stdout</span>':
-    original&&replacement?'<span class="chip warn">Difference or failure</span>':'<span class="muted">Incomplete</span>')+
+    bothPassed?'<span class="chip good">Both meet the checks</span>':
+    original?.passed&&replacement&&!replacement.passed?'<span class="chip bad">Behavior regressed</span>':
+    original&&replacement?'<span class="chip warn">Checks failed</span>':'<span class="muted">Incomplete</span>')+
    '</td></tr>';
  }).join("")+'</tbody></table></div>';
 }
@@ -304,16 +380,21 @@ async function showRun(id,refreshOnly=false){
  const names=[...new Set(baseCases.map(e=>e.details?.case).filter(Boolean))];
  const matched=names.filter(name=>{
   const original=baseCases.find(e=>e.details.case===name&&e.details.model===run.source)?.details;
-  const replacement=baseCases.find(e=>e.details.case===name&&e.details.model===run.target)?.details;
-  return original?.passed&&replacement?.passed&&original.stdout_sha256&&original.stdout_sha256===replacement.stdout_sha256;
+  const replacement=baseCases.find(e=>e.details.case===name&&e.details.model===run.target&&!e.details.adapted)?.details;
+  return original?.passed&&replacement?.passed;
  }).length;
  const cleanups=events.filter(e=>e.type==="sandbox_cleanup");
  const cleaned=cleanups.filter(e=>e.details?.receipt?.verified).length;
  const active=!ended(run.status);
  header(active?"Run migration":"Migration review",active?3:4,"Agents / "+(run.import?.repository||"Imported agent")+" / "+(active?"Run":"Review"));
- const currentTab=state.tab||"evaluation";
- const tabs=["evaluation","traces","evidence"];
- const panel=currentTab==="evaluation"?renderComparison(cases,run.source,run.target):
+ const report=evidence.run?.report;
+ const tabs=["evaluation",...(report?.proposal?["repair"]:[]),"traces","evidence"];
+ const currentTab=tabs.includes(state.tab)?state.tab:"evaluation";
+ const panel=currentTab==="evaluation"?renderComparison(cases,run.source,run.target,report):
+  currentTab==="repair"?'<div class="stack"><h3>Supplemental instructions</h3><pre class="log">'+
+   safe(report.accepted_patch?.instructions||report.proposal.instructions||"No instruction change")+
+   '</pre><p class="small">'+(run.export_available?"The adaptation passed fresh original-runtime verification.":"The adaptation has no verified export.")+
+   '</p></div>':
   currentTab==="traces"?'<pre class="log">'+safe(runLog(events))+'</pre>':
   '<div class="stack"><div class="hint-note">'+cleaned+' of '+cleanups.length+' recorded containers verified cleaned up.</div><pre class="log">'+safe(JSON.stringify({run_id:run.id,configuration_sha256:run.configuration_sha256,status:run.status,verification:run.verification||[],events:events.filter(e=>e.type==="sandbox_cleanup"||e.type==="terminal")},null,2))+'</pre></div>';
  page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration "+run.id)+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
@@ -323,7 +404,7 @@ async function showRun(id,refreshOnly=false){
  '</div></div>'+
  (run.error?'<div class="notice" style="margin-bottom:18px">'+safe("Execution result: "+run.error.replaceAll("_"," "))+'</div>':"")+
  '<div class="run-layout"><div class="stack"><section class="card inner"><div class="between"><div><h2>'+(active?"Executing migration":"Review migration results")+'</h2><p style="font-size:13px;margin-top:5px">'+(active?"Live execution with recorded inference, case outcomes and cleanup.":"Only observed cases and verified artifacts are shown.")+'</p></div><span class="chip bordered">'+safe(run.model_requests??run.request_attempts_logged??0)+' / '+safe(run.budget)+' requests</span></div>'+
- '<div class="metrics" style="margin-top:20px"><div class="metric"><strong>'+matched+' / '+names.length+'</strong><span>Matching evaluated cases</span></div><div class="metric"><strong>'+cleaned+' / '+cleanups.length+'</strong><span>Sandbox cleanup receipts</span></div><div class="metric"><strong>'+safe(formatDuration(run.execution_seconds))+'</strong><span>Execution duration</span></div><div class="metric"><strong>'+((run.verification||[]).filter(v=>v.passed).length)+' / '+((run.verification||[]).length)+'</strong><span>Fresh export checks</span></div></div>'+
+ '<div class="metrics" style="margin-top:20px"><div class="metric"><strong>'+matched+' / '+names.length+'</strong><span>Both models passed</span></div><div class="metric"><strong>'+cleaned+' / '+cleanups.length+'</strong><span>Sandbox cleanup receipts</span></div><div class="metric"><strong>'+safe(formatDuration(run.execution_seconds))+'</strong><span>Execution duration</span></div><div class="metric"><strong>'+((run.verification||[]).filter(v=>v.passed).length)+' / '+((run.verification||[]).length)+'</strong><span>Fresh export checks</span></div></div>'+
  '<div class="tabs" style="margin-top:19px">'+tabs.map(t=>'<button class="tab '+(t===currentTab?"active":"")+'" data-action="tab" data-tab="'+t+'">'+(t==="traces"?"Trace":t.charAt(0).toUpperCase()+t.slice(1))+'</button>').join("")+'</div>'+
  '<div class="tab-panel" id="runPanel">'+panel+'</div></section>'+
  (active?'<div class="hint-note">'+ico("clock")+' This run is persisted. You can leave this page and reopen it from Runs. Inference is never automatically retried.</div>':
@@ -441,8 +522,36 @@ document.addEventListener("click",async event=>{
   else if(action==="flow-config"){state.wizard.step=2;await flow();}
   else if(action==="flow-inspect"){
    state.wizard.source=el("source")?.value;state.wizard.target=el("target")?.value;
-   state.wizard.setup=el("setup")?.value||state.wizard.setup;
+   if(el("setup"))state.wizard.setup=state.wizard.advanced?el("setup").value:
+     JSON.stringify(readSetup(state.wizard.project.discovery),null,2);
    state.wizard.budget=el("budget")?.value;state.wizard.step=1;await flow();
+  }else if(action==="toggle-setup"){
+   const d=state.wizard.project.discovery;
+   const setup=readSetup(d);
+   if(state.wizard.advanced){
+    const field=d.runtime==="typescript"?"entry":"module";
+    const fields=["format","mode",field,"args","cases","instruction_env","instruction_base"];
+    const caseKeys=["name","split","prompt","stdout","json_contains","tool","tool_arguments","tool_result","forbidden_tools"];
+    if(!setup||typeof setup!=="object"||Object.keys(setup).some(key=>!fields.includes(key))||
+       (setup.mode&&setup.mode!=="managed")||(setup.format&&setup.format!=="refit.agent.v1")||
+       !Array.isArray(setup.args)||setup.args.some(arg=>typeof arg!=="string"||arg.includes("\n"))||
+       !Array.isArray(setup.cases)||
+       setup.cases.some(item=>!item||Object.keys(item).some(key=>!caseKeys.includes(key))))
+      throw Error("This contract uses fields that require the JSON editor.");
+   }
+   state.wizard.setup=JSON.stringify(setup,null,2);
+   state.wizard.advanced=!state.wizard.advanced;
+   const section=page.querySelector(".setup-fields");
+   section.outerHTML=setupFields(d);
+   (state.wizard.advanced?el("setup"):el("entryPoint")).focus();
+  }else if(action==="add-case"){
+   const fields=el("caseFields");
+   if(fields.childElementCount>=6)throw Error("Use at most six evaluation cases.");
+   fields.insertAdjacentHTML("beforeend",caseFields({},el("extraSplit").value,true));
+   fields.lastElementChild.querySelector('[data-case="name"]').focus();
+  }else if(action==="remove-case"){
+   button.closest(".setup-case").remove();
+   el("extraSplit").focus();
   }else if(action==="start-migration")await startMigration();
   else if(action==="cancel-run"){await req("/runs/"+id+"/cancel",{});await showRun(id);}
   else if(action==="evidence-download"||action==="artifact-download")await download(id,action==="evidence-download"?"evidence":"artifact");

@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime, timezone
 import ipaddress
 import json
+import re
 from pathlib import Path
 import socket
 import ssl
@@ -18,7 +19,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
-def check(origin: str) -> dict:
+def check(origin: str, expected_revision: str | None = None) -> dict:
     address = urlsplit(origin)
     if address.scheme != "https" or not address.hostname or address.username or address.password or address.query or address.fragment or address.path not in ("", "/"):
         raise ValueError("Supply a bare HTTPS origin with no credentials, path or query.")
@@ -55,6 +56,13 @@ def check(origin: str) -> dict:
                 raise AssertionError("Unexpectedly large response")
             return response.status, response.headers, raw.decode("utf-8")
 
+    release_status, _, release_body = get("/api/application/release")
+    deployed_revision = None
+    if release_status == 200:
+        deployed_revision = json.loads(release_body).get("revision")
+        assert isinstance(deployed_revision, str) and re.fullmatch(r"[0-9a-f]{40}", deployed_revision)
+    if expected_revision is not None and deployed_revision != expected_revision:
+        raise AssertionError(f"Expected deployed revision {expected_revision}, got {deployed_revision}")
     demo_status, _, demo_body = get("/api/application/demo")
     if demo_status == 200:
         example = json.loads(demo_body)
@@ -95,6 +103,7 @@ def check(origin: str) -> dict:
 
     return {"status": "pass", "origin": origin.rstrip("/"), "tls_expires_at": expires.isoformat(),
             "tls_seconds_remaining": remaining, "zero_inference": True,
+            "deployed_revision": deployed_revision,
             "observations": observations}
 
 
@@ -102,9 +111,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="https://80.240.30.92")
     parser.add_argument("--output", type=Path, default=Path("/tmp/refit-platform-smoke.json"))
+    parser.add_argument("--expected-revision")
     args = parser.parse_args()
     try:
-        result = check(args.url)
+        result = check(args.url, args.expected_revision)
     except Exception as exc:
         result = {"status": "fail", "origin": args.url, "zero_inference": True,
                   "error": f"{type(exc).__name__}: {exc}"[:400]}

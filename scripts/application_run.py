@@ -12,7 +12,7 @@ import subprocess
 import time
 
 from .container_agent import command, frame, send, validate_completion
-from .application_oracle import evaluate, validate_case
+from .application_oracle import evaluate, matches_tool_arguments, validate_case
 from .docker_cleanup import remove_and_verify
 from .migration_engine import AgentContract, AgentProfile, ReplayCase, fingerprint, migrate
 from .refit_vultr_probe import ENDPOINT
@@ -49,9 +49,17 @@ def configuration(snapshot, supplied=None):
     if preset and supplied is None:
         return {**llm_setup(), "seam": "llm"}
     runtime = snapshot["discovery"]["runtime"]
+    if runtime not in {"python", "typescript"}:
+        raise ValueError("Upload a runnable Python module or Node CLI with its dependency manifest.")
     key = "entry" if runtime == "typescript" else "module"
     required = {key, "args", "cases"}
     optional_seam = {"instruction_env", "instruction_base"}
+    if isinstance(supplied, dict):
+        supplied = dict(supplied)
+        if supplied.pop("format", "refit.agent.v1") != "refit.agent.v1":
+            raise ValueError("Use application contract format refit.agent.v1.")
+        if supplied.pop("mode", "managed") != "managed":
+            raise ValueError("This server executes managed applications. Use a managed contract.")
     supplied_keys = set(supplied) if isinstance(supplied, dict) else set()
     if not required <= supplied_keys or supplied_keys - required not in (set(), optional_seam):
         raise ValueError(snapshot["discovery"]["setup"] or "Provide an entry, arguments and evaluation cases.")
@@ -137,6 +145,23 @@ def native_export(snapshot, setup, model, instructions=""):
     return config
 
 
+def completion_tool_choice(body, tools):
+    """Preserve the original agent's choice, limited to its declared functions."""
+    choice = body.get("tool_choice", "auto")
+    if choice in ("auto", "none") or (choice == "required" and tools):
+        return choice
+    if (isinstance(choice, dict) and set(choice) == {"type", "function"}
+            and choice["type"] == "function" and isinstance(choice["function"], dict)
+            and set(choice["function"]) == {"name"} and isinstance(choice["function"]["name"], str)
+            and any(isinstance(tool, dict) and tool.get("type") == "function"
+                    and isinstance(tool.get("function"), dict)
+                    and tool["function"].get("name") == choice["function"]["name"]
+                    for tool in tools or ())):
+        return choice
+    raise ValueError("unsupported_model_request: select an available function or use auto, none, or required")
+
+
+
 def run_migration(snapshot, setup, source, target, image, broker, event, stopped):
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
     started = time.monotonic()
@@ -205,27 +230,28 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 if value.get("type") != "completion":
                     raise ValueError("unexpected_worker_frame")
                 body = value["body"]
-                if (body.get("model") != model or body.get("stream", False) is not False
-                        or body.get("tool_choice", "auto") not in ("auto", "none")):
-                    raise ValueError("unsupported_model_request: use selected model, non-streaming chat and auto tools")
+                if body.get("model") != model or body.get("stream", False) is not False:
+                    raise ValueError("unsupported_model_request: use selected model and non-streaming chat")
                 messages = body["messages"]
                 tools = body.get("tools")
                 validate_completion({"model": model, "messages": messages, "tools": tools}, {model})
+                tool_choice = completion_tool_choice(body, tools)
                 if calls >= CASE_CALLS or broker.requests >= broker.max_requests:
                     raise RunStopped("inference_budget_exhausted")
                 # The oracle checks the original tool observation, not only model prose.
-                observed = observed or any(
-                    msg.get("role") == "tool" and msg.get("tool_call_id") in tool_ids
-                    and str(msg.get("content", "")).strip().strip('"') == case.get("tool_result")
-                    for msg in messages
-                )
+                for msg in messages:
+                    if msg.get("role") != "tool" or msg.get("tool_call_id") not in tool_ids:
+                        continue
+                    if "tool_result" not in case or (
+                            str(msg.get("content", "")).strip().strip('"') == case["tool_result"]):
+                        observed = True
                 calls += 1
                 requested_at = time.monotonic()
                 event("inference_requested", {"model": model, "case": case["name"],
                                               "number": broker.requests + 1})
                 options = {}
-                if body.get("tool_choice") == "none":
-                    options["tool_choice"] = "none"
+                if tool_choice != "auto":
+                    options["tool_choice"] = tool_choice
                 response_format = body.get("response_format")
                 if response_format is not None:
                     if (not isinstance(response_format, dict)
@@ -238,7 +264,10 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 model_calls = message.get("tool_calls") or []
                 tools_used = [x["function"]["name"] for x in model_calls]
                 all_tool_calls.extend(tools_used)
-                tool_ids.update(x["id"] for x in model_calls if x["function"]["name"] == case.get("tool"))
+                tool_ids.update(
+                    x["id"] for x in model_calls if x["function"]["name"] == case.get("tool")
+                    and matches_tool_arguments(case, x["function"].get("arguments"))
+                )
                 inference = {"number": broker.requests, "model": model, "tools_called": tools_used,
                              "request_sha256": fingerprint(body), "response_sha256": fingerprint(message),
                              "seconds": round(time.monotonic() - requested_at, 3)}
@@ -266,7 +295,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 proc.stdout.close()
             cleanup = remove_and_verify("docker", name, env=env)
             event("sandbox_cleanup", {"case": case["name"], "phase": phase, "container": name, "receipt": cleanup})
-        outcome = evaluate(case, result.get("stdout", ""), all_tool_calls, observed)
+        outcome = evaluate(case, result.get("stdout", ""), all_tool_calls, observed,
+                           tool_arguments_observed=observed)
         ok = (not error and result.get("status") == "completed" and result.get("exit_code") == 0
               and outcome["passed"] and calls > 0 and cleanup["verified"])
         error = error or (None if ok else (
@@ -281,7 +311,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                    "required_tool_observed": (
                        outcome["required_tool_observed"] if "tool_result" in case
                        else outcome["required_tool_called"]),
-                   "forbidden_tools_absent": outcome["forbidden_tools_absent"]}
+                   "forbidden_tools_absent": outcome["forbidden_tools_absent"],
+                   "tool_arguments_match": outcome["tool_arguments_match"]}
         evidence = {"case": case["name"], "passed": bool(ok), "verdict": verdict,
                     "error": error, "trace": receipt, "model_requests": calls,
                     "stdout_sha256": hashlib.sha256(result.get("stdout", "").encode()).hexdigest(),
@@ -289,7 +320,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                     "runtime": state["HostConfig"]["Runtime"] if state else None,
                     "oom_killed": state["State"]["OOMKilled"] if state else None,
                     "elapsed_seconds": round(time.monotonic() - case_start, 3)}
-        event("case_completed", {**evidence, "phase": phase, "model": model})
+        event("case_completed", {**evidence, "phase": phase, "model": model,
+                                 "adapted": bool(profile.instructions)})
         if error in {"cancelled", "run_timeout", "inference_budget_exhausted", "sandbox_timeout",
                      "sandbox_cleanup_unverified", "sandbox_or_provider_error"} or (error and error.startswith(
                          ("Vultr request returned HTTP", "model identity mismatch"))):

@@ -1,7 +1,7 @@
 """Independent outcome evaluation never executes imported application code."""
 import unittest
 
-from scripts.application_oracle import evaluate, validate_case
+from scripts.application_oracle import evaluate, matches_tool_arguments, validate_case
 
 
 class ApplicationOracleTests(unittest.TestCase):
@@ -29,6 +29,27 @@ class ApplicationOracleTests(unittest.TestCase):
         self.assertFalse(evaluate(case, "", ["get_order", "delete_order"], True)["passed"])
         self.assertFalse(evaluate(case, "", ["get_order"], False)["passed"])
         self.assertFalse(evaluate(case, "", [], False)["passed"])
+
+    def test_model_proxy_preserves_original_tool_choice(self):
+        from scripts.application_run import completion_tool_choice
+        named = {"type": "function", "function": {"name": "get_order"}}
+        self.assertEqual(completion_tool_choice({"tool_choice": named}, [named]), named)
+        self.assertEqual(completion_tool_choice({"tool_choice": "required"}, [named]), "required")
+        self.assertEqual(completion_tool_choice({}, None), "auto")
+        for choice, tools in ((named, []), ("required", []), ({}, [named])):
+            with self.assertRaisesRegex(ValueError, "unsupported_model_request"):
+                completion_tool_choice({"tool_choice": choice}, tools)
+
+    def test_tool_argument_checks_require_observed_matching_call(self):
+        case = self.sample(tool="get_order", tool_arguments={"id": 7})
+        validate_case(case)
+        self.assertTrue(matches_tool_arguments(case, '{"id":7,"extra":"ok"}'))
+        self.assertFalse(matches_tool_arguments(case, '{"id":"7"}'))
+        self.assertFalse(matches_tool_arguments(case, 'broken'))
+        self.assertFalse(evaluate(case, "", ["get_order"], False)["passed"])
+        self.assertTrue(evaluate(case, "", ["get_order"], False, tool_arguments_observed=True)["passed"])
+        with self.assertRaises(ValueError):
+            validate_case(self.sample(stdout="ok", tool_arguments={"id": 7}))
 
     def test_rejects_missing_and_contradictory_checks(self):
         for case in (self.sample(), self.sample(tool_result="ok", stdout="ok"),

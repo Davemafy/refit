@@ -180,6 +180,14 @@ def inspect(files):
                 "provider": "OpenAI-compatible Chat Completions",
                 "entry": "python -m llm", "tool": "llm_version",
                 "evaluation": "Exact stdout and observed original llm_version tool result"}
+    evaluation_files = sorted(name for name in files if
+        (name.startswith(("test/", "tests/", "__tests__/")) or
+         re.search(r"(?:^test_|[.]test[.]|[.]spec[.])", PurePosixPath(name).name))
+        and name.endswith((".py", ".ts", ".js", ".mts", ".mjs")))[:12]
+    if runtime == "unknown":
+        return {"runtime": runtime, "preset": None, "runnable": False, "entry": None,
+                "provider": None, "evaluation_files": evaluation_files,
+                "setup": "Upload the runnable Python module or Node CLI and its dependency manifest."}
     if runtime == "typescript":
         if "package.json" not in files:
             return {"runtime": "typescript", "setup": "TypeScript execution is unavailable without a package.json declaring its runtime dependencies.",
@@ -194,7 +202,7 @@ def inspect(files):
             "Supply an existing Node CLI entry file, its arguments, and train, validation and holdout cases. "
             "Use OPENAI_BASE_URL and OPENAI_MODEL with non-streaming Chat Completions."),
             "preset": None, "entry": entry, "provider": "Vercel AI SDK" if "ai" in dependencies else None,
-            "dependencies": dependencies[:40]}
+            "dependencies": dependencies[:40], "evaluation_files": evaluation_files}
     else:
         setup = "Provide a Python module, its arguments, and train, validation, and holdout cases with exact expected stdout. The agent must use OPENAI_BASE_URL and OPENAI_MODEL, with streaming disabled."
     candidates = []
@@ -209,11 +217,14 @@ def inspect(files):
             if all(marker in content for marker in ("__main__", "OPENAI_BASE_URL", "OPENAI_MODEL")):
                 candidates.append(module)
     entry = f"python -m {candidates[0]}" if len(candidates) == 1 else None
+    declared = project.get("dependencies", [])
+    dependencies = sorted({match.group() for requirement in declared
+        if isinstance(requirement, str) and (match := re.match(r"[A-Za-z0-9_.-]+", requirement))}
+        )[:40] if isinstance(declared, list) else []
     return {"runtime": runtime, "setup": setup, "preset": None,
             "provider": "OpenAI environment variables detected" if entry else None,
-            "entry": entry, "evaluation_files": sorted(p for p in files if
-                (p.startswith(("test/", "tests/")) or PurePosixPath(p).name.startswith("test_"))
-                and p.endswith((".py", ".ts")))[:12]}
+            "entry": entry, "dependencies": dependencies, "evaluation_files": evaluation_files}
+
 
 
 def source_snapshot(archive, repository=None, revision=None):

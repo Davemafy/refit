@@ -74,6 +74,7 @@ try {
     await owner.getByRole("button", { name: /Continue to configuration/ }).click();
     await owner.locator("#source").selectOption(source);
     await owner.locator("#target").selectOption(target);
+    await owner.getByRole("button", { name: "Edit JSON" }).click();
     await owner.locator("#setup").fill(JSON.stringify(setup));
     await owner.locator("#budget").fill(String(cap));
     await owner.locator("#authorize").check();

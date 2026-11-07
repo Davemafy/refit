@@ -4,6 +4,12 @@ set -euo pipefail
 test "$(id -u)" -eq 0 || { echo 'Run as root on the Vultr host.' >&2; exit 2; }
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 [[ "$REPO" =~ ^/opt/[a-zA-Z0-9_./-]+$ ]] || { echo 'Use a checkout under /opt.' >&2; exit 2; }
+REVISION="$(git -C "$REPO" rev-parse --verify HEAD)"
+[[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
+test -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" || {
+  echo 'Deploy from a clean Git revision.' >&2
+  exit 2
+}
 test -r /etc/refit/inference.env
 docker info --format '{{json .Runtimes}}' | python3 -c 'import json,sys; assert "runsc" in json.load(sys.stdin)'
 IMAGE="${REFIT_APPLICATION_IMAGE:-refit-application}"
@@ -33,6 +39,7 @@ EnvironmentFile=/etc/refit/inference.env
 EnvironmentFile=/etc/refit/application.env
 EnvironmentFile=-/etc/refit/application-public.env
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=REFIT_DEPLOYED_REVISION=$REVISION
 ExecStart=/usr/bin/python3 -m scripts.application_http --state /var/lib/refit-application --port 8098 --image $IMAGE --daily-budget $BUDGET
 UMask=0077
 Restart=on-failure

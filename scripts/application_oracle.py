@@ -7,7 +7,7 @@ import json
 import re
 
 REQUIRED = {"name", "split", "prompt"}
-OPTIONAL = {"stdout", "json_contains", "tool", "tool_result", "forbidden_tools"}
+OPTIONAL = {"stdout", "json_contains", "tool", "tool_result", "tool_arguments", "forbidden_tools"}
 TOOL_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,99}\Z")
 
 
@@ -24,8 +24,8 @@ def validate_case(case):
         raise ValueError("Invalid evaluation split.")
     if not ({"stdout", "json_contains", "tool"} & case.keys()):
         raise ValueError("Supply exact stdout, JSON fields, or an expected tool.")
-    if "tool_result" in case and "tool" not in case:
-        raise ValueError("A tool result requires an expected tool call.")
+    if {"tool_result", "tool_arguments"} & case.keys() and "tool" not in case:
+        raise ValueError("Tool arguments or results require a named tool.")
     for field in ("stdout", "tool_result"):
         if field in case and (not isinstance(case[field], str) or not 1 <= len(case[field]) <= 4096 or "\x00" in case[field]):
             raise ValueError(f"Invalid {field} expectation.")
@@ -38,16 +38,18 @@ def validate_case(case):
         raise ValueError("Invalid forbidden tool list.")
     if "tool" in case and case["tool"] in forbidden:
         raise ValueError("The same tool cannot be required and forbidden.")
-    if "json_contains" in case:
-        expected = case["json_contains"]
+    for field in ("json_contains", "tool_arguments"):
+        if field not in case:
+            continue
+        expected = case[field]
         if not isinstance(expected, dict) or not expected:
-            raise ValueError("JSON checks need a nonempty object of expected fields.")
+            raise ValueError(f"{field} needs a nonempty object of expected fields.")
         try:
             payload = json.dumps(expected, allow_nan=False, separators=(",", ":"))
         except (TypeError, ValueError, RecursionError):
-            raise ValueError("JSON check must be serializable.") from None
+            raise ValueError(f"{field} must be serializable.") from None
         if len(payload) > 4096:
-            raise ValueError("JSON expectation exceeds 4096 bytes.")
+            raise ValueError(f"{field} exceeds 4096 bytes.")
 
 
 def _contains(actual, expected):
@@ -58,7 +60,16 @@ def _contains(actual, expected):
     return type(actual) is type(expected) and actual == expected
 
 
-def evaluate(case, stdout, tools_called, tool_result_observed):
+def matches_tool_arguments(case, raw):
+    if "tool_arguments" not in case:
+        return True
+    try:
+        return _contains(json.loads(raw), case["tool_arguments"])
+    except (ValueError, TypeError, RecursionError):
+        return False
+
+
+def evaluate(case, stdout, tools_called, tool_result_observed, *, tool_arguments_observed=False):
     """Evaluate original runtime output and broker-observed tool calls on the trusted host."""
     stdout_matches = None
     if "stdout" in case:
@@ -76,10 +87,13 @@ def evaluate(case, stdout, tools_called, tool_result_observed):
     if "tool_result" in case:
         required_tool_observed = bool(tool_result_observed)
     forbidden_tools_absent = not set(case.get("forbidden_tools", [])).intersection(tools_called)
-    checks = (stdout_matches, json_matches, required_tool_called, required_tool_observed, forbidden_tools_absent)
+    tool_arguments_match = tool_arguments_observed if "tool_arguments" in case else None
+    checks = (stdout_matches, json_matches, required_tool_called, required_tool_observed,
+              forbidden_tools_absent, tool_arguments_match)
     return {"passed": all(x is not False for x in checks),
             "stdout_matches": stdout_matches,
             "json_matches": json_matches,
             "required_tool_called": required_tool_called,
             "required_tool_observed": required_tool_observed,
-            "forbidden_tools_absent": forbidden_tools_absent}
+            "forbidden_tools_absent": forbidden_tools_absent,
+            "tool_arguments_match": tool_arguments_match}

@@ -41,6 +41,8 @@ The externally executed zero-inference check
 [`scripts/smoke_platform_https.py`](../scripts/smoke_platform_https.py)
 validates TLS, the public sign-in page, anonymous session mode and access rejection,
 operator-token bypass rejection and certificate freshness on each main push.
+After promotion, run it with `--expected-revision <full Git SHA>` to require
+that the external service reports the exact installed release.
 The browser sign-in-to-export acceptance was separately performed by the
 operator on November 7 with two registered accounts and a Python application,
 using seven real inference requests; that account-run browser artifact
@@ -94,19 +96,23 @@ preflight**, but the first paid DeepSeek run failed to call the required
 a successful paid TypeScript migration. The LLM preset discovers the native CLI and uses its
 `extra-openai-models.yaml` seam. Other Python agents may supply
 `{"module":"agent","args":["{prompt}"],"cases":[...]}` in the form or through
-`--setup setup.json`. Each case includes a unique `name`, a `split` of
+`--setup setup.json`. The guided form writes `format: refit.agent.v1`
+with the existing managed execution contract. Legacy JSON without a version
+continues to work. Each case includes a unique `name`, a `split` of
 `train`, `validation` or `holdout`, and a `prompt`. Expected behavior
 can now be expressed using exact `stdout`, an object of expected
 `json_contains` fields (including nested objects), a required `tool`
-with optional `tool_result`, and/or a `forbidden_tools` array.
+with optional `tool_result` and `tool_arguments`, and/or a `forbidden_tools` array.
 For example: `{"name":"order","split":"train","prompt":"Find order 10","json_contains":{"status":"paid"},"tool":"get_order","forbidden_tools":["delete_order"]}`.
 Fields of `json_contains` are checked by the trusted host against the original
 application's parsed JSON stdout; extra fields are permitted. Required and
 forbidden tool names are checked against broker-observed model tool calls.
 These are bounded, declarative checks, **not** arbitrary code execution,
 database invariants, HTTP service checks or verified external side effects.
-The UI may still default to exact stdout; advanced cases can be supplied
-via the setup JSON. Supply all three splits and store expected outcomes
+When supplied, `tool_arguments` matches a subset of the broker-observed
+call's JSON arguments and requires a tool response with the same call ID.
+If a result is expected, it must match that same call. Use guided setup or
+edit the complete JSON contract. Supply all three splits and store expected outcomes
 outside the source ZIP, including any private holdout cases.
 The application must honor `OPENAI_BASE_URL` and `OPENAI_MODEL`. Unreviewed TypeScript dependencies, streaming, custom provider protocols,
 live external tools and persistent production services require additional

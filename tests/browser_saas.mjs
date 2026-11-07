@@ -128,11 +128,21 @@ try{
  await page.getByRole("heading",{name:"Configure migration"}).waitFor();
  assert.deepEqual(await page.locator("#source option").allTextContents(),
   ["deepseek-v4.1-flash-1017","glm-5.2"]);
- await page.locator("#setup").fill(JSON.stringify({module:"agent",args:["{prompt}"],cases:[
-  {name:"a",split:"train",prompt:"A",stdout:"ok"},
-  {name:"b",split:"validation",prompt:"B",stdout:"ok"},
-  {name:"c",split:"holdout",prompt:"C",stdout:"ok"}
- ]}));
+ assert.equal(await page.locator("#entryPoint").inputValue(),"agent");
+ const cases=page.locator(".setup-case");
+ assert.equal(await cases.count(),3);
+ for(const [index,split] of ["train","validation","holdout"].entries()){
+  const row=cases.nth(index);
+  await row.getByLabel("Case name").fill(split);
+  await row.getByLabel("Agent input").fill("Prompt for "+split);
+  await row.getByLabel("Expected output").fill("ok");
+ }
+ await page.getByRole("button",{name:"Edit JSON"}).click();
+ const setup=JSON.parse(await page.locator("#setup").inputValue());
+ assert.equal(setup.format,"refit.agent.v1");
+ assert.deepEqual(setup.cases.map(item=>item.split),["train","validation","holdout"]);
+ await page.getByRole("button",{name:"Use guided setup"}).click();
+ assert.equal(await cases.last().getByLabel("Agent input").inputValue(),"Prompt for holdout");
  await page.screenshot({path:"artifacts/saas-ui/03-configure.png",fullPage:true});
  await page.getByRole("button",{name:/Run migration/}).click();
  await page.getByText(/Authorize the inference budget/).waitFor();
