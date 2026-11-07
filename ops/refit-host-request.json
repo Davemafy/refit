@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Pin the systemd sandbox worker to the image built for this deployment"
+  "reason": "Enable a bounded production browser verification of the original generic-provider agent"
 }
