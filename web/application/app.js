@@ -40,9 +40,9 @@ const statusText={
  export_failed_original_runner_verification:"Export verification failed",
  interrupted:"Interrupted",failed:"Execution failed",
  inference_budget_exhausted:"Budget exhausted",cancelled:"Cancelled",
- running:"Running",cancelling:"Cancelling"
+ queued:"Queued",running:"Running",cancelling:"Cancelling"
 };
-const ended=status=>!["running","cancelling"].includes(status);
+const ended=status=>!["queued","running","cancelling"].includes(status);
 const statusChip=status=>{
  const klass=["compatible_on_sample","verified_adaptation"].includes(status)?"good":ended(status)?"bad":"warn";
  return '<span class="chip '+klass+'"><span class="dot"></span>'+safe(statusText[status]||status||"Unknown")+'</span>';

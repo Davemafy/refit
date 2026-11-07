@@ -82,7 +82,7 @@
 const $ = id => document.getElementById(id);
 let imported, activeRun, accountMode=false;
 const runIdPattern = /^app-[0-9a-f]{16}$/;
-const terminal = status => !["running","cancelling"].includes(status);
+const terminal = status => !["queued","running","cancelling"].includes(status);
 const labels = {compatible_on_sample:"Compatible on evaluated cases",verified_adaptation:"Verified repair",
   export_failed_original_runner_verification:"Export withheld after fresh verification",
   source_baseline_insufficient:"Source did not pass verification",cancelled:"Cancelled",

@@ -2,7 +2,7 @@
 // Pure, evidence-backed interpretation for the Refit review UI.
 // UI labels do not authorize export, infer tool calls, or manufacture scores.
 (function(root){
- const terminal=status=>!["running","cancelling"].includes(status);
+ const terminal=status=>!["queued","running","cancelling"].includes(status);
  const phaseLabels={
   train:"Training",training:"Training",validation:"Validation",holdout:"Holdout",
   fresh_export:"Fresh export",source_training:"Original training",
@@ -14,7 +14,7 @@
   runtime_ready:"Runtime prepared",sandbox_starting:"Starting sandbox",sandbox_started:"Sandbox started",
   inference_requested:"Model request sent",inference_completed:"Model response received",
   case_completed:"Case completed",sandbox_cleanup:"Sandbox cleanup recorded",
-  run_started:"Migration started",terminal:"Run finished"};
+  run_queued:"Budget reserved and migration queued",run_started:"Migration started",terminal:"Run finished"};
  const eventLabel=value=>eventLabels[value]||String(value||"Unknown activity").replaceAll("_"," ");
  const caseEvents=events=>(Array.isArray(events)?events:[]).filter(e=>e?.type==="case_completed"&&e.details&&e.details.phase!=="fresh_export");
  const keyOf=event=>String(event.details.phase||"unknown")+"\u0000"+String(event.details.case||"unknown");
@@ -68,7 +68,10 @@
   const cleanupEvents=(Array.isArray(events)?events:[]).filter(e=>e?.type==="sandbox_cleanup");
   const invalidCleanup=cleanupEvents.find(e=>e.details?.receipt?.verified===false);
   let kind="unverified",title="Review the recorded outcome",description="The available evidence does not establish a verified migration.";
-  if(active){
+  if(run.status==="queued"){
+   kind="running";title="Waiting for a worker";
+   description="Your request budget is reserved. You can cancel before execution begins to release it.";
+  }else if(active){
    kind="running";title=run.status==="cancelling"?"Cancellation requested":"Migration in progress";
    description="Refit is executing the imported application. Results appear as the original runtime reports them.";
   }else if(run.status==="compatible_on_sample"){
@@ -94,7 +97,13 @@
    description="The run reached its authorized request ceiling before satisfying the verification gates.";
   }else if(run.status==="failed"){
    kind="blocked";title="Migration not verified";
-   description="The run failed or its checks were not satisfied. Open the recorded evidence before changing the configuration.";
+   description=({
+    reservation_expired:"The run did not start before the daily budget reset. Submit it again with a fresh budget.",
+    queued_project_unavailable:"The pinned project or its configuration could not be recovered. Inspect the source and submit again.",
+    inference_unavailable:"Inference was unavailable when the worker became free. Ask the operator to check the provider connection.",
+    operator_review_required:"Execution is paused for an operator to check sandbox cleanup or stored evidence.",
+    worker_unavailable:"Refit could not start an execution worker. Submit again once capacity is available."
+   })[run.error]||"The run failed or its checks were not satisfied. Open the recorded evidence before changing the configuration.";
   }
   // A verified status alone is not authority to display a download.
   const exportState=run.export_available===true?"available":active?"pending":"withheld";

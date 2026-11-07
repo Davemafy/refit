@@ -123,11 +123,11 @@ try {
     let completed;
     for (let attempt = 0; attempt < 100; attempt++) {
       completed = await request(owner, runRoute);
-      if (completed.status === 200 && !["running", "cancelling"].includes(completed.body.status)) break;
+      if (completed.status === 200 && !["queued", "running", "cancelling"].includes(completed.body.status)) break;
       await new Promise(resolve => setTimeout(resolve, 1700));
     }
     assert.equal(completed.status, 200);
-    assert.ok(!["running", "cancelling"].includes(completed.body.status), "Migration did not reach a terminal status.");
+    assert.ok(!["queued", "running", "cancelling"].includes(completed.body.status), "Migration did not reach a terminal status.");
     await owner.goto(origin + "/app/runs/" + accepted.id);
 
     async function download(name, suffix) {

@@ -35,7 +35,10 @@ from .refit_vultr_probe import VultrInference, load_key
 
 ROOT = Path(__file__).resolve().parents[1]
 BODY_LIMIT = ((ARCHIVE_LIMIT + 2) // 3) * 4 + 8192
-ACTIVE = {"running", "cancelling"}
+EXECUTING = {"running", "cancelling"}
+ACTIVE = EXECUTING | {"queued"}
+QUEUE_LIMIT = 8
+OWNER_QUEUE_LIMIT = 2
 DEFAULT_ACCOUNT_BUDGET = 16
 COOKIE = "__Host-refit-session"
 
@@ -120,12 +123,15 @@ def public_example():
 
 class ApplicationService:
     def __init__(self, directory, token, image, daily_budget=24, public_origin=None,
-                 account_budget=DEFAULT_ACCOUNT_BUDGET):
+                 account_budget=DEFAULT_ACCOUNT_BUDGET, max_active=1):
         if len(token) < 32:
             raise ValueError("Set a private REFIT_APPLICATION_TOKEN of at least 32 characters.")
         if (type(daily_budget) is not int or not 1 <= daily_budget <= 2048
                 or type(account_budget) is not int or not 1 <= account_budget <= 512):
             raise ValueError("Daily and per-account request budgets must remain positive and bounded.")
+        if type(max_active) is not int or not 1 <= max_active <= 2:
+            raise ValueError("Configure one or two application workers.")
+        self.max_active = max_active
         self.directory = directory
         directory.mkdir(parents=True, mode=0o700, exist_ok=True)
         self.process_lock = (directory / ".service-lock").open("a")
@@ -147,7 +153,7 @@ class ApplicationService:
         self.quarantined = bool(invalid)
         for run, events in records:
             self.runs[run["id"]] = (run, events)
-            if run["status"] in ACTIVE:
+            if run["status"] in EXECUTING:
                 opened = {e["details"]["container"] for e in events if e["type"] == "sandbox_starting"}
                 closed = {e["details"]["container"] for e in events if e["type"] == "sandbox_cleanup"
                           and e["details"]["receipt"]["verified"]}
@@ -159,6 +165,75 @@ class ApplicationService:
             if any(e["type"] == "sandbox_cleanup" and not e["details"]["receipt"]["verified"]
                    for e in events):
                 self.quarantined = True
+
+        with self.lock:
+            self.dispatch()
+
+    def reserved(self, day, owner=None):
+        return sum(reserved_requests(run) for run, _ in self.runs.values()
+                   if (owner is None or run.get("owner", "operator") == owner)
+                   and (run["started_at"][:10] == day
+                        or run["status"] in EXECUTING
+                        or run.get("finished_at", "")[:10] == day))
+
+    @staticmethod
+    def broker(budget):
+        return VultrInference(load_key(Path("/etc/refit/inference.env")), max_requests=budget)
+
+    @staticmethod
+    def configuration_hash(snapshot, setup, source, target, budget):
+        return fingerprint({"source": source, "target": target, "budget": budget,
+                            "source_sha256": snapshot.get("snapshot_sha256", snapshot["source_sha256"]),
+                            "setup": setup})
+
+    def finish_queued(self, run, status, reason):
+        run.pop("_queued_setup", None)
+        run.update(status=status, finished_at=now(), error=reason)
+        self.emit(run["id"], "terminal", {"status": status, "reason": reason, "model_requests": 0})
+
+    def dispatch(self):
+        """Start eligible jobs under the service lock, after committing their reservation."""
+        running = [run for run, _ in self.runs.values() if run["status"] in EXECUTING]
+        active_owners = {run["owner"] for run in running}
+        queued = sorted((run for run, _ in self.runs.values() if run["status"] == "queued"),
+                        key=lambda run: (run["started_at"], run["id"]))
+        day = now()[:10]
+        for run in queued:
+            owner = run["owner"]
+            if self.quarantined:
+                self.finish_queued(run, "failed", "operator_review_required")
+                continue
+            if run["started_at"][:10] != day:
+                self.finish_queued(run, "failed", "reservation_expired")
+                continue
+            if owner in active_owners or len(running) >= self.max_active:
+                continue
+            setup = run.get("_queued_setup")
+            project = self.accounts.project(owner, run["import"]["id"]) if self.accounts else None
+            if not project or setup is None or self.configuration_hash(
+                    project[0], setup, run["source"], run["target"], run["budget"]
+                    ) != run["configuration_sha256"]:
+                self.finish_queued(run, "failed", "queued_project_unavailable")
+                continue
+            try:
+                broker = self.broker(run["budget"])
+            except (OSError, ValueError, RuntimeError):
+                self.finish_queued(run, "failed", "inference_unavailable")
+                continue
+            run.pop("_queued_setup")
+            if self.launch(run, project[0], setup, broker):
+                running.append(run)
+                active_owners.add(owner)
+
+    def launch(self, run, snapshot, setup, broker):
+        run.update(status="running", execution_started_at=now())
+        self.emit(run["id"], "run_started", {key: run[key] for key in ("source", "target", "budget")})
+        try:
+            threading.Thread(target=self.execute, args=(run["id"], snapshot, setup, broker), daemon=True).start()
+        except RuntimeError:
+            self.finish_queued(run, "failed", "worker_unavailable")
+            return False
+        return True
 
     def emit(self, ident, kind, details):
         with self.lock:
@@ -236,32 +311,40 @@ class ApplicationService:
                 raise ApiProblem(422, "setup_required", str(exc)) from exc
             if self.quarantined:
                 raise ApiProblem(503, "operator_review_required", "Check persisted evidence and sandbox cleanup before starting another run.")
-            if any(run["status"] in ACTIVE for run, _ in self.runs.values()):
-                raise ApiProblem(409, "run_in_progress", "One application migration is already running.")
-            day = now()[:10]
-            reserved = sum(reserved_requests(run) for run, _ in self.runs.values() if run["started_at"][:10] == day)
-            own_reserved = sum(reserved_requests(run) for run, _ in self.runs.values()
-                               if run.get("owner") == owner and run["started_at"][:10] == day)
-            if owner != "operator" and own_reserved + budget > self.account_budget:
+            self.dispatch()
+            jobs = [run for run, _ in self.runs.values()]
+            queued = [run for run in jobs if run["status"] == "queued"]
+            running = [run for run in jobs if run["status"] in EXECUTING]
+            if owner == "operator" and (len(running) >= self.max_active or
+                                        any(run["owner"] == owner for run in running)):
+                raise ApiProblem(409, "run_in_progress", "An operator migration slot is unavailable.")
+            if owner != "operator" and (len(queued) >= QUEUE_LIMIT or
+                                        sum(run["owner"] == owner for run in queued) >= OWNER_QUEUE_LIMIT):
+                raise ApiProblem(429, "run_queue_full", "Wait for a queued migration to start, or cancel one of your queued runs.")
+            submitted_at = now()
+            day = submitted_at[:10]
+            if owner != "operator" and self.reserved(day, owner) + budget > self.account_budget:
                 raise ApiProblem(429, "account_budget_exhausted", "Your daily request allowance is reserved.")
-            if reserved + budget > self.daily_budget:
+            if self.reserved(day) + budget > self.daily_budget:
                 raise ApiProblem(429, "daily_budget_exhausted", "This operator's daily request allowance is reserved.")
             try:
-                broker = VultrInference(load_key(Path("/etc/refit/inference.env")), max_requests=budget)
+                broker = self.broker(budget)
             except (OSError, ValueError, RuntimeError) as exc:
                 raise ApiProblem(503, "inference_unavailable", "Configure Vultr inference on the operator host.") from exc
             ident = "app-" + secrets.token_hex(8)
-            run = {"id": ident, "mode": "application_live", "status": "running",
-                   "started_at": now(), "source": source, "target": target, "budget": budget,
+            run = {"id": ident, "mode": "application_live", "status": "queued",
+                   "started_at": submitted_at, "source": source, "target": target, "budget": budget,
                    "owner": owner, "import": summary, "model_requests": 0, "export": None,
-                   "configuration_sha256": fingerprint({"source": source, "target": target, "budget": budget,
-                       "source_sha256": snapshot.get("snapshot_sha256", snapshot["source_sha256"]), "setup": setup})}
+                   "configuration_sha256": self.configuration_hash(snapshot, setup, source, target, budget)}
             self.runs[ident] = (run, [])
-            self.emit(ident, "run_started", {"source": source, "target": target, "budget": budget})
             if owner == "operator":
+                self.launch(run, snapshot, setup, broker)
                 self.imports.pop(ident_import)
-            threading.Thread(target=self.execute, args=(ident, snapshot, setup, broker), daemon=True).start()
-            return dict(run)
+            else:
+                run["_queued_setup"] = setup
+                self.emit(ident, "run_queued", {"budget": budget})
+                self.dispatch()
+            return self.get(ident, owner)[0]
 
     def execute(self, ident, snapshot, setup, broker):
         started = time.monotonic()
@@ -281,6 +364,7 @@ class ApplicationService:
             run.update(result, model_requests=broker.requests, finished_at=now(),
                        execution_seconds=round(time.monotonic() - started, 3))
             self.emit(ident, "terminal", {"status": run["status"], "model_requests": broker.requests})
+            self.dispatch()
 
     def get(self, ident, owner=None):
         with self.lock:
@@ -288,15 +372,26 @@ class ApplicationService:
                     self.runs[ident][0].get("owner", "operator") != owner):
                 raise ApiProblem(404, "run_not_found", "No application run exists with this ID.")
             run, events = self.runs[ident]
-            return dict(run), list(events)
+            return {k: v for k, v in run.items() if k != "_queued_setup"}, list(events)
 
     def cancel(self, ident, owner="operator"):
         with self.lock:
             run, _ = self.get(ident, owner)
-            if run["status"] == "running":
+            if run["status"] == "queued":
+                self.finish_queued(self.runs[ident][0], "cancelled", "cancelled_before_start")
+                self.dispatch()
+            elif run["status"] == "running":
                 self.runs[ident][0]["status"] = "cancelling"
                 self.emit(ident, "cancellation_requested", {})
             return self.get(ident, owner)[0]
+
+
+    def remove_project(self, owner, ident):
+        with self.lock:
+            if any(run["owner"] == owner and run["status"] == "queued" and run["import"]["id"] == ident
+                   for run, _ in self.runs.values()):
+                raise ApiProblem(409, "project_queued", "Cancel queued migrations before removing this project.")
+            return self.accounts.remove_project(owner, ident)
 
 
 class ApplicationHandler(RefitHandler):
@@ -417,7 +512,7 @@ class ApplicationHandler(RefitHandler):
             if match:
                 return self._send(200, self.service.cancel(match[1], owner))
             project = re.fullmatch(r"/api/application/projects/(import-[0-9a-f]{16})/remove", path)
-            if project and owner != "operator" and self.service.accounts.remove_project(owner, project[1]):
+            if project and owner != "operator" and self.service.remove_project(owner, project[1]):
                 return self._send(200, {"removed": True})
             raise ApiProblem(404, "not_found", "This application route does not exist.")
         except ApiProblem as exc:
@@ -498,8 +593,7 @@ class ApplicationHandler(RefitHandler):
             if url.path == "/api/application":
                 with self.service.lock:
                     date = now()[:10]
-                    reserved = sum(reserved_requests(run) for run, _ in self.service.runs.values()
-                                   if run["started_at"][:10] == date and run.get("owner") == owner)
+                    reserved = self.service.reserved(date, owner)
                 allowance = self.service.account_budget if owner != "operator" else self.service.daily_budget
                 return self._send(200, {
                     "models": MODELS, "max_requests": min(BUDGET_LIMIT, allowance),
@@ -581,13 +675,14 @@ def main():
     parser.add_argument("--daily-budget", type=int, choices=range(1, 2049), default=24)
     parser.add_argument("--account-daily-budget", type=int, choices=range(1, 513),
                         default=DEFAULT_ACCOUNT_BUDGET)
+    parser.add_argument("--max-active", type=int, choices=(1, 2), default=1)
     parser.add_argument("--public-origin", default=os.getenv("REFIT_PUBLIC_ORIGIN"))
     args = parser.parse_args()
     if args.public_origin and not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::[0-9]+)?", args.public_origin):
         parser.error("Public origin must be an exact HTTPS origin.")
     service = ApplicationService(args.state, os.getenv("REFIT_APPLICATION_TOKEN", ""),
                                  args.image, args.daily_budget, args.public_origin,
-                                 args.account_daily_budget)
+                                 args.account_daily_budget, args.max_active)
     revision = os.getenv("REFIT_DEPLOYED_REVISION", "")
     if revision and not re.fullmatch(r"[0-9a-f]{40}", revision):
         parser.error("REFIT_DEPLOYED_REVISION must be a full Git commit SHA.")
