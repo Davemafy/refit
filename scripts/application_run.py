@@ -12,6 +12,7 @@ import subprocess
 import time
 
 from .container_agent import command, frame, send, validate_completion
+from .application_oracle import evaluate, validate_case
 from .docker_cleanup import remove_and_verify
 from .migration_engine import AgentContract, AgentProfile, ReplayCase, fingerprint, migrate
 from .refit_vultr_probe import ENDPOINT
@@ -90,13 +91,9 @@ def configuration(snapshot, supplied=None):
     names = set()
     prompts = set()
     for case in cases:
-        if (not isinstance(case, dict) or set(case) not in ({"name", "split", "prompt", "stdout"}, {"name", "split", "prompt", "stdout", "tool", "tool_result"})
-                or any(not isinstance(value, str) or not 1 <= len(value) <= 4096 or "\x00" in value
-                       for value in case.values())
-                or not re.fullmatch(r"[a-zA-Z0-9_-]{1,50}", case["name"])
-                or case["split"] not in {"train", "validation", "holdout"}
-                or case["name"] in names or case["prompt"] in prompts):
-            raise ValueError("Give each case a unique name and prompt, a valid split, and exact expected stdout.")
+        validate_case(case)
+        if case["name"] in names or case["prompt"] in prompts:
+            raise ValueError("Give each case a unique name and prompt.")
         names.add(case["name"])
         prompts.add(case["prompt"])
     if {case["split"] for case in cases} != {"train", "validation", "holdout"}:
@@ -145,6 +142,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
         calls = 0
         observed = False
         tool_ids = set()
+        all_tool_calls = []
         result = {}
         error = None
         cleanup = None
@@ -217,6 +215,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 check()
                 model_calls = message.get("tool_calls") or []
                 tools_used = [x["function"]["name"] for x in model_calls]
+                all_tool_calls.extend(tools_used)
                 tool_ids.update(x["id"] for x in model_calls if x["function"]["name"] == case.get("tool"))
                 inference = {"number": broker.requests, "model": model, "tools_called": tools_used,
                              "request_sha256": fingerprint(body), "response_sha256": fingerprint(message),
@@ -245,17 +244,22 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                 proc.stdout.close()
             cleanup = remove_and_verify("docker", name, env=env)
             event("sandbox_cleanup", {"case": case["name"], "phase": phase, "container": name, "receipt": cleanup})
+        outcome = evaluate(case, result.get("stdout", ""), all_tool_calls, observed)
         ok = (not error and result.get("status") == "completed" and result.get("exit_code") == 0
-              and result.get("stdout", "").strip() == case["stdout"].strip()
-              and (observed or "tool" not in case) and calls > 0 and cleanup["verified"])
+              and outcome["passed"] and calls > 0 and cleanup["verified"])
         error = error or (None if ok else (
             "sandbox_cleanup_unverified" if not cleanup["verified"] else
             result.get("status") if result.get("status") != "completed" else
             "application_exited" if result.get("exit_code") != 0 else
             "model_boundary_unused" if calls == 0 else "outcome_mismatch"))
         verdict = {"passed": bool(ok), "unsafe_attempts": int(not cleanup["verified"]),
-                   "stdout_matches": result.get("stdout", "").strip() == case["stdout"].strip(),
-                   "required_tool_observed": observed if "tool" in case else None}
+                   "stdout_matches": outcome["stdout_matches"],
+                   "json_matches": outcome["json_matches"],
+                   "required_tool_called": outcome["required_tool_called"],
+                   "required_tool_observed": (
+                       outcome["required_tool_observed"] if "tool_result" in case
+                       else outcome["required_tool_called"]),
+                   "forbidden_tools_absent": outcome["forbidden_tools_absent"]}
         evidence = {"case": case["name"], "passed": bool(ok), "verdict": verdict,
                     "error": error, "trace": receipt, "model_requests": calls,
                     "stdout_sha256": hashlib.sha256(result.get("stdout", "").encode()).hexdigest(),

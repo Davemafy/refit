@@ -93,8 +93,19 @@ a successful paid TypeScript migration. The LLM preset discovers the native CLI 
 `extra-openai-models.yaml` seam. Other Python agents may supply
 `{"module":"agent","args":["{prompt}"],"cases":[...]}` in the form or through
 `--setup setup.json`. Each case includes a unique `name`, a `split` of
-`train`, `validation` or `holdout`, a `prompt` and expected `stdout`.
-Supply all three splits. Store evaluation files outside the source ZIP.
+`train`, `validation` or `holdout`, and a `prompt`. Expected behavior
+can now be expressed using exact `stdout`, an object of expected
+`json_contains` fields (including nested objects), a required `tool`
+with optional `tool_result`, and/or a `forbidden_tools` array.
+For example: `{"name":"order","split":"train","prompt":"Find order 10","json_contains":{"status":"paid"},"tool":"get_order","forbidden_tools":["delete_order"]}`.
+Fields of `json_contains` are checked by the trusted host against the original
+application's parsed JSON stdout; extra fields are permitted. Required and
+forbidden tool names are checked against broker-observed model tool calls.
+These are bounded, declarative checks, **not** arbitrary code execution,
+database invariants, HTTP service checks or verified external side effects.
+The UI may still default to exact stdout; advanced cases can be supplied
+via the setup JSON. Supply all three splits and store expected outcomes
+outside the source ZIP, including any private holdout cases.
 The application must honor `OPENAI_BASE_URL` and `OPENAI_MODEL`. Unreviewed TypeScript dependencies, streaming, custom provider protocols,
 live external tools and persistent production services require additional
 runtime support.
