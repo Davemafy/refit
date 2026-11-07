@@ -342,10 +342,15 @@ def inspect(files):
                 metadata = {}
                 dependencies = read(name).splitlines()
             dependencies = sorted({match.group() for item in dependencies if isinstance(item, str)
-                                   and (match := re.match(r"[@a-zA-Z0-9_./-]+", item))})
+                                   and (match := re.match(r"[@a-zA-Z0-9_][@a-zA-Z0-9_./-]*", item))})
         except (ValueError, AttributeError, TypeError):
             metadata, dependencies = {}, []
-        manifests.setdefault((path.parent, runtime), (name, metadata, dependencies[:40]))
+        key = (path.parent, runtime)
+        if key in manifests:
+            prior_name, prior_metadata, prior_dependencies = manifests[key]
+            manifests[key] = (prior_name, prior_metadata, sorted(set(prior_dependencies + dependencies)))
+        else:
+            manifests[key] = (name, metadata, dependencies)
     _, project, _ = manifests.get((PurePosixPath("."), "python"), (None, {}, []))
     if project.get("name") == "llm" and project.get("version") == "0.37.1" and "llm/__main__.py" in files:
         return {"runtime": "python", "setup": None, "preset": "llm-0.37.1",
@@ -377,6 +382,8 @@ def inspect(files):
             provider = "OpenAI environment variables detected"
         elif runtime == "typescript" and "ai" in dependencies:
             provider = "Vercel AI SDK"
+        elif "litellm" in dependencies:
+            provider = "LiteLLM dependency detected"
         elif "anthropic" in dependencies:
             provider = "Anthropic SDK detected"
         elif "openai" in dependencies or "@ai-sdk/openai" in dependencies:
@@ -412,7 +419,7 @@ def inspect(files):
         confidence = "high" if provider and any("CLI input" in item or "declares" in item for item in evidence) else "possible"
         candidates.append({"path": name, "entry": entry, "runtime": runtime,
                            "directory": "" if str(scope) == "." else str(scope),
-                           "manifest": manifest, "dependencies": dependencies,
+                           "manifest": manifest, "dependencies": dependencies[:40],
                            "provider": provider, "confidence": confidence, "evidence": evidence})
     likely = [candidate for candidate in candidates if candidate["confidence"] == "high"]
     chosen = likely[0] if len(likely) == 1 else candidates[0] if len(candidates) == 1 else None
@@ -431,7 +438,7 @@ def inspect(files):
         node = [name for name in files if name.endswith((".ts", ".mts", ".js", ".mjs")) and not name.endswith(".d.ts")]
         if len(node) == 1:
             result["entry"] = node[0]
-            result["dependencies"] = manifests.get((PurePosixPath("."), runtime), (None, {}, []))[2]
+            result["dependencies"] = manifests.get((PurePosixPath("."), runtime), (None, {}, []))[2][:40]
             if "ai" in result["dependencies"]:
                 result["provider"] = "Vercel AI SDK"
     return result

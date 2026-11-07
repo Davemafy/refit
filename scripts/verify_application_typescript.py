@@ -35,7 +35,14 @@ def main():
     parser.add_argument("--image", default="refit-application")
     args = parser.parse_args()
     snapshot = source_snapshot(args.archive.read_bytes())
-    setup = configuration(snapshot, json.loads(args.setup.read_text()))
+    supplied = json.loads(args.setup.read_text())
+    for case in supplied["cases"]:
+        filename = re.search(r"(order|invoice|receipt)\.txt", case["prompt"]).group(0)
+        case["state"] = [
+            {"path": f"records/{filename}", "op": "unchanged"},
+            {"path": "records/unexpected.txt", "op": "absent"},
+        ]
+    setup = configuration(snapshot, supplied)
     events = []
     broker = TestBroker()
     result = run_migration(snapshot, setup, *MODELS, args.image, broker,
@@ -47,6 +54,7 @@ def main():
                       "cleanups": cleanups, "test_broker_requests": broker.requests}))
     assert result["export"] and len(cleanups) == 7 and all(cleanups)
     assert all(case["verdict"]["required_tool_observed"] for case in cases)
+    assert all(case["verdict"]["state_checks_passed"] for case in cases)
     assert broker.requests == 14
 
 
