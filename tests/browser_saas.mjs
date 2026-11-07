@@ -169,7 +169,13 @@ try{
  await page.getByRole("button",{name:"Trace",exact:true}).click();
  await page.locator(".log").waitFor();
  await page.getByRole("button",{name:"Evidence",exact:true}).last().click();
- await page.getByText(/recorded containers verified cleaned up/).waitFor();
+ await page.getByRole("navigation",{name:"Run evidence"}).waitFor();
+ await page.locator(".evidence-entry").first().click();
+ await page.locator("#evidenceInspector").getByText("Fresh export check").first().waitFor();
+ await page.getByRole("button",{name:/magnetic-divergence/}).first().click();
+ await page.locator("#evidenceInspector").getByText("Tool observations").waitFor();
+ await page.locator(".evidence-entry").filter({hasText:"Cleanup receipt"}).first().click();
+ await page.locator("#evidenceInspector").getByText("Cleanup reason").waitFor();
 
  const waiting=page.waitForEvent("download");
  await page.getByRole("button",{name:/Export verified configuration/}).first().click();
