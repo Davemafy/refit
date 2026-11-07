@@ -282,6 +282,8 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
     class RepairBroker:
         def complete(self, model, messages):
             check()
+            if setup["seam"] != "llm":
+                raise ValueError("A native instruction seam is required to apply and verify a repair.")
             event("inference_requested", {"model": model, "case": "repair", "number": broker.requests + 1})
             response = broker.complete(model, messages, max_tokens=900)
             event("inference_completed", {"model": model, "case": "repair", "number": broker.requests,
