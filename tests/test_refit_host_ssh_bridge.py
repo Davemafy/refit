@@ -23,6 +23,17 @@ class SSHBridgeTests(unittest.TestCase):
         self.assertIn('merge --ff-only', command)
         self.assertIn('REFIT_APPLICATION_DAILY_BUDGET', command)
 
+    def test_application_launcher_replaces_stale_checkout_override(self):
+        launcher = (ROOT/'deploy/launch-application.sh').read_text()
+        subprocess.run(['bash','-n',str(ROOT/'deploy/launch-application.sh')],
+                       check=True,timeout=5)
+        self.assertIn('zz-refit-managed-checkout.conf', launcher)
+        self.assertIn('WorkingDirectory=$REPO', launcher)
+        self.assertIn('Environment=REFIT_DEPLOYED_REVISION=$REVISION', launcher)
+        self.assertIn('SERVICE_DIRECTORY', launcher)
+        self.assertIn('api/application/release', launcher)
+        self.assertIn('[[ "$installed" == "$REVISION" ]]', launcher)
+
 
     def test_devmcp_gateway_public_key_is_time_limited_and_forced(self):
         path = ROOT / 'deploy/setup-devmcp-host-access.sh'
