@@ -1,0 +1,63 @@
+name: Migrate original external retail agent
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/retail/**'
+      - 'integrations/container_worker.py'
+      - 'scripts/container_agent.py'
+      - 'scripts/migration_engine.py'
+      - 'experiments/external-agent-run.json'
+      - '.github/workflows/external-agent.yml'
+permissions:
+  contents: read
+concurrency:
+  group: refit-original-retail
+  cancel-in-progress: false
+jobs:
+  external-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install gVisor and build pinned external repository in Docker
+        run: |
+          sudo bash deploy/install-gvisor.sh
+          docker build -f integrations/retail/Dockerfile -t refit-original-retail .
+      - name: Inspect original policy, tools, tasks and reference states without inference
+        run: |
+          python -m scripts.container_agent --manifest integrations/retail/manifest.json \
+            --image refit-original-retail --output /tmp/retail-inspect
+      - name: Explicit one-shot live migration, only when the execution plan changes
+        env:
+          VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          plan = json.loads(Path('experiments/external-agent-run.json').read_text())
+          changed = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD^', 'HEAD'], text=True).splitlines()
+          if 'experiments/external-agent-run.json' not in changed or plan['execute'] is not True:
+              print('No explicit new execution plan. Zero inference calls.')
+              sys.exit(0)
+          config = json.loads(Path('integrations/retail/manifest.json').read_text())
+          assert plan['max_requests'] == config['max_requests'] == 400
+          subprocess.run([sys.executable, '-m', 'scripts.container_agent',
+              '--manifest', 'integrations/retail/manifest.json', '--image', 'refit-original-retail',
+              '--output', '/tmp/retail-live', '--execute'], check=True)
+          PY
+      - name: Preserve inspect, failed or successful live evidence and exported configuration
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-original-retail
+          path: |
+            /tmp/retail-inspect
+            /tmp/retail-live
+          retention-days: 30

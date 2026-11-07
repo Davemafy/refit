@@ -1,0 +1,231 @@
+"""Run a reviewed external adapter in gVisor; broker bounded Vultr calls only.
+
+No imported repository or adapter is ever imported into this host process.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import secrets
+import selectors
+import subprocess
+import tempfile
+import time
+
+from .docker_cleanup import remove_and_verify
+from .refit_vultr_probe import VultrInference, load_key
+from .release_identity import capture_revision
+
+MAX_FRAME = 32 * 1024 * 1024
+
+
+def command(image, name):
+    return ['docker', 'run', '-i', '--name', name, '--runtime', 'runsc',
+            '--network', 'none', '--read-only', '--user', '65534:65534',
+            '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+            '--pids-limit', '128', '--memory', '2g', '--memory-swap', '2g',
+            '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=128m',
+            '--log-driver', 'none', image]
+
+
+def frame(proc, buffer, deadline):
+    with selectors.DefaultSelector() as selector:
+        selector.register(proc.stdout, selectors.EVENT_READ)
+        while b'\n' not in buffer:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise TimeoutError('external worker response deadline exceeded')
+            try:
+                chunk = os.read(proc.stdout.fileno(), min(65536, MAX_FRAME + 1 - len(buffer)))
+            except BlockingIOError:
+                continue
+            if not chunk:
+                raise RuntimeError('external worker exited before a complete result')
+            buffer.extend(chunk)
+            if len(buffer) > MAX_FRAME:
+                raise ValueError('external worker frame exceeds budget')
+    line, _, rest = buffer.partition(b'\n')
+    buffer[:] = rest
+    value = json.loads(line)
+    if not isinstance(value, dict):
+        raise ValueError('worker frame must be an object')
+    return value
+
+
+def send(proc, value, deadline):
+    data = json.dumps(value, separators=(',', ':'), ensure_ascii=False).encode() + b'\n'
+    if len(data) > MAX_FRAME:
+        raise ValueError('host response exceeds frame budget')
+    sent = 0
+    with selectors.DefaultSelector() as selector:
+        selector.register(proc.stdin, selectors.EVENT_WRITE)
+        while sent < len(data):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise TimeoutError('worker input deadline exceeded')
+            try:
+                sent += os.write(proc.stdin.fileno(), data[sent:])
+            except BlockingIOError:
+                continue
+
+
+def validate_config(config):
+    if config.get('format') != 'refit.container-agent.v1':
+        raise ValueError('unsupported external agent manifest')
+    if type(config.get('max_requests')) is not int or not 1 <= config['max_requests'] <= 400:
+        raise ValueError('request budget must be 1..400')
+    if config['source'] == config['target']:
+        raise ValueError('model replacement must change model')
+    if not isinstance(config.get('revision'), str) or len(config['revision']) != 40:
+        raise ValueError('manifest requires a pinned repository revision')
+
+
+def validate_completion(value, models):
+    if value.get('model') not in models:
+        raise ValueError('worker requested an unapproved model')
+    messages = value.get('messages')
+    if not isinstance(messages, list) or not 1 <= len(messages) <= 500:
+        raise ValueError('invalid completion messages')
+    if len(json.dumps(value).encode()) > 2 * 1024 * 1024:
+        raise ValueError('completion request exceeds budget')
+    tools = value.get('tools')
+    if tools is not None and (not isinstance(tools, list) or len(tools) > 128):
+        raise ValueError('invalid completion tool schemas')
+
+
+def run(config, image, output, execute=False):
+    validate_config(config)
+    output.mkdir(parents=True, exist_ok=False, mode=0o700)
+    client = VultrInference(load_key(Path('/etc/refit/inference.env')),
+                            max_requests=config['max_requests']) if execute else None
+    docker_env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin')}
+    image_info = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image],
+                                                    text=True, env=docker_env))[0]
+    name = 'refit-external-' + secrets.token_hex(10)
+    record = {'format': 'refit.external-agent-run.v1', 'config': config,
+              'engine_revision': capture_revision(Path(__file__).resolve().parents[1]),
+              'image_id': image_info['Id'], 'container_name': name,
+              'execute': execute, 'completions': [], 'events': []}
+    proc = None
+    result = None
+    buffer = bytearray()
+    deadline = time.monotonic() + 1800
+
+    def save():
+        temp = output / '.run.json.tmp'
+        temp.write_text(json.dumps(record, ensure_ascii=False, indent=2))
+        temp.replace(output / 'run.json')
+
+    try:
+        with (output / 'worker.log').open('wb') as log:
+            proc = subprocess.Popen(command(image_info['Id'], name), stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=log, bufsize=0,
+                                    env=docker_env)
+            os.set_blocking(proc.stdin.fileno(), False)
+            os.set_blocking(proc.stdout.fileno(), False)
+            send(proc, {**config, 'inspect_only': not execute}, min(deadline, time.monotonic() + 15))
+            while result is None:
+                value = frame(proc, buffer, min(deadline, time.monotonic() + 120))
+                kind = value.get('type')
+                if kind == 'completion':
+                    if client is None:
+                        raise ValueError('inspection must not request inference')
+                    validate_completion(value, {config['source'], config['target'], config['user_model']})
+                    receipt = {'sequence': len(record['completions']) + 1, 'model': value['model'],
+                               'request_sha256': hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest(),
+                               'status': 'requested'}
+                    record['completions'].append(receipt)
+                    save()
+                    try:
+                        response = client.complete(value['model'], value['messages'], value.get('tools'), max_tokens=2500)
+                        receipt['status'] = 'completed'
+                        send(proc, {'type': 'completion_result', 'message': response},
+                             min(deadline, time.monotonic() + 15))
+                    except Exception as error:
+                        receipt['status'] = 'failed'
+                        receipt['error_type'] = type(error).__name__
+                        send(proc, {'type': 'completion_result', 'error': type(error).__name__},
+                             min(deadline, time.monotonic() + 15))
+                        # One failed provider call ends the run. No billable retries.
+                        raise
+                    save()
+                elif kind == 'description':
+                    record['description'] = value
+                    if value['metadata']['upstream_revision'] != config['revision']:
+                        raise ValueError('upstream checkout identity mismatch')
+                    save()
+                elif kind == 'progress':
+                    record['events'].append(value)
+                    save()
+                    print(json.dumps(value), flush=True)
+                elif kind == 'result':
+                    result = value
+                else:
+                    raise ValueError('unknown external worker frame')
+            proc.wait(timeout=15)
+            if proc.returncode != 0:
+                raise RuntimeError('external worker failed')
+    except Exception as error:
+        record['error_type'] = type(error).__name__
+        record['error_message'] = str(error)[:250]
+    finally:
+        if proc is not None:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=10)
+            proc.stdin.close()
+            proc.stdout.close()
+        cleanup = remove_and_verify('docker', name, env={'PATH': os.environ.get('PATH', '/usr/bin:/bin')})
+        record['cleanup'] = cleanup
+        record['model_requests'] = client.requests if client else 0
+        record['result'] = result
+        verified = bool(execute and result and result.get('verified') is True and
+                        result.get('model_requests') == record['model_requests'] and
+                        cleanup['verified'] and not record.get('error_type'))
+        if verified:
+            expected = {row['case_name']: row for rows in record['description']['metadata']['splits'].values() for row in rows}
+            cases = [c for phase in result['report']['evaluations'].values() for c in phase['cases']]
+            cases.extend(result['original_runner_verification']['cases'])
+            for case in cases:
+                row = expected[case['case']]
+                if (case['initial_db_hash'] != row['initial_db_hash'] or
+                        (case['passed'] and case['final_db_hash'] != row['expected_db_hash'])):
+                    verified = False
+        record['verified'] = verified
+        if not verified and result:
+            result['export'] = None
+        save()
+        if verified:
+            (output / 'agent-config.json').write_text(json.dumps(result['export'], indent=2))
+            # Plain source to copy into the developer checkout, never imported here.
+            root = Path(__file__).resolve().parents[1]
+            helper = (root / config['application_helper']).resolve()
+            if not helper.is_relative_to(root / 'integrations') or helper.suffix != '.py':
+                raise ValueError('Application helper must be reviewed integration source')
+            (output / 'apply_config.py').write_text(helper.read_text())
+    print(json.dumps({'verified': verified, 'status': result.get('status') if result else 'execution_error',
+                      'model_requests': record['model_requests'], 'cleanup_verified': cleanup['verified'],
+                      'output': str(output)}), flush=True)
+    if execute and not verified:
+        raise RuntimeError('migration not verified; evidence retained, export withheld')
+    if not cleanup['verified'] or record.get('error_type'):
+        raise RuntimeError('external execution failed; evidence retained')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--manifest', type=Path, required=True)
+    parser.add_argument('--image', required=True)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--execute', action='store_true')
+    args = parser.parse_args()
+    previous = os.umask(0o077)
+    try:
+        run(json.loads(args.manifest.read_text()), args.image, args.output, args.execute)
+    finally:
+        os.umask(previous)
+
+
+if __name__ == '__main__':
+    main()

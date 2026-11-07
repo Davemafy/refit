@@ -1,0 +1,15 @@
+{
+  "format": "refit.container-agent.v1",
+  "repository": "https://github.com/sierra-research/tau2-bench",
+  "revision": "033bf082f48e4a3c6a1256208e93cf2ce9c3bb6f",
+  "adapter": "integrations.retail.adapter",
+  "application_helper": "integrations/retail/apply_config.py",
+  "domain": "retail",
+  "source": "deepseek-v4.1-flash-1017",
+  "target": "glm-5.2",
+  "user_model": "deepseek-v4.1-flash-1017",
+  "max_requests": 400,
+  "splits": {"train": ["73", "75"], "validation": ["77", "79"], "holdout": ["80", "85"]},
+  "max_steps": 60,
+  "seed": 846201
+}

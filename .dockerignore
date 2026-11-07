@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/__pycache__
+**/.env
+**/.env.*
+web
+data
+var
+artifacts

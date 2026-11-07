@@ -42,7 +42,10 @@ class AgentProfile:
 class ReplayCase:
     name: str
     request: str
-    environment: Callable[[], ToolEnvironment]
+    environment: Callable[[], ToolEnvironment] | None = None
+    # An imported framework can own its complete conversational/tool loop.
+    # This callable is trusted adapter code and must run inside its sandbox.
+    runner: Callable[..., dict] | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +67,13 @@ class AgentContract:
 
 def replay(client, model: str, contract: AgentContract, profile: AgentProfile,
            case: ReplayCase, max_turns: int = 9) -> dict:
+    if case.runner is not None:
+        result = case.runner(client, model, contract, profile, case)
+        if result.get("case") != case.name:
+            raise ValueError("native runner returned a different case")
+        return result
+    if case.environment is None:
+        raise ValueError("case requires an environment or native runner")
     env = case.environment()
     messages = [
         {"role": "system", "content": profile.instructions},
