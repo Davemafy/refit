@@ -1,0 +1,5 @@
+{
+  "training": [["GET"]],
+  "validation": [["POST"], ["PATCH"]],
+  "holdout": [["head"], ["OPTIONS"], "GET", "post"]
+}

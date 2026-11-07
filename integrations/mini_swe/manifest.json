@@ -8,7 +8,7 @@
   "source": "deepseek-v4.1-flash-1017",
   "target": "glm-5.2",
   "user_model": "deepseek-v4.1-flash-1017",
-  "max_requests": 96,
+  "max_requests": 61,
   "step_limit": 12,
   "task_repository": "https://github.com/psf/requests",
   "task_revision": "091991be0da19de9108dbe5e3752917fea3d7fdc",

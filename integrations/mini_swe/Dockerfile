@@ -9,6 +9,6 @@ RUN git init /opt/task-base && git -C /opt/task-base remote add origin https://g
 WORKDIR /opt/refit
 COPY scripts /opt/refit/scripts
 COPY integrations/container_worker.py /opt/refit/integrations/container_worker.py
-COPY integrations/mini_swe /opt/refit/integrations/mini_swe
+COPY integrations/mini_swe/adapter.py integrations/mini_swe/apply_config.py integrations/mini_swe/sitecustomize.py integrations/mini_swe/verify.py integrations/mini_swe/evaluate.py /opt/refit/integrations/mini_swe/
 ENV HOME=/tmp PYTHONDONTWRITEBYTECODE=1 LITELLM_LOCAL_MODEL_COST_MAP=true MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=1 MSWEA_SILENT_STARTUP=1
 ENTRYPOINT ["python", "-B", "-u", "-m", "integrations.container_worker"]

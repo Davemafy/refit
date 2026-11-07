@@ -95,7 +95,7 @@ def validate_completion(value, models):
         raise ValueError('invalid completion tool schemas')
 
 
-def validate_result(result, description, config, verification_only=False):
+def validate_result(result, description, config, verification_only=False, patch_evaluations=None):
     statuses = ('export_verified_original_runner',) if verification_only else ('verified_adaptation', 'compatible_on_sample')
     if result['status'] not in statuses:
         raise ValueError('migration did not pass shared engine gates')
@@ -111,13 +111,24 @@ def validate_result(result, description, config, verification_only=False):
     cases = [c for phase in result['report']['evaluations'].values() for c in phase['cases']]
     cases.extend(check['cases'])
     for case in cases:
+        if patch_evaluations is not None:
+            evaluation = case['verdict']['objective_tests']
+            index = evaluation['receipt']
+            if type(index) is not int or not 1 <= index <= len(patch_evaluations):
+                raise ValueError('Native case lacks a patch evaluation receipt')
+            receipt = patch_evaluations[index - 1]
+            if (not case['case'].endswith('-' + receipt['partition'])
+                    or receipt['patch_sha256'] != hashlib.sha256(case['code_diff'].encode()).hexdigest()
+                    or evaluation['passed'] != receipt['passed']
+                    or (case['passed'] and not receipt['passed'])):
+                raise ValueError('Native case does not match its patch evaluation receipt')
         row = expected[case['case']]
         if (case['initial_db_hash'] != row['initial_db_hash'] or
                 (case['passed'] and case['final_db_hash'] != row['expected_db_hash'])):
             raise ValueError('native state fingerprint mismatch')
 
 
-def run(config, image, output, execute=False, recorded=None, verify_export=None):
+def run(config, image, output, execute=False, recorded=None, verify_export=None, *, patch_evaluator=None):
     validate_config(config)
     if execute and recorded is not None:
         raise ValueError('Recorded transport recovery cannot make new inference calls')
@@ -204,6 +215,18 @@ def run(config, image, output, execute=False, recorded=None, verify_export=None)
                         # One failed provider call ends the run. No billable retries.
                         raise
                     save()
+                elif kind == 'evaluate_patch':
+                    receipts = record.setdefault('patch_evaluations', [])
+                    if patch_evaluator is None or len(receipts) >= 16:
+                        raise ValueError('Patch evaluation unavailable or budget exhausted')
+                    receipt = patch_evaluator(image_info['Id'], value)
+                    receipts.append(receipt)
+                    save()
+                    # Hidden inputs and outputs stay host-side. Return only
+                    # the verdict and the receipt position to the agent worker.
+                    send(proc, {'type': 'patch_evaluation',
+                                'evaluation': {'passed': receipt['passed'], 'receipt': len(receipts)}},
+                         min(deadline, time.monotonic() + 15))
                 elif kind == 'description':
                     record['description'] = value
                     if value['metadata']['upstream_revision'] != config['revision']:
@@ -255,7 +278,8 @@ def run(config, image, output, execute=False, recorded=None, verify_export=None)
                         cleanup['verified'] and not record.get('error_type'))
         if verified:
             try:
-                validate_result(result, record['description'], config, verification_only=verify_export is not None)
+                validate_result(result, record['description'], config, verification_only=verify_export is not None,
+                                patch_evaluations=record.get('patch_evaluations', []) if patch_evaluator else None)
             except (KeyError, TypeError, ValueError) as error:
                 verified = False
                 record['error_type'] = type(error).__name__

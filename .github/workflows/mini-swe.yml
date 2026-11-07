@@ -30,30 +30,25 @@ jobs:
           docker build -f integrations/mini_swe/Dockerfile -t refit-mini-swe .
       - name: Zero-inference preflight, original bug red and upstream fix green
         run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          from scripts.container_agent import run
-          config = json.loads(Path('integrations/mini_swe/manifest.json').read_text())
-          config['_preflight_patch'] = Path('experiments/mini-swe-reference.patch').read_text()
-          run(config, 'refit-mini-swe', Path('/tmp/mini-inspect'))
-          PY
+          python -m integrations.mini_swe.run --image refit-mini-swe --output /tmp/mini-inspect \
+            --reference-patch experiments/mini-swe-reference.patch
       - name: One explicit bounded live migration, never an automatic paid retry
         env:
           VULTR_INFERENCE_API_KEY: ${{ secrets.VULTR_INFERENCE_API_KEY }}
         run: |
           python - <<'PY'
-          import json, subprocess, sys
+          import json, os, subprocess, sys
           from pathlib import Path
           plan = json.loads(Path('experiments/mini-swe-run.json').read_text())
           changed = subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines()
-          if 'experiments/mini-swe-run.json' not in changed or plan['execute'] is not True:
+          if (os.environ['GITHUB_RUN_ATTEMPT'] != '1' or
+                  'experiments/mini-swe-run.json' not in changed or plan['execute'] is not True):
               print('No new paid mini-SWE plan. Zero inference calls.')
               sys.exit(0)
           config = json.loads(Path('integrations/mini_swe/manifest.json').read_text())
-          assert plan['max_requests'] == config['max_requests'] == 96
-          subprocess.run([sys.executable,'-m','scripts.container_agent',
-              '--manifest','integrations/mini_swe/manifest.json','--image','refit-mini-swe',
+          assert plan['max_requests'] == config['max_requests'] == 61
+          subprocess.run([sys.executable,'-m','integrations.mini_swe.run',
+              '--image','refit-mini-swe',
               '--output','/tmp/mini-live','--execute'],check=True)
           PY
       - uses: actions/upload-artifact@v4

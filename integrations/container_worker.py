@@ -46,6 +46,13 @@ class BrokerClient:
             raise RuntimeError(reply["error"])
         return reply["message"]
 
+    def evaluate_patch(self, partition, patch):
+        emit({"type": "evaluate_patch", "partition": partition, "patch": patch})
+        reply = json.loads(sys.stdin.readline())
+        if reply.get("type") != "patch_evaluation":
+            raise RuntimeError("host rejected patch evaluation")
+        return reply["evaluation"]
+
     def record_case(self, result):
         emit({"type": "case_result", "case": result})
 

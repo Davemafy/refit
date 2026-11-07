@@ -20,21 +20,18 @@ From the Refit checkout, with Docker's `runsc` runtime installed:
 
 ```bash
 docker build -f integrations/mini_swe/Dockerfile -t refit-mini-swe .
-python -m scripts.container_agent \
-  --manifest integrations/mini_swe/manifest.json --image refit-mini-swe \
-  --output ./mini-inspect
+python -m integrations.mini_swe.run --image refit-mini-swe --output ./mini-inspect \
+  --reference-patch experiments/mini-swe-reference.patch
 ```
 
 Inspection makes no inference requests. For a new, explicitly billable run,
 privately configure `VULTR_INFERENCE_API_KEY` on the broker host, then:
 
 ```bash
-python -m scripts.container_agent \
-  --manifest integrations/mini_swe/manifest.json --image refit-mini-swe \
-  --output ./mini-live --execute
+python -m integrations.mini_swe.run --image refit-mini-swe --output ./mini-live --execute
 ```
 
-The cap is **96 total inference requests**, including source, replacement,
+The cap is **61 total inference requests**, including source, replacement,
 any bounded instruction repair and fresh export verification. Each native
 agent has a 12-step limit. The broker does not retry provider failures.
 The committed Actions plan is disabled after the recorded run; changes to
@@ -46,14 +43,13 @@ stays outside that container. Source and replacement solve clean copies of
 the same task. The exported target configuration then gets one **fresh**
 original-agent execution on another clean copy.
 
-Validation and holdout apply each agent's **frozen generated code diff** to
-clean checkouts and execute distinct protected tests without further model
-calls. These are test partitions of one genuine issue, not additional issues
-or repeated independent coding trials. The agent sees the training test only;
-future validation inputs and the reference solution are absent from its prompt.
-The evaluator lives on the read-only image. Test outcomes, real trajectories,
-code diffs, request receipts and container cleanup remain in `run.json`.
-Failure of source, verification, budget or cleanup withholds the export.
+Validation and holdout apply each agent's frozen code diff to a clean checkout
+in a separate, networkless gVisor container. The broker supplies fixture inputs
+only to that disposable evaluator over stdin. The agent image contains the
+training example and no held-out fixtures or reference patch. The generation
+worker receives only the evaluator verdict and receipt number. The host binds
+the receipt to the diff and retains the full checks and cleanup in `run.json`.
+These partitions test one issue. Failure of any required gate withholds the export.
 
 ## Use the export
 
@@ -126,11 +122,9 @@ verified, and no successful migration is claimed. The trial's
 tracked change), not a detected host escape. Its immutable cleanup receipt
 confirms removal and healthy Docker after the `runsc` container exited normally.
 
-The concrete blocker is reliable completion within the declared native step
-limit, not provider authentication or Docker containment. Remaining credits
-were deliberately left unused. Completing the success journey needs a newly
-authorized experiment; increasing the limit or labelling the unfinished run
-successful would change the declared acceptance conditions.
+This first run established a completion failure within the original 12-step
+limit. Its verifier lived in the generation container, so its evaluation
+partitions did not have the isolation of the current runner.
 
 The original compressed report is `data/evaluations/mini-swe-requests-2316-001.json.gz`.
 The preflight report sits alongside it. `evidence/source.patch` and
