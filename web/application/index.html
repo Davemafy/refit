@@ -27,6 +27,10 @@
 <button type="submit">Inspect source</button>
 </form>
 <p id="inspection" role="status" hidden></p>
+<details><summary>Open an existing run</summary>
+<form id="resumeForm"><label>Run ID<input id="savedRun" pattern="app-[0-9a-f]{16}" required></label>
+<button type="submit" class="secondary">Open run</button></form>
+</details>
 </section>
 <section id="runSection" hidden>
 <h2>Choose models</h2>
@@ -46,6 +50,7 @@
 <section id="live" hidden>
 <h2 id="outcome" role="status">Migration</h2>
 <p id="summary"></p>
+<p id="sandbox"></p><ul id="phases"></ul>
 <button id="cancel" class="secondary">Cancel</button>
 <button id="artifact" hidden>Download verified configuration</button>
 <button id="evidence" class="secondary">Download evidence</button>
@@ -73,6 +78,12 @@ async function api(url, data) {
   return payload;
 }
 function report(error) { $("error").textContent=error.message; }
+function openRun(id) {
+  runId=id; cursor=0;
+  $("events").textContent=""; $("phases").replaceChildren();
+  $("sandbox").textContent="";
+  $("live").hidden=false;
+}
 function busy(form, value) { form.querySelector('button[type=submit]').disabled=value; }
 $("method").onchange=()=>{const zip=$("method").value==="zip";$("zipField").hidden=!zip;$("githubFields").hidden=zip;};
 $("importForm").onsubmit=async event=>{
@@ -129,6 +140,17 @@ async function observe() {
         const d=e.details;
         $("events").textContent+=`${e.seq}. ${e.type.replaceAll("_"," ")} `+
           [d.phase,d.case,d.model,d.receipt ? (d.receipt.verified ? "cleanup verified" : "cleanup unverified") : "",d.status].filter(Boolean).join(" · ")+"\n";
+        if(e.type==="phase_completed") {
+          const row=document.createElement("li");
+          row.textContent=d.phase.replaceAll("_"," ")+" · "+d.model+" · "+d.passed+"/"+d.total+" passed";
+          $("phases").append(row);
+        }
+        if(e.type==="sandbox_started") $("sandbox").textContent="gVisor container running · "+d.case;
+        if(e.type==="sandbox_cleanup") $("sandbox").textContent=d.receipt.verified
+          ? "gVisor container removed and verified" : "Container cleanup unverified";
+        if(e.type==="inference_completed" && d.tools_called?.length) {
+          $("sandbox").textContent="Agent called "+d.tools_called.join(", ");
+        }
         if(e.type==="inference_requested") $("summary").textContent=`${runId} · Request ${d.number} · ${d.model}`;
       }
     }
@@ -142,10 +164,15 @@ $("runForm").onsubmit=async event=>{
     const data={import_id:imported.id,source:$("source").value,target:$("target").value,
       budget:Number($("budget").value),authorize:$("authorize").checked};
     if(!imported.discovery.preset && $("setup").value.trim()) data.setup=JSON.parse($("setup").value);
-    const run=await api(path+"/runs",data); runId=run.id;cursor=0; $("events").textContent="";
-    $("live").hidden=false; update(run); await observe();
+    const run=await api(path+"/runs",data); openRun(run.id); update(run); await observe();
   } catch(error) { report(error); }
   finally { busy(event.target,false); $("authorize").checked=false; }
+};
+$("resumeForm").onsubmit=async event=>{
+  event.preventDefault(); $("error").textContent=""; busy(event.target,true);
+  try { openRun($("savedRun").value.trim()); update(await api(runPath())); await observe(); }
+  catch(error) { report(error); }
+  finally { busy(event.target,false); }
 };
 $("cancel").onclick=async()=>{try{update(await api(runPath()+"/cancel",{}));}catch(error){report(error);}};
 async function download(suffix) {

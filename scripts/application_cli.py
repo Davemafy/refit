@@ -15,7 +15,7 @@ from .application_import import ARCHIVE_LIMIT, EXPANDED_LIMIT, FILE_LIMIT, sensi
 from .application_run import MODELS
 
 
-def local_zip(path):
+def local_zip(path, excluded=None):
     if not path.is_dir():
         raise ValueError("Project must be a directory.")
     buffer = io.BytesIO()
@@ -28,7 +28,7 @@ def local_zip(path):
             for name in files:
                 file = root / name
                 relative = file.relative_to(path)
-                if file.is_symlink() or sensitive(relative) or not file.is_file():
+                if file.is_symlink() or sensitive(relative) or not file.is_file() or file.resolve() == excluded:
                     continue
                 size = file.stat().st_size
                 total += size
@@ -66,7 +66,7 @@ def main():
             raise ValueError(json.load(error)["error"]["message"]) from error
 
     try:
-        imported = api("/imports", {"method": "zip", "archive": local_zip(args.project)})
+        imported = api("/imports", {"method": "zip", "archive": local_zip(args.project, args.setup.resolve() if args.setup else None)})
         print(json.dumps(imported), flush=True)
         if args.authorize_requests is None:
             return

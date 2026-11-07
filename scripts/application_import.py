@@ -80,11 +80,11 @@ def unpack(archive, *, github=False):
             entries = zipped.infolist()
             if len(entries) > FILE_LIMIT or sum(entry.file_size for entry in entries) > EXPANDED_LIMIT:
                 raise ImportProblem("The ZIP exceeds 1,500 entries or 12 MiB expanded.")
-            roots = {safe_path(entry.filename).parts[0] for entry in entries}
+            roots = {safe_path(entry.orig_filename).parts[0] for entry in entries}
             if github and len(roots) != 1:
                 raise ImportProblem("GitHub archive has an unexpected source layout.")
             for entry in entries:
-                path = safe_path(entry.filename)
+                path = safe_path(entry.orig_filename)
                 mode = stat.S_IFMT(entry.external_attr >> 16)
                 if mode not in (0, stat.S_IFREG, stat.S_IFDIR) or entry.flag_bits & 1:
                     raise ImportProblem("Symlinks, special files and encrypted files are not supported.")

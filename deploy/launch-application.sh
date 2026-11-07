@@ -29,7 +29,7 @@ WorkingDirectory=$REPO
 EnvironmentFile=/etc/refit/inference.env
 EnvironmentFile=/etc/refit/application.env
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/usr/bin/python3 -m scripts.application_http --state /var/lib/refit-application --port 8098
+ExecStart=/usr/bin/python3 -m scripts.application_http --state /var/lib/refit-application --port 8098 --daily-budget 48
 UMask=0077
 Restart=on-failure
 RestartSec=3
