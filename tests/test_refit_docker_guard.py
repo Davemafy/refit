@@ -74,6 +74,55 @@ class DockerGuardPolicyTests(unittest.TestCase):
         self.assertTrue(permitted(["rm", "-f", NAME], IMAGES))
         self.assertTrue(permitted(["container", "inspect", DNAME], IMAGES))
 
+    def test_unix_broker_forwards_only_approved_streams(self):
+        import socketserver
+        import subprocess
+        import sys
+        import tempfile
+        import threading
+        from types import SimpleNamespace
+        from scripts import docker_guard as guard
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fake = root / "docker"
+            fake.write_text(
+                "#!/usr/bin/python3\nimport sys\n"
+                "if sys.argv[1] == 'info': print('\"fake-daemon\"',flush=True)\n"
+                "elif sys.argv[1] == 'run':\n"
+                " for line in sys.stdin: print(line.strip(),flush=True)\n"
+                "else: print('unused',flush=True)\n"
+            )
+            fake.chmod(0o755)
+            socket_path = str(root / "broker.sock")
+            with patch.object(guard, "DOCKER", str(fake)), \
+                 patch.object(guard, "approved_images", return_value=IMAGES), \
+                 patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=os.getuid())):
+                service = guard.Guard(socket_path, guard.Handler)
+                thread = threading.Thread(target=service.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    snippet = ("import sys;from scripts import docker_guard as g;"
+                               "g.SOCKET=sys.argv[1];raise SystemExit(g.client(sys.argv[2:]))")
+                    base = [sys.executable, "-c", snippet, socket_path]
+                    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parent.parent)}
+                    ping = subprocess.run(base + ["info", "--format", "{{json .ID}}"],
+                                          input=b"", capture_output=True, env=env, timeout=5)
+                    self.assertEqual(ping.returncode, 0, ping.stderr)
+                    self.assertIn(b"fake-daemon", ping.stdout)
+                    streamed = subprocess.run(base + app_command(APP, NAME)[1:],
+                                              input=b"worker message\n", capture_output=True,
+                                              env=env, timeout=5)
+                    self.assertEqual(streamed.returncode, 0, streamed.stderr)
+                    self.assertIn(b"worker message", streamed.stdout)
+                    rejected = subprocess.run(base + ["exec", NAME, "sh"], input=b"",
+                                              capture_output=True, env=env, timeout=5)
+                    self.assertEqual(rejected.returncode, 126)
+                    self.assertIn(b"unapproved", rejected.stderr)
+                finally:
+                    service.shutdown()
+                    service.server_close()
+
     def test_rejects_unsafe_staging_paths(self):
         self.assertFalse(diagnostic_mount("/tmp/unsafe/payload", "/tmp/unsafe/container.id"))
         self.assertFalse(diagnostic_mount(str(SRC), str(CID.parent / "wrong.id")))
