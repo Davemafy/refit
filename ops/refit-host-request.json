@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Fix verified reviewer login-to-capability 502 and enforce cold-start HTTP regression"
+  "reason": "Verify judge-only availability, single-use reviewer flow and operational readiness monitoring"
 }
