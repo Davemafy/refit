@@ -39,8 +39,8 @@ try{
  await page.getByRole("heading",{name:/Change the model/}).waitFor();
  await page.screenshot({path:"artifacts/saas-ui/01-landing.png",fullPage:true});
  await page.goto(url+"/app");
- await page.getByRole("heading",{name:"Explore a migration"}).waitFor();
- await page.getByText(/Recorded migration|Public, read-only preview/).first().waitFor();
+ await page.getByRole("heading",{name:"Overview"}).waitFor();
+ await page.getByText(/Recorded execution/).first().waitFor();
  await page.screenshot({path:"artifacts/saas-ui/00-guest-workspace.png",fullPage:true});
  await page.goto(url+"/app/agents/new");
  await page.getByRole("button",{name:/Inspect this agent/}).click();
