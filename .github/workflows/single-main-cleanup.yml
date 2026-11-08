@@ -1,0 +1,108 @@
+name: Preserve historical branches and leave main only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ops/single-main-cleanup.json'
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: refit-single-main-cleanup
+  cancel-in-progress: false
+
+jobs:
+  consolidate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive every removed branch as a tag, then delete it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import time
+          from urllib.error import HTTPError
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+
+          config = json.load(open("ops/single-main-cleanup.json", encoding="utf-8"))
+          allowed = config["branches"]
+          assert config["operation"] == "archive_and_delete"
+          assert config["archive_prefix"] == "archive/refit-2026-11-08/"
+          assert len(allowed) == len(set(allowed)) and len(allowed) == 9
+          assert "main" not in allowed
+          assert all(name and not name.startswith("/") and ".." not in name for name in allowed)
+          base = "https://api.github.com/repos/" + os.environ["REPOSITORY"]
+          headers = {"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                     "Accept": "application/vnd.github+json",
+                     "X-GitHub-Api-Version": "2022-11-28"}
+          def api(method, uri, data=None):
+              payload = None if data is None else json.dumps(data).encode()
+              req = Request(base + uri, data=payload, method=method, headers=headers)
+              try:
+                  with urlopen(req, timeout=25) as response:
+                      return response.status, json.load(response) if response.status != 204 else None
+              except HTTPError as exc:
+                  if exc.code == 404:
+                      return 404, None
+                  raise RuntimeError(
+                      method + " " + uri.split("?")[0] + " returned HTTP " + str(exc.code)
+                  ) from None
+
+          # Fail before touching any ref if an open PR targets a listed branch.
+          status, prs = api("GET", "/pulls?state=open&per_page=100")
+          assert status == 200
+          active = [pr for pr in prs if pr["head"]["repo"] and
+                    pr["head"]["repo"]["full_name"] == os.environ["REPOSITORY"] and
+                    pr["head"]["ref"] in allowed]
+          assert not active, "Open PR heads must be closed or merged before branch cleanup"
+
+          # Validate snapshots first, to avoid partial cleanup on an invalid branch.
+          heads = {}
+          for name in allowed:
+              status, ref = api("GET", "/git/ref/heads/" + quote(name, safe="/"))
+              if status == 404:
+                  print("ALREADY REMOVED:", name)
+                  continue
+              assert status == 200 and ref["object"]["type"] == "commit"
+              heads[name] = ref["object"]["sha"]
+
+          for name, sha in heads.items():
+              tag = config["archive_prefix"] + name
+              status, archived = api("GET", "/git/ref/tags/" + quote(tag, safe="/"))
+              if status == 404:
+                  status, archived = api("POST", "/git/refs", {
+                      "ref": "refs/tags/" + tag,
+                      "sha": sha,
+                  })
+                  assert status == 201, (tag, status)
+              else:
+                  assert status == 200 and archived["object"]["sha"] == sha, (
+                      "Existing archive tag differs from branch tip: " + name)
+              status, record = api("DELETE", "/git/refs/heads/" + quote(name, safe="/"))
+              assert status == 204, (name, status)
+              print("ARCHIVED AND DELETED:", name, sha, "->", tag)
+
+          for _ in range(5):
+              status, refs = api("GET", "/branches?per_page=100")
+              assert status == 200
+              actual = [item["name"] for item in refs]
+              if actual == ["main"]:
+                  print("PASS: One remote branch remains: main")
+                  break
+              time.sleep(1)
+          else:
+              raise AssertionError("Outstanding remote branches: " + ", ".join(actual))
+          PY
