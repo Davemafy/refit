@@ -108,6 +108,33 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(reviewer_capacity["max_requests"], 15)
                     self.assertEqual(reviewer_capacity["account_daily_allowance"], 15)
                     self.assertEqual(reviewer_capacity["global_remaining_today"], 48)
+                    self.assertFalse(reviewer_capacity["review_run_used"])
+                    review_owner = service.accounts.resolve(
+                        review_cookie.split(";", 1)[0].split("=", 1)[1])[0]
+                    # One completed reviewer run makes migration creation
+                    # unavailable, without withholding its saved evidence.
+                    reviewer_run_id = "app-fedcba9876543210"
+                    service.runs[reviewer_run_id] = ({
+                        "id": reviewer_run_id, "mode": "application_live",
+                        "owner": review_owner, "budget": 9, "model_requests": 7,
+                        "started_at": now(), "status": "compatible_on_sample",
+                        "export": {"model": "glm-5.2"}
+                    }, [])
+                    used_status, used_capability, _ = request(
+                        "GET", "", cookie=review_cookie.split(";", 1)[0])
+                    self.assertEqual(used_status, 200)
+                    self.assertTrue(used_capability["review_run_used"])
+                    self.assertEqual(used_capability["max_requests"], 0)
+                    self.assertEqual(request("GET", f"/runs/{reviewer_run_id}",
+                                             cookie=review_cookie.split(";", 1)[0])[0], 200)
+                    self.assertEqual(request("GET", f"/runs/{reviewer_run_id}",
+                                             cookie=bob)[0], 404)
+                    service.review_passes["review-" + digest(review_code)] = int(time.time()) - 1
+                    expired_status, expired, _ = request(
+                        "GET", "", cookie=review_cookie.split(";", 1)[0])
+                    self.assertEqual(expired_status, 200)
+                    self.assertTrue(expired["review_pass_expired"])
+                    self.assertEqual(expired["max_requests"], 0)
                     owner = service.accounts.resolve(alice.split("=", 1)[1])[0]
                     project = "import-1234567890abcdef"
                     service.accounts.save_project(owner, project, {"id": project},
