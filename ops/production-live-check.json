@@ -1,0 +1,5 @@
+{
+  "revision": "9e3a3a050dd7d96475f6194b5885010dc39eed29",
+  "purpose": "Single explicit real-model migration acceptance of the hardened Refit release",
+  "estimated_model_request_ceiling": 10
+}
