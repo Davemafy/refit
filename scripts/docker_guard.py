@@ -245,6 +245,11 @@ class Handler(socketserver.BaseRequestHandler):
             status = 124
         stdout.join(timeout=3)
         stderr.join(timeout=3)
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            try:
+                stream.close()
+            except OSError:
+                pass
         # The trusted root-side Docker CLI creates the cidfile. Transfer only
         # that small receipt back to the unprivileged owner so the controller
         # can independently verify actual container creation.
