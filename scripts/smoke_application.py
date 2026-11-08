@@ -29,7 +29,13 @@ def main():
             return response.read()
 
     def api(path, data=None):
-        return json.loads(request("/api/application" + path, data))
+        try:
+            return json.loads(request("/api/application" + path, data))
+        except HTTPError as error:
+            # CI must show the actual bounded server rejection rather than a
+            # context-free HTTP 422. This response contains no account secret.
+            reason = error.read(1000).decode("utf8", errors="replace")
+            raise RuntimeError(f"Refit API HTTP {error.code} at {path}: {reason}") from error
 
     assert b"Bring your agent" in request("/bring", authenticated=False)
     try:

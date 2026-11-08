@@ -124,17 +124,25 @@ def github_snapshot(repo, revision, token="", directory="", selected=None):
     api = f"https://api.github.com/repos/{repo}/git"
 
     def tree(ref, recursive=False):
-        try:
-            result = json.loads(github_read(
-                f"{api}/trees/{ref}" + ("?recursive=1" if recursive else ""), token, TREE_BYTES, deadline))
-            rows = result["tree"]
-            if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
-                raise ValueError
-        except (TypeError, KeyError, ValueError) as exc:
-            raise ImportProblem("GitHub returned an invalid tree.") from exc
-        if result.get("truncated") or len(rows) > TREE_LIMIT:
-            raise ImportProblem("The GitHub tree exceeds the inspection budget. Select an application subdirectory.")
-        return rows
+        # GitHub's public tree endpoint can briefly return an incomplete body.
+        # Retry malformed responses only, with the original 90s deadline and
+        # exact SHA/blob verification still enforced. Never accept fallback data.
+        for attempt in range(3):
+            try:
+                result = json.loads(github_read(
+                    f"{api}/trees/{ref}" + ("?recursive=1" if recursive else ""),
+                    token, TREE_BYTES, deadline))
+                rows = result["tree"]
+                if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+                    raise ValueError("invalid tree rows")
+            except (TypeError, KeyError, ValueError) as exc:
+                if attempt == 2 or deadline - time.monotonic() < 2:
+                    raise ImportProblem("GitHub returned an invalid tree.") from exc
+                time.sleep(0.25 * (attempt + 1))
+                continue
+            if result.get("truncated") or len(rows) > TREE_LIMIT:
+                raise ImportProblem("The GitHub tree exceeds the inspection budget. Select an application subdirectory.")
+            return rows
 
     try:
         commit = json.loads(github_read(f"{api}/commits/{revision}", token, 512 * 1024, deadline))

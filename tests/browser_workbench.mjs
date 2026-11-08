@@ -87,7 +87,7 @@ try {
  await page.keyboard.press("Control+k");
  const palette=page.getByRole("dialog",{name:"Search agents and runs"});
  await palette.waitFor();
- const input=page.getByRole("combobox");
+ const input=palette.getByRole("combobox");
  await input.fill("settings");
  assert.equal(await palette.locator("mark").innerText(),"Settings");
  await input.press("ArrowDown");

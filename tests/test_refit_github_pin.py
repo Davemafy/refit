@@ -90,6 +90,26 @@ class GithubPinTests(unittest.TestCase):
             self.assertEqual(saved.call_args.args[2]["revision"], SHA)
             service.process_lock.close()
 
+    def test_incomplete_public_tree_response_is_retried_but_never_trusted(self):
+        source = b"print('verified')"
+        sha = hashlib.sha1(f"blob {len(source)}\0".encode() + source).hexdigest()
+        commit = json.dumps({"sha": SHA, "tree": {"sha": "c" * 40}}).encode()
+        rows = json.dumps({"tree": [
+            {"path": "agent.py", "mode": "100644", "type": "blob",
+             "sha": sha, "size": len(source)}]}).encode()
+        with patch("scripts.application_import.github_read", side_effect=[
+                commit, b'{"message":"temporary"}', rows, source]) as read, \
+             patch("scripts.application_import.time.sleep") as sleep:
+            result = github_snapshot("owner/repo", SHA)
+            self.assertEqual(result["revision"], SHA)
+            self.assertEqual(read.call_count, 4)
+            sleep.assert_called_once()
+        with patch("scripts.application_import.github_read", side_effect=[
+                commit, b'{}', b'{}', b'{}']), \
+             patch("scripts.application_import.time.sleep"):
+            with self.assertRaisesRegex(ImportProblem, "invalid tree"):
+                github_snapshot("owner/repo", SHA)
+
     def test_tree_skips_large_files_and_verifies_selected_blob(self):
         source = b"print('hello')"
         blob = hashlib.sha1(f"blob {len(source)}\0".encode() + source).hexdigest()
