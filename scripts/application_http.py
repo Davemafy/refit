@@ -755,7 +755,7 @@ class ApplicationHandler(RefitHandler):
                 "/app/evidence": "app.html", "/app/settings": "app.html",
             }
             filename = page_files.get(page)
-            if filename is None and (page == "/app/runs/" + DEMO_ID or
+            if filename is None and (page in {"/app/runs/" + DEMO_ID, "/app/runs/demo-diagnostic-2026-11-08"} or
                                      re.fullmatch(r"/app/runs/app-[0-9a-f]{16}", page)):
                 filename = "app.html"
             if filename is not None:
