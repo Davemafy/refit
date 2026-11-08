@@ -1,0 +1,50 @@
+name: Capture Refit recorded agent studio film
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/replay_film_capture.mjs
+      - .github/workflows/replay-film-capture.yml
+permissions:
+  contents: read
+jobs:
+  film:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Chromium and FFmpeg
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y ffmpeg; }
+      - name: Capture authenticated real-event playback in product UI
+        run: node scripts/replay_film_capture.mjs
+      - name: Export high-quality 1080p and contact sheet
+        run: |
+          ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -i artifacts/refit-replay-film/refit-recorded-agent-replay.webm \
+            -vf "fps=30,format=yuv420p" \
+            -c:v libx264 -preset veryfast -crf 16 -movflags +faststart \
+            -an artifacts/refit-replay-film/refit-recorded-agent-replay-1080p.mp4
+          ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -i artifacts/refit-replay-film/refit-recorded-agent-replay-1080p.mp4 \
+            -vf "fps=1/3,scale=480:-1,tile=4x4" -frames:v 1 \
+            artifacts/refit-replay-film/contact-sheet.jpg
+      - name: Upload film and measured-source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-authentic-agent-replay-film
+          path: artifacts/refit-replay-film/
+          retention-days: 14
+          if-no-files-found: warn
