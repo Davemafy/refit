@@ -740,7 +740,7 @@ class ApplicationHandler(RefitHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy",
             "default-src 'none'; script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; "
             "form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
@@ -758,6 +758,14 @@ class ApplicationHandler(RefitHandler):
             page = url.path
             # Fixed-allowlist assets, never arbitrary file paths or user source.
             assets = {
+                "/assets/model-deepseek.svg": ("icons/deepseek.svg", "image/svg+xml"),
+                "/assets/model-zai.svg": ("icons/zai.svg", "image/svg+xml"),
+                "/assets/model-openai.svg": ("icons/openai.svg", "image/svg+xml"),
+                "/assets/model-anthropic.svg": ("icons/anthropic.svg", "image/svg+xml"),
+                "/assets/model-gemini.svg": ("icons/gemini.svg", "image/svg+xml"),
+                "/assets/model-qwen.svg": ("icons/qwen.svg", "image/svg+xml"),
+                "/assets/model-mistral.svg": ("icons/mistral.svg", "image/svg+xml"),
+                "/assets/model-meta.svg": ("icons/meta.svg", "image/svg+xml"),
                 "/assets/workbench.css": ("workbench.css", "text/css; charset=utf-8"),
                 "/assets/workspace-controls.js": ("workspace-controls.js", "text/javascript; charset=utf-8"),
                 "/assets/ui.css": ("ui.css", "text/css; charset=utf-8"),

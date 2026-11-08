@@ -74,6 +74,7 @@ try{
  await page.locator("#searchClose").click();
  assert.equal(await dialog.count(),0);
  await page.route("**/api/application/runs",r=>r.abort("failed"));
+ await page.locator("#mobileNavigation summary").click();
  await page.locator('.mobile-nav a[href="/app/runs"]').click();
  await page.getByRole("heading",{name:"Unable to load this view"}).waitFor();
  await page.unroute("**/api/application/runs");

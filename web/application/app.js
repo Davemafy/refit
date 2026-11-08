@@ -125,7 +125,35 @@ async function refreshWorkspace(){
  state.runs=runs.runs||[];
 }
 const lead=(title,subtitle,right="")=>'<div class="page-lead"><div class="page-heading"><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
-const empty=(title,desc,button)=>'<div class="empty"><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
+const empty=(title,desc,button)=>'<div class="empty">'+
+ (/^(No agents|No runs|No evidence)/.test(title)?emptyDiagram:"")+
+ '<h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
+// Model branding is mapped from model identifiers, never inferred from output text.
+// The marks are locally hosted SVGs licensed under LobeHub's MIT terms.
+const modelBrand=value=>{
+ const id=String(value||"").trim().toLowerCase();
+ if(/^(deepseek|deep-seek)/.test(id))return "deepseek";
+ if(/^(glm|z[.-]?ai|zhipu)/.test(id))return "zai";
+ if(/^(gpt|openai|o[134](?:-|$))/i.test(id))return "openai";
+ if(/^(claude|anthropic)/.test(id))return "anthropic";
+ if(/^(gemini|gemma|google)/.test(id))return "gemini";
+ if(/^(qwen|qwq)/.test(id))return "qwen";
+ if(/^(mistral|mixtral|codestral)/.test(id))return "mistral";
+ if(/^(llama|meta)/.test(id))return "meta";
+ return "generic";
+};
+const modelMark=value=>'<span class="model-mark model-mark--'+modelBrand(value)+'" aria-hidden="true"></span>';
+const modelIdentity=value=>'<span class="model-identity" title="'+safe(value||"Unknown model")+'">'+modelMark(value)+
+ '<span class="model-identity-name">'+safe(value||"Unknown model")+'</span></span>';
+const emptyDiagram='<svg class="empty-diagram" viewBox="0 0 280 108" fill="none" aria-hidden="true">'+
+ '<path d="M45 54H235" stroke="currentColor" stroke-dasharray="3 5" opacity=".27"/>'+
+ '<rect x="8" y="21" width="76" height="66" rx="10" stroke="currentColor" opacity=".45"/>'+
+ '<path d="M25 42l19-10 19 10v22L44 75 25 64V42Zm0 0 19 11 19-11M44 53v22" stroke="currentColor" stroke-width="1.8"/>'+
+ '<rect x="102" y="21" width="76" height="66" rx="10" stroke="currentColor" opacity=".45"/>'+
+ '<path d="M117 55h17m-8-8 8 8-8 8m20-8h17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'+
+ '<rect x="196" y="21" width="76" height="66" rx="10" stroke="currentColor" opacity=".45"/>'+
+ '<path d="m216 56 12 12 23-27" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'+
+ '</svg>';
 const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
 const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Recorded results only; no model calls while browsing.</span><a href="/login?next=/app/agents/new">Sign in</a></div>';
 async function overview(){
@@ -150,23 +178,37 @@ async function overview(){
      '<span class="overview-event-context">'+safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</span>'+
      '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
    }).join("")+'</div></section>':'';
-  page.innerHTML=lead("Overview","Execution history and migration evidence.")+
-   '<section class="overview-metrics" aria-label="Recorded migration totals">'+
-   [[completed.length,"Case observations"],[modelCalls.length,"Model responses"],[cleanup.length,"Verified cleanups"]].map(([total,label])=>
-    '<div class="overview-metric"><strong>'+safe(total)+'</strong><span>'+safe(label)+'</span></div>').join("")+'</section>'+
+  const passed=completed.filter(e=>e.details?.passed===true).length;
+  const failed=completed.filter(e=>e.details?.passed===false).length;
+  const unknown=completed.length-passed-failed;
+  const observationBars=completed.slice(0,20).map(e=>
+   '<span class="verification-tick '+(e.details?.passed===true?"is-passed":e.details?.passed===false?"is-failed":"is-pending")+'"></span>').join("");
+  page.innerHTML=lead("Overview","Inspect model migration outcomes and recorded execution.")+
    '<section class="overview-recent" aria-label="Recorded migration">'+
-   '<div class="overview-recent-heading"><span class="overview-recent-label"><span class="status-light" aria-hidden="true"></span> Recorded migration</span><span class="overview-recent-meta">Read-only sample</span></div>'+
-   '<div class="overview-recent-body"><h2>Python knowledge-base migration</h2>'+
-   '<p>Compare original and replacement execution, tool calls and cleanup evidence.</p></div>'+
-   '<dl class="overview-recent-facts">'+
-   '<div><dt>Original model</dt><dd><code>'+safe(r.source||"—")+'</code></dd></div>'+
-   '<div><dt>Replacement</dt><dd><code>'+safe(r.target||"—")+'</code></dd></div>'+
-   '<div><dt>Result</dt><dd>'+statusChip(r.status)+'</dd></div></dl>'+
-   '<div class="overview-recent-footer"><button class="btn" type="button" data-action="run" data-id="'+safe(r.id)+'">Inspect run and evidence '+ico("arrow")+'</button></div>'+
+   '<div class="overview-recent-heading"><div class="overview-recent-heading-text"><span class="overview-recent-label">Python knowledge-base agent</span>'+
+   '<span class="overview-recent-meta">Recorded evaluation · Read-only sample</span></div>'+statusChip(r.status)+'</div>'+
+   '<div class="migration-route" role="group" aria-label="Original model and replacement model">'+
+   '<div class="migration-endpoint"><span class="migration-endpoint-label">Original model</span>'+modelIdentity(r.source)+'</div>'+
+   '<div class="migration-connector" aria-hidden="true"><svg width="48" height="20" viewBox="0 0 48 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 10h43m-7-6 7 6-7 6"/></svg></div>'+
+   '<div class="migration-endpoint"><span class="migration-endpoint-label">Replacement</span>'+modelIdentity(r.target)+'</div></div>'+
+   '<div class="verification-strip" aria-label="'+safe(passed+' passed, '+failed+' failed, '+unknown+' not recorded among '+completed.length+' case observations')+'">'+
+   '<div class="verification-caption"><span>Observed checks</span><strong>'+safe(passed)+' passed'+(failed?', '+safe(failed)+' failed':'')+'</strong></div>'+
+   '<div class="verification-bars" aria-hidden="true">'+observationBars+'</div></div>'+
+   '<div class="overview-recent-footer"><span class="overview-footnote">'+safe(modelCalls.length)+' model responses · '+safe(cleanup.length)+' verified cleanups</span>'+
+   '<button class="btn" type="button" data-action="run" data-id="'+safe(r.id)+'">Inspect run '+ico("arrow")+'</button></div>'+
    '</section>'+
-   activity+
+   '<section class="overview-activity" aria-label="Recorded activity"><div class="overview-activity-head"><h3>Activity</h3>'+
+   '<span>'+safe(evidence.length)+' events</span></div>'+
+   '<div class="overview-event-list">'+recent.map(e=>{
+    const d=e.details||{},verified=d.receipt?.verified===true||d.passed===true;
+    const failure=d.passed===false||d.receipt?.verified===false||!!d.error;
+    return '<button type="button" class="overview-event" data-action="overview-trace" data-id="'+safe(r.id)+'" data-seq="'+safe(e.seq)+'">'+
+     '<span class="overview-event-dot '+(failure?"failed":verified?"passed":"")+'"></span>'+
+     '<span class="overview-event-name">'+safe(RefitOutcomes.eventLabel(e.type))+'</span>'+
+     '<span class="overview-event-context">'+safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</span>'+
+     '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
+   }).join("")+'</div></section>'+
    '<div class="section-footnote">Public example. <a href="/signup">Import your own agent</a> to start an independent evaluation.</div>';
-
   return;
  }
  const capacity=await req("");
@@ -198,14 +240,14 @@ const compactStatus=status=>{
 };
 const runTable=(runs,view="")=>runs.length?
  '<div class="run-table-desktop"><table class="table"><thead><tr><th scope="col">Status</th><th scope="col">Run ID</th><th scope="col">Models</th><th scope="col">Started</th><th class="numeric">Duration</th></tr></thead><tbody>'+
- runs.map(r=>'<tr><td>'+compactStatus(r.status)+'</td><td><button class="link-btn mono" data-action="run" data-view="'+safe(view)+'" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td><div class="model-pair"><span>'+safe(r.source||"—")+'</span><span class="model-pair-sep">→</span><span>'+safe(r.target||"—")+'</span></div></td><td class="run-timestamp">'+safe(formatTime(r.started_at))+'</td><td class="numeric">'+safe(formatDuration(r.execution_seconds))+'</td></tr>').join("")+'</tbody></table></div>'+
+ runs.map(r=>'<tr><td>'+compactStatus(r.status)+'</td><td><button class="link-btn mono" data-action="run" data-view="'+safe(view)+'" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td><div class="model-pair">'+modelIdentity(r.source)+'<span class="model-pair-sep" aria-hidden="true">→</span>'+modelIdentity(r.target)+'</div></td><td class="run-timestamp">'+safe(formatTime(r.started_at))+'</td><td class="numeric">'+safe(formatDuration(r.execution_seconds))+'</td></tr>').join("")+'</tbody></table></div>'+
  '<div class="run-list-mobile" role="list" aria-label="Migration runs">'+runs.map(r=>{
   const kind=["compatible_on_sample","verified_adaptation"].includes(r.status)?"good":ended(r.status)?"bad":"warn";
   return '<article class="run-mobile-item" role="listitem"><div class="run-mobile-head">'+
    '<button type="button" class="run-mobile-link mono" data-action="run" data-view="'+safe(view)+'" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button>'+
    '<span class="run-mobile-status '+kind+'" title="'+safe(statusText[r.status]||r.status||"Unknown")+'">'+safe(shortStatus(r.status))+'</span></div>'+
-   '<div class="run-mobile-models"><span class="mono">'+safe(r.source||"—")+'</span>'+ico("arrow")+
-    '<span class="mono">'+safe(r.target||"—")+'</span></div>'+
+   '<div class="run-mobile-models">'+modelIdentity(r.source)+'<span class="model-pair-sep" aria-hidden="true">→</span>'+
+    modelIdentity(r.target)+'</div>'+
    '<time class="run-mobile-time">'+safe(formatTime(r.started_at))+'</time></article>';
  }).join("")+'</div>':
  empty("No runs yet","Your migrations will appear here. Import an agent to start.",importButton);
@@ -262,8 +304,16 @@ async function runs(){
 async function evidenceIndex(){
  header("Evidence");
  await refreshWorkspace();
- page.innerHTML=lead("Evidence","Recorded observations from actual application execution.")+
- (state.runs.length?'<section class="records"><div class="records-heading"><span>Runs with evidence</span><span>'+safe(state.runs.length)+' total</span></div>'+runTable(state.runs,"evidence")+'</section>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
+ page.innerHTML=lead("Evidence","Review model observations alongside their source execution.")+
+ (state.runs.length?'<section class="evidence-collection" aria-label="Investigations">'+
+ state.runs.map(r=>
+  '<button type="button" class="evidence-collection-row" data-action="run" data-view="evidence" data-id="'+safe(r.id)+'">'+
+  '<span class="evidence-collection-symbol">'+ico("pulse")+'</span>'+
+  '<span class="evidence-collection-content"><strong class="mono">'+safe(r.id)+'</strong><span class="evidence-collection-models">'+
+  modelIdentity(r.source)+'<span class="model-pair-sep" aria-hidden="true">→</span>'+modelIdentity(r.target)+
+  '</span></span><span class="evidence-collection-status">'+compactStatus(r.status)+'</span>'+
+  '<span class="evidence-collection-arrow">'+ico("arrow")+'</span></button>').join("")+
+ '</section>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
 }
 async function settings(){
  header("Settings");
@@ -360,7 +410,8 @@ async function flow(){
  if(step===0 && state.guest){
    page.innerHTML='<div class="import-shell">'+wizardIntro()+
    '<section class="import-panel"><div class="import-panel-header"><div><h2>See a real migration</h2><p>Explore the evidence before bringing your own agent.</p></div><span class="import-privacy">'+ico("eye")+' Public example</span></div>'+
-   '<div class="import-example"><div class="import-example-mark">'+ico("code")+'</div><div><strong>Python knowledge-base agent</strong><p>DeepSeek → GLM · 3 independently verified cases</p></div><span class="chip good">Verified</span></div>'+
+   '<div class="import-example"><div class="import-example-heading"><strong>Python knowledge-base agent</strong>'+compactStatus(state.demo.run.status)+'</div>'+ 
+   '<div class="import-example-route"><div><span>Original</span>'+modelIdentity(state.demo.run.source)+'</div><span class="sample-connector" aria-hidden="true">'+ico("arrow")+'</span><div><span>Replacement</span>'+modelIdentity(state.demo.run.target)+'</div></div></div>'+
    '<div class="import-actions"><p>Recorded execution from November 7. No inference is used to browse.</p><button class="btn primary" data-action="example-agent">Inspect this agent '+ico("arrow")+'</button></div></section>'+
    '<div class="import-signin">Want to bring your own agent? <a href="/signup">Create an account</a> or <a href="/login?next=/app/agents/new">sign in</a>.</div>'+
    importPathSteps+'</div>';
@@ -523,7 +574,7 @@ function renderComparison(cases,source,target,report){
    (Number.isInteger(d.model_requests)?'<li class="sub">'+safe(d.model_requests)+' model requests</li>':"")+
    (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul><button type="button" class="evidence-jump" data-action="inspect-evidence" data-key="case-'+safe(observation.seq)+'">Open this observation '+ico("arrow")+'</button></details>';
  };
- return '<div class="comparison-scroll"><table class="table comparison-table"><thead><tr><th scope="col">Case</th><th scope="col">Original · '+safe(source)+'</th><th scope="col">Replacement · '+safe(target)+'</th>'+
+ return '<div class="comparison-scroll"><table class="table comparison-table"><thead><tr><th scope="col">Case</th><th scope="col">Original · '+modelIdentity(source)+'</th><th scope="col">Replacement · '+modelIdentity(target)+'</th>'+
  (repair?'<th scope="col">Adapted replacement</th>':'')+'<th scope="col">Observed result</th></tr></thead><tbody>'+
  rows.map(row=>{
   const original=row.source?.details,replacement=row.target?.details,adapted=row.adapted?.details;
@@ -545,7 +596,7 @@ function renderComparison(cases,source,target,report){
    row.status==="source_failed"?"Original baseline failed":
    row.status==="target_failed"?"Replacement checks failed":"Awaiting comparison";
   const outcome=(name,model,item)=>'<div class="comparison-mobile-result"><div><span>'+safe(name)+'</span>'+
-   '<small class="mono">'+safe(model)+'</small></div>'+cell(item)+'</div>';
+   '<small class="mono">'+modelIdentity(model)+'</small></div>'+cell(item)+'</div>';
   return '<section class="comparison-mobile-case"><div class="comparison-mobile-head"><div><strong>'+
    safe(row.name)+'</strong><span>'+safe(RefitOutcomes.phaseName(row.phase))+'</span></div>'+
    '<span class="comparison-mobile-verdict '+(row.status==="both_passed"?"is-good":"")+'">'+safe(status)+'</span></div>'+
@@ -905,7 +956,7 @@ function traceExplorer(events){
  };
  const branch=(key,label,model,children)=>children?
   '<details class="trace-branch" data-trace-branch="'+safe(key)+'" '+(state.traceCollapsed.has(key)?"":"open")+
-  '><summary><span>'+safe(label)+'</span>'+(model?'<small class="mono">'+safe(model)+'</small>':"")+'</summary><div class="trace-children">'+
+  '><summary><span>'+safe(label)+'</span>'+(model?'<small class="mono">'+modelIdentity(model)+'</small>':"")+'</summary><div class="trace-children">'+
   children+'</div></details>':"";
  const items=groups.map(g=>branch("phase-"+g.seq,g.label,g.model,
   g.items.map(node=>node.entries?branch("case-"+node.seq,node.name,null,node.entries.map(entry).join("")):entry(node)).join(""))).join("");
@@ -939,7 +990,7 @@ async function showRun(id,refreshOnly=false){
  const active=!ended(run.status);
  const diagnostic=evidence.run?.diagnostic||run.diagnostic;
  const diagnosing=diagnostic?.status==="running";
- header(active?"Run migration":"Migration review",active?3:4,"Agents / "+(run.import?.repository||"Imported agent")+" / "+(active?"Run":"Review"));
+ header(active?"Run migration":"Migration review",active?3:0,"Agents / "+(run.import?.repository||"Imported agent")+" / "+(active?"Run":"Review"));
  const report=evidence.run?.report;
  const tabs=["evaluation",...(report?.proposal?["repair"]:[]),"traces","evidence"];
  const currentTab=tabs.includes(state.tab)?state.tab:"evaluation";
@@ -950,7 +1001,7 @@ async function showRun(id,refreshOnly=false){
    '</p></div>':
   currentTab==="traces"?traceExplorer(events):
   evidenceExplorer(run,events);
- page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration review")+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
+ page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration review")+'</h1>'+statusChip(run.status)+'</div><div class="run-model-line">'+modelIdentity(run.source)+'<span class="model-pair-sep" aria-hidden="true">→</span>'+modelIdentity(run.target)+'</div><p class="run-identifier mono">'+safe(run.id)+'</p></div><div class="button-row">'+
  (active?'<button data-action="cancel-run" data-id="'+safe(id)+'" class="btn">Cancel</button>':"")+
  (!active&&!run.demo&&run.diagnostics_available&&!diagnostic?
   '<button data-action="diagnose-run" data-id="'+safe(id)+'" class="btn">'+ico("code")+' Run diagnostic</button>':"")+
@@ -1284,12 +1335,16 @@ document.addEventListener("submit",async event=>{
 el("search").addEventListener("click",searchOverlay);
 if(/Mac|iPhone|iPad/.test(navigator.platform))el("commandKey").textContent="⌘ K";
 document.addEventListener("click",event=>{
+ const navigation=document.querySelector("#mobileNavigation[open]");
+ if(navigation&&(!navigation.contains(event.target)||event.target.closest(".mobile-nav a")))navigation.open=false;
  const menu=document.querySelector(".workspace-account[open]");
  if(menu&&(!menu.contains(event.target)||event.target.closest("[data-nav]")))menu.open=false;
 });
 document.addEventListener("keydown",event=>{
- const menu=document.querySelector(".workspace-account[open]");
- if(menu&&event.key==="Escape"){menu.open=false;menu.querySelector("summary").focus();}
+ if(event.key!=="Escape")return;
+ for(const menu of document.querySelectorAll(".workspace-account[open],#mobileNavigation[open]")){
+   menu.open=false;menu.querySelector("summary")?.focus();
+ }
 });
 document.addEventListener("keydown",event=>{
  if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();searchOverlay();}

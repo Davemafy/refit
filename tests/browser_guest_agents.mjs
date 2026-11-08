@@ -19,9 +19,9 @@ try{
  assert.equal(await p.getByRole("link",{name:"Bring your own agent"}).count(),1);
  assert.equal(await p.getByRole("button",{name:"Recorded Python agent"}).count(),1);
  assert.equal(await p.getByRole("button",{name:/Review run/}).count(),1);
- const style=await p.evaluate(()=>({primary:getComputedStyle(document.querySelector(".page-lead .primary")).backgroundColor,tab:getComputedStyle(document.querySelector(".mobile-nav .selected")).borderBottomColor,icon:getComputedStyle(document.querySelector(".agent-record-icon")).color}));
+ const style=await p.evaluate(()=>({primary:getComputedStyle(document.querySelector(".page-lead .primary")).backgroundColor,tab:getComputedStyle(document.querySelector(".mobile-nav .selected")).color,icon:getComputedStyle(document.querySelector(".agent-record-icon")).color}));
  assert.equal(style.primary,"rgb(236, 235, 230)");
- assert.equal(style.tab,"rgb(196, 199, 187)");
+ assert.equal(style.tab,"rgb(241, 241, 239)");
  await p.screenshot({path:"artifacts/saas-ui/16-guest-agents-neutral.png",fullPage:true});
  console.log(JSON.stringify({status:"pass",import_actions:1,recorded_examples:1,misleading_empty_states:0,style}));
 }finally{await b?.close();s.kill("SIGKILL");}

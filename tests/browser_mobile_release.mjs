@@ -53,10 +53,10 @@ try{
    await capture("overview","/app",size,async()=>{
      assert.equal(await page.locator(".overview-recent").isVisible(),true);
      assert.equal(await page.locator(".subheader").isVisible(),false,"The section title must not be duplicated");
-     assert.equal(await page.locator(".overview-metric").count(),3);
-     const metrics=await page.locator(".overview-metrics").boundingBox();
+     assert.equal(await page.locator(".migration-route .model-mark").count(),2);
+     assert.ok(await page.locator(".verification-tick").count()>0);
+     assert.equal(await page.locator("#mobileNavigation summary").isVisible(),true);
      const activity=await page.locator(".overview-activity").boundingBox();
-     assert.ok(metrics.height<100,"Metrics must use compact mobile density");
      assert.ok(activity.y<700,"Event list should begin within the mobile first screen");
      assert.equal(await page.locator(".metrics").count(),0,"demo must not impersonate account metrics");
      assert.equal(await page.locator(".run-table-desktop").count(),0);
