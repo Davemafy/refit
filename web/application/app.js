@@ -32,7 +32,7 @@ const symbols={
 };
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
-const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:""};
+const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:"",runsPeriod:"all"};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -64,19 +64,25 @@ async function req(suffix,body,signal){
 const formatTime=value=>{if(!value)return "—";const date=new Date(value);return Number.isNaN(date.getTime())?String(value):date.toLocaleString();};
 const formatDuration=value=>typeof value==="number"?value.toFixed(1)+" s":"—";
 function header(label,step=0,crumb){
- const node=el("crumb");node.textContent=crumb||label;
- const topCurrent=el("topCurrent");if(topCurrent)topCurrent.textContent=label;
+ const node=el("crumb");
+ node.textContent=label;
+ node.title=crumb||label;
+ document.body.dataset.workspacePage=label==="Runs"?"runs":"";
  const steps=el("steps");
  steps.hidden=!step;
  if(step){
   const labels=["Inspect","Configure","Run","Review"];
   steps.innerHTML=labels.map((name,i)=>
-   '<span class="step '+(step===i+1?"active":step>i+1?"done":"")+'"><span class="num">'+(step>i+1?ico("check"):i+1)+'</span>'+name+'</span>'+
+   '<span class="step '+(step===i+1?"active":step>i+1?"done":"")+'"'+(step===i+1?' aria-current="step"':'')+'><span class="num">'+(step>i+1?ico("check"):i+1)+'</span>'+name+'</span>'+
    (i===3?"":'<span class="step-sep">—</span>')).join("");
  }
  for(const link of document.querySelectorAll("a[data-nav]")){
    const href=link.getAttribute("href");
-   link.classList.toggle("selected",href==="/app/agents"?location.pathname.startsWith("/app/agents"):href==="/app/runs"?location.pathname.startsWith("/app/runs"):href===location.pathname);
+   const selected=href==="/app/agents"?location.pathname.startsWith("/app/agents"):href==="/app/runs"?location.pathname.startsWith("/app/runs"):href===location.pathname;
+   link.classList.toggle("selected",selected);
+   if(link.classList.contains("nav-link")){
+    if(selected)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");
+   }
  }
  document.title=label+" · Refit";
 }
@@ -178,8 +184,8 @@ const compactStatus=status=>{
  return '<span class="run-status '+kind+'"><span class="status-light"></span>'+safe(shortStatus(status))+'</span>';
 };
 const runTable=(runs,view="")=>runs.length?
- '<div class="run-table-desktop"><table class="table"><thead><tr><th>Run</th><th>Models</th><th>Status</th><th>Started</th><th class="numeric">Duration</th></tr></thead><tbody>'+
- runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-view="'+safe(view)+'" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td><div class="model-pair"><span>'+safe(r.source||"—")+'</span><span class="model-pair-sep">→</span><span>'+safe(r.target||"—")+'</span></div></td><td>'+compactStatus(r.status)+'</td><td class="run-timestamp">'+safe(formatTime(r.started_at))+'</td><td class="numeric">'+safe(formatDuration(r.execution_seconds))+'</td></tr>').join("")+'</tbody></table></div>'+
+ '<div class="run-table-desktop"><table class="table"><thead><tr><th scope="col">Status</th><th scope="col">Run ID</th><th scope="col">Models</th><th scope="col">Started</th><th class="numeric">Duration</th></tr></thead><tbody>'+
+ runs.map(r=>'<tr><td>'+compactStatus(r.status)+'</td><td><button class="link-btn mono" data-action="run" data-view="'+safe(view)+'" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td><div class="model-pair"><span>'+safe(r.source||"—")+'</span><span class="model-pair-sep">→</span><span>'+safe(r.target||"—")+'</span></div></td><td class="run-timestamp">'+safe(formatTime(r.started_at))+'</td><td class="numeric">'+safe(formatDuration(r.execution_seconds))+'</td></tr>').join("")+'</tbody></table></div>'+
  '<div class="run-list-mobile" role="list" aria-label="Migration runs">'+runs.map(r=>{
   const kind=["compatible_on_sample","verified_adaptation"].includes(r.status)?"good":ended(r.status)?"bad":"warn";
   return '<article class="run-mobile-item" role="listitem"><div class="run-mobile-head">'+
@@ -193,8 +199,10 @@ const runTable=(runs,view="")=>runs.length?
 function filteredRuns(){
  const query=state.runsQuery.toLowerCase();
  const agent=new URLSearchParams(location.search).get("agent");
+ const cutoff=state.runsPeriod==="all"?null:Date.now()-Number(state.runsPeriod)*86_400_000;
  return state.runs.filter(r=>{
   if(agent&&r.import?.id!==agent)return false;
+  if(cutoff!==null&&!(Date.parse(r.started_at)>=cutoff))return false;
   const matches=!query||[r.id,r.source,r.target,r.status,r.import?.repository].filter(Boolean).join(" ").toLowerCase().includes(query);
   const ok=state.runsFilter==="all"||
    (state.runsFilter==="verified"&&["compatible_on_sample","verified_adaptation"].includes(r.status))||
@@ -208,11 +216,15 @@ function runIndexRows(){
  return items.length?runTable(items):'<div class="run-filter-empty"><strong>No matching runs</strong><p>Try another status or search term.</p></div>';
 }
 function runFilters(){
- const filters=[["all","All runs"],["verified","Verified"],["active","In progress"],["attention","Needs attention"]];
- return '<div class="run-controls"><div class="run-filter-group" role="group" aria-label="Filter migration runs">'+
-  filters.map(([id,title])=>'<button type="button" data-action="runs-filter" data-filter="'+id+
-   '" class="run-filter'+(state.runsFilter===id?" selected":"")+'" aria-pressed="'+(state.runsFilter===id)+'">'+title+'</button>').join("")+
-  '</div><label class="run-search">'+ico("search")+'<input type="search" id="runQuery" aria-label="Search migration runs" placeholder="Search runs or models" value="'+safe(state.runsQuery)+'"></label></div>';
+ const options=(items,current)=>items.map(([value,label])=>
+  '<option value="'+value+'"'+(value===current?' selected':'')+'>'+label+'</option>').join("");
+ return '<div class="run-controls"><label class="run-search">'+ico("search")+
+  '<input type="search" id="runQuery" aria-label="Search migration runs" placeholder="Search runs or models" value="'+safe(state.runsQuery)+'"></label>'+
+  '<label class="run-facet"><span>Started</span><select id="runPeriod" aria-label="Run start period">'+
+  options([["all","All time"],["1","Last 24 hours"],["7","Last 7 days"]],state.runsPeriod)+'</select></label>'+
+  '<label class="run-facet"><span>Status</span><select id="runStatus" aria-label="Run status">'+
+  options([["all","All runs"],["verified","Verified"],["active","In progress"],["attention","Needs attention"]],state.runsFilter)+
+  '</select></label></div>';
 }
 async function agents(){
  header("Agents");
@@ -950,16 +962,6 @@ document.addEventListener("click",async event=>{
   if(action==="overview-trace"){
    navigate("/app/runs/"+id+"?view=traces&event="+encodeURIComponent(button.dataset.seq));
   }
-  else if(action==="runs-filter"){
-   state.runsFilter=button.dataset.filter;
-   const rows=el("runRecords");
-   if(rows)rows.innerHTML=runIndexRows();
-   page.querySelectorAll(".run-filter").forEach(item=>{
-    const chosen=item.dataset.filter===state.runsFilter;
-    item.classList.toggle("selected",chosen);
-    item.setAttribute("aria-pressed",String(chosen));
-   });
-  }
   else if(action==="new-agent"){state.wizard=null;navigate("/app/agents/new");}
   else if(action==="example-agent"){
    const demo=state.demo;
@@ -1115,6 +1117,14 @@ document.addEventListener("keydown",event=>{
   Math.max(0,Math.min(rows.length-1,current+(event.key==="ArrowDown"?1:-1)));
  event.preventDefault();
  rows[next]?.focus();
+});
+document.addEventListener("change",event=>{
+ const field=event.target.id;
+ if(field!=="runStatus"&&field!=="runPeriod")return;
+ if(field==="runStatus")state.runsFilter=event.target.value;
+ else state.runsPeriod=event.target.value;
+ const rows=el("runRecords");
+ if(rows)rows.innerHTML=runIndexRows();
 });
 document.addEventListener("input",event=>{
  if(event.target.id==="agentQuery"){

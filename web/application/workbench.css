@@ -1,8 +1,8 @@
 /* Workspace composition and semantic surfaces. Public and authentication pages use ui.css. */
 :root[data-theme] {
- --bg:#0c0d0f; --panel:#121418; --raised:#191c21; --field:#171a1e;
- --line:#30343b; --line2:#262a30; --ink:#edf0f4; --sub:#aab2bc; --muted:#939da9;
- --work-frame:#141619; --work-active:#272b27; --work-accent:#c4c7bb;
+ --bg:#0b0b0c; --panel:#151516; --raised:#232324; --field:#1a1a1b;
+ --line:#323233; --line2:#282829; --ink:#f1f1ef; --sub:#b4b4b3; --muted:#9a9a99;
+ --work-frame:#141414; --work-active:#19191a; --work-accent:#c4c7bb;
  --work-action:#ecebe6; --work-action-hover:#ffffff; --work-action-text:#171916;
  --work-positive:#91d6b2; --work-negative:#ffb2b6; --work-warning:#e9cc96;
  --work-positive-bg:#13271e; --work-negative-bg:#301c23; --work-warning-bg:#2c2419;
@@ -17,21 +17,24 @@
 }
 .workbench{background:var(--work-frame);color:var(--ink)}
 .workbench .shell{display:grid;grid-template-columns:220px minmax(0,1fr);grid-template-rows:48px minmax(calc(100dvh - 78px),auto) 30px;margin:0 12px;padding:0;background:var(--work-frame)}
-.workbench .topbar{grid-column:1/-1;grid-row:1;height:48px;min-height:48px;padding:0 9px;gap:14px;background:var(--work-frame);border:0}
-.workspace-brand{font-size:18px;font-weight:720;letter-spacing:-.06em;color:var(--ink)}
-.workbench .top-context{font-size:12px;min-width:0;color:var(--sub)}
-.workbench #topCurrent{color:var(--ink)}
-.workbench .sidebar{grid-column:1;grid-row:2;top:48px;height:calc(100dvh - 78px);border:1px solid var(--line);border-radius:7px 0 0 7px;padding:15px 10px 12px;background:var(--bg)}
-.workbench .sidebar-section{font-size:11px;padding:0 8px;color:var(--muted);margin:0 0 4px}
+.workbench .topbar{grid-column:1/-1;grid-row:1;height:48px;min-height:48px;padding:0 12px;gap:12px;background:var(--work-frame);border:0}
+.workspace-brand{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink)}
+.workspace-mark{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid var(--line);border-radius:50%;background:var(--raised);font-size:12px;font-weight:520}
+.workbench .top-context{display:flex;align-items:center;gap:12px;font-size:13px;min-width:0;color:var(--ink)}
+.workbench .top-context .context-separator{color:var(--muted)}
+.workbench .sidebar{grid-column:1;grid-row:2;top:48px;height:calc(100dvh - 78px);border:1px solid var(--line);border-radius:7px 0 0 7px;padding:15px 11px 12px;background:var(--bg)}
+.workbench .sidebar-section{font-size:12px;font-weight:450;padding:0 8px;color:var(--muted);margin:0 0 4px}
 .workbench .sidebar-section:not(:first-child){margin-top:18px}
-.workbench .sidebar .nav-link{min-height:31px;padding:5px 8px;gap:9px;color:var(--sub)}
+.workbench .sidebar .nav-link{min-height:29px;padding:4px 8px;gap:8px;border-radius:4px;font-size:13px;color:var(--sub)}
 .workbench .sidebar .nav-link:hover,.workbench .sidebar .nav-link.selected{background:var(--work-active);color:var(--ink);box-shadow:none}
 .workbench .sidebar-bottom{border-color:var(--line2)}
 .workbench .sidebar-footnote{color:var(--muted)}
 .workbench .content{grid-column:2;grid-row:2;min-width:0;padding:0;background:var(--bg);border:1px solid var(--line);border-left:0;border-radius:0 7px 7px 0}
-.workbench .subheader{height:48px;min-height:48px;padding:0 16px;border-color:var(--line);background:var(--bg)}
-.workbench .subheader .path{color:var(--sub);font-size:12px}
-.workbench .steps .step{min-height:47px}
+.workbench .content>.subheader{display:flex;height:48px;min-height:48px;padding:0 16px;border-color:var(--line);background:var(--bg);overflow:visible}
+.workbench .content>.subheader .path{display:block;color:var(--ink);font-size:13px;font-weight:550;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.workbench .content>.subheader .steps{width:auto;justify-content:flex-end;gap:14px;flex:none}
+.workbench .steps .step{min-height:47px;font-size:11px;color:var(--muted)}
+.workbench .steps .step.active{color:var(--ink);border-color:var(--work-accent)}
 .workbench .main{padding:20px 24px 32px}
 .workbench .page-lead{margin-bottom:18px}
 .workbench .page-lead h1,.workbench .import-header h1{font-size:21px;line-height:1.3;letter-spacing:-.035em}
@@ -220,3 +223,28 @@
 .workbench .page-lead p:empty{display:none}
 
 @media(max-width:760px){.workbench .top-context{display:none}}
+
+/* Keep the Runs toolbar on the same grid as the local header and table. */
+.workbench[data-workspace-page=runs] .main{padding:9px 0 24px}
+.workbench[data-workspace-page=runs] .page-lead{margin:0;padding:0 16px}
+.workbench[data-workspace-page=runs] .page-heading{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.workbench[data-workspace-page=runs] .page-lead .btn{margin:0 0 8px auto}
+.workbench[data-workspace-page=runs] .run-controls{justify-content:flex-start;align-items:center;flex-direction:row;gap:7px;padding:0 12px;margin:0 0 8px;background:transparent}
+.workbench[data-workspace-page=runs] .run-search,.run-facet{min-height:27px;border:1px solid var(--line);border-radius:4px;font-size:11px}
+.workbench[data-workspace-page=runs] .run-search{width:200px;min-width:0}
+.run-facet{display:inline-flex;align-items:stretch;color:var(--sub);background:var(--raised);white-space:nowrap}
+.run-facet span{align-self:center;padding:0 7px}
+.run-facet select{max-width:100%;min-height:25px;padding:0 5px 0 7px;border:0;border-left:1px solid var(--line);background:transparent;color:var(--ink);font-size:inherit;cursor:pointer}
+.run-facet select option{background:var(--panel);color:var(--ink)}
+.workbench[data-workspace-page=runs] .records{border:0;border-top:1px solid var(--line);border-radius:0}
+.workbench[data-workspace-page=runs] .table th{background:var(--raised);font-size:11px;font-weight:500;padding:8px 16px}
+.workbench[data-workspace-page=runs] .table td{padding:9px 16px}
+.workbench[data-workspace-page=runs] .section-footnote{margin:12px 16px}
+@media(max-width:760px){
+ .workbench .top-context{gap:8px;font-size:11px}
+ .workbench .top-context .context-separator{display:inline}
+ .workbench .content>.subheader{height:40px;min-height:40px;padding:0 12px;gap:8px;flex-wrap:nowrap}
+ .workbench .content>.subheader .steps{gap:8px}
+ .workbench .steps .step{min-height:39px;font-size:10px}
+ .workbench .steps .step:not(.active){display:none}
+}
