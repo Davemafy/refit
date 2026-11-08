@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Apply owner-approved quota adjustment with safe root-file format preservation"
+  "reason": "Recover production immediately using hardened installer; root-owned 192/32 quotas are already applied"
 }
