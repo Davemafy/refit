@@ -861,7 +861,7 @@ class ApplicationHandler(RefitHandler):
                 if is_review:
                     # Protect one call for the subsequent Challenge 1
                     # model-generated diagnostic, separate from the migration.
-                    allowance = REVIEW_BUDGET - 1 if self.reserved(date, owner) == 0 else REVIEW_BUDGET
+                    allowance = REVIEW_BUDGET - 1 if reserved == 0 else REVIEW_BUDGET
                 account_remaining = max(0, allowance - reserved)
                 global_remaining = max(0, self.service.daily_budget - global_reserved)
                 # A review-pass reservation is separately controlled and
