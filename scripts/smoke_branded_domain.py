@@ -25,7 +25,7 @@ def check(origin, expected_revision=None):
             return exc.code, exc.read()
 
     code, html = request("/app")
-    assert code == 200 and b"Refit" in html, "Branded workspace did not load"
+    assert code == 200 and b"Refit" in html, ("Branded workspace did not load: HTTP " + str(code) + " " + repr(html[:260]))
     code, body = request("/api/application/release")
     release = json.loads(body)
     assert code == 200 and isinstance(release.get("revision"), str), release
