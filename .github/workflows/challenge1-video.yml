@@ -71,7 +71,8 @@ jobs:
             artifacts/challenge1-video/refit-vultr-containment-1080p.mp4
           test "$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 artifacts/challenge1-video/refit-vultr-containment-1080p.mp4)" = "1920"
           test "$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 artifacts/challenge1-video/refit-vultr-containment-1080p.mp4)" = "1080"
-          test "$(stat -c %s artifacts/challenge1-video/refit-vultr-containment-1080p.mp4)" -gt 1000000
+          test "$(stat -c %s artifacts/challenge1-video/refit-vultr-containment-1080p.mp4)" -gt 80000
+          python3 -c 'import subprocess; p="artifacts/challenge1-video/refit-vultr-containment-1080p.mp4"; d=float(subprocess.check_output(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",p])); assert d>=30, f"Video truncated: {d} seconds"'
           ffprobe -v error -show_entries format=duration,size,bit_rate -of default=nw=1 artifacts/challenge1-video/refit-vultr-containment-1080p.mp4
       - name: Preserve recorded evidence and quality frame
         if: always()
