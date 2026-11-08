@@ -140,6 +140,49 @@ Environment=REFIT_DEPLOYED_REVISION=$REVISION
 ExecStart=
 ExecStart=$APP_COMMAND
 OVERRIDE
+# Independently check local HTTP liveness without a model call. A failed
+# migration or a safety quarantine must never trigger an automatic retry.
+install -m 0755 -o root -g root "$REPO/scripts/host_watchdog.py" \
+  /usr/local/libexec/refit/host-watchdog.py
+cat > /etc/systemd/system/refit-watchdog.service <<'UNIT'
+[Unit]
+Description=Refit bounded unattended liveness repair
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/refit/host-watchdog.py
+RuntimeDirectory=refit-watchdog
+RuntimeDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/run/refit-watchdog /run/lock
+RestrictAddressFamilies=AF_UNIX AF_INET
+MemoryMax=96M
+TasksMax=32
+TimeoutStartSec=55s
+UNIT
+cat > /etc/systemd/system/refit-watchdog.timer <<'UNIT'
+[Unit]
+Description=Refit unattended local liveness checks
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=2min
+AccuracySec=20s
+RandomizedDelaySec=10s
+Unit=refit-watchdog.service
+
+[Install]
+WantedBy=timers.target
+UNIT
 systemctl daemon-reload
 systemctl enable refit-docker-guard
 systemctl restart refit-docker-guard
@@ -210,6 +253,12 @@ for attempt in {1..15}; do
       --revision "$REVISION" \
       --output /usr/local/share/refit/c1-containment.json
     test "$(stat -c %u:%a /usr/local/share/refit/c1-containment.json)" = "0:644"
+    # The stamp is published only after ALL fresh host worker, receipt and
+    # containment checks pass. The watchdog never trusts the Git checkout SHA.
+    printf '%s\n' "$REVISION" > /usr/local/share/refit/deployed_revision
+    chown root:root /usr/local/share/refit/deployed_revision
+    chmod 0644 /usr/local/share/refit/deployed_revision
+    systemctl enable --now refit-watchdog.timer
     echo "Refit application and Vultr-host containment verified at revision $REVISION with worker $IMAGE_ID."
     exit 0
   fi
