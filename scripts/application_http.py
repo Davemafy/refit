@@ -407,8 +407,9 @@ class ApplicationService:
             if is_review:
                 if self.review_passes.get(owner, 0) <= time.time():
                     raise ApiProblem(401, "invalid_review_pass", "This Refit review link is invalid or expired.")
-                if budget > REVIEW_BUDGET:
-                    raise ApiProblem(422, "review_budget_limit", f"This review link can authorize up to {REVIEW_BUDGET} requests.")
+                if budget > REVIEW_BUDGET - 1:
+                    raise ApiProblem(422, "review_budget_limit",
+                                     "The review pass reserves one request for generated-code diagnosis.")
                 if any(run.get("owner") == owner for run in jobs):
                     raise ApiProblem(409, "review_run_used", "This review link has already submitted its live migration. Open Runs to review it.")
             elif owner != "operator" and self.reserved(day, owner) + budget > self.account_budget:
@@ -467,9 +468,9 @@ class ApplicationService:
         with self.lock:
             self.get(ident, owner)  # Enforce run ownership before any inference.
             run = self.runs[ident][0]
-            if owner.startswith(REVIEW_PREFIX):
-                raise ApiProblem(403, "review_diagnostic_disabled",
-                                 "Review links can inspect evidence, not start additional code execution.")
+            if owner.startswith(REVIEW_PREFIX) and self.review_passes.get(owner, 0) <= time.time():
+                raise ApiProblem(401, "review_pass_expired",
+                                 "This scoped review session has expired.")
             if run["status"] in ACTIVE or run["status"] == "interrupted":
                 raise ApiProblem(409, "run_not_finished", "Finish the migration before diagnosing it.")
             if "diagnostic" in run:
@@ -484,10 +485,19 @@ class ApplicationService:
                 raise ApiProblem(422, "insufficient_migration_evidence",
                                  "This migration has no comparable measured training results.") from exc
             day = now()[:10]
-            if owner != "operator" and self.reserved(day, owner) + 1 > self.account_budget:
-                raise ApiProblem(429, "account_budget_exhausted", "Your daily inference allowance is reserved.")
-            if self.reserved(day) + 1 > self.daily_budget:
-                raise ApiProblem(429, "daily_budget_exhausted", "The daily Vultr request budget is exhausted.")
+            if owner.startswith(REVIEW_PREFIX):
+                # A host-approved, expiring review pass has exactly one live
+                # migration and at most one generated-code diagnosis.
+                # Its fixed review budget is explicitly independent of the
+                # public signup pool; do not expand or silently renew it.
+                if self.reserved(day, owner) + 1 > REVIEW_BUDGET:
+                    raise ApiProblem(429, "review_budget_exhausted",
+                                     "This reviewer pass has used its inference allowance.")
+            else:
+                if owner != "operator" and self.reserved(day, owner) + 1 > self.account_budget:
+                    raise ApiProblem(429, "account_budget_exhausted", "Your daily inference allowance is reserved.")
+                if self.reserved(day) + 1 > self.daily_budget:
+                    raise ApiProblem(429, "daily_budget_exhausted", "The daily Vultr request budget is exhausted.")
             if not self.diagnostic_slot.acquire(blocking=False):
                 raise ApiProblem(429, "diagnostic_busy", "Another diagnostic is using the sandbox.")
             try:
@@ -849,7 +859,9 @@ class ApplicationHandler(RefitHandler):
                 allowance = self.service.account_budget if owner != "operator" else self.service.daily_budget
                 is_review = owner.startswith(REVIEW_PREFIX)
                 if is_review:
-                    allowance = REVIEW_BUDGET
+                    # Protect one call for the subsequent Challenge 1
+                    # model-generated diagnostic, separate from the migration.
+                    allowance = REVIEW_BUDGET - 1 if self.reserved(date, owner) == 0 else REVIEW_BUDGET
                 account_remaining = max(0, allowance - reserved)
                 global_remaining = max(0, self.service.daily_budget - global_reserved)
                 # A review-pass reservation is separately controlled and
@@ -908,7 +920,8 @@ class ApplicationHandler(RefitHandler):
                                  "diagnostics_available": (
                                      os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
                                      and os.getenv("REFIT_SANDBOX_RUNTIME", "runsc") == "runsc"
-                                     and not owner.startswith(REVIEW_PREFIX)
+                                     and (not owner.startswith(REVIEW_PREFIX) or
+                                          self.service.review_passes.get(owner, 0) > time.time())
                                      and not self.service.quarantined)})
         except ApiProblem as exc:
             self._problem(exc)
