@@ -18,6 +18,15 @@ from scripts.application_http import ApplicationHandler, ApplicationService
 
 
 class FixtureHandler(ApplicationHandler):
+    def handle_one_request(self):
+        # Firefox can cancel in-flight image/font requests while navigating.
+        # Broken HTTPS writes are transport disconnects, not backend failures.
+        # Unexpected application exceptions still propagate into CI logs.
+        try:
+            return super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError):
+            return
+
     def public(self):
         return True  # This isolated HTTPS fixture stands in for Nginx ingress.
 
