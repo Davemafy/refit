@@ -245,6 +245,20 @@ class Handler(socketserver.BaseRequestHandler):
             status = 124
         stdout.join(timeout=3)
         stderr.join(timeout=3)
+        # The trusted root-side Docker CLI creates the cidfile. Transfer only
+        # that small receipt back to the unprivileged owner so the controller
+        # can independently verify actual container creation.
+        if args[:2] == ["run", "--rm"]:
+            try:
+                cidfile = Path(args[5])
+                if cidfile.is_file() and not cidfile.is_symlink():
+                    import pwd
+                    owner = pwd.getpwnam("refit-application")
+                    os.chown(cidfile, owner.pw_uid, owner.pw_gid)
+                    os.chmod(cidfile, 0o600)
+            except OSError:
+                # No silently verified container if this receipt is unavailable.
+                pass
         try:
             send(sock, b"X", struct.pack(">I", max(0, status) if status >= 0 else 128 - status), lock)
         except (BrokenPipeError, ConnectionError, OSError):
