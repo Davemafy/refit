@@ -900,7 +900,6 @@ class ApplicationHandler(RefitHandler):
                 "/assets/model-mistral.svg": ("icons/mistral.svg", "image/svg+xml"),
                 "/assets/model-meta.svg": ("icons/meta.svg", "image/svg+xml"),
                 "/assets/visual.css": ("visual.css", "text/css; charset=utf-8"),
-                "/assets/replay.css": ("replay.css", "text/css; charset=utf-8"),
                 "/assets/marketing.css": ("marketing.css", "text/css; charset=utf-8"),
                 "/assets/marketing.js": ("marketing.js", "text/javascript; charset=utf-8"),
                 "/assets/illustrations/folders.svg": ("illustrations/document-folders.svg", "image/svg+xml"),
@@ -917,7 +916,6 @@ class ApplicationHandler(RefitHandler):
                 "/assets/workspace-controls.js": ("workspace-controls.js", "text/javascript; charset=utf-8"),
                 "/assets/ui.css": ("ui.css", "text/css; charset=utf-8"),
                 "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
-                "/assets/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
                 "/assets/run-outcome.js": ("run-outcome.js", "text/javascript; charset=utf-8"),
                 "/assets/auth.js": ("auth.js", "text/javascript; charset=utf-8"),
                 "/assets/geist-sans.woff2": ("geist-sans.woff2", "font/woff2"),
@@ -936,7 +934,6 @@ class ApplicationHandler(RefitHandler):
                 "/app": "app.html", "/app/agents": "app.html",
                 "/app/agents/new": "app.html", "/app/runs": "app.html",
                 "/app/evidence": "app.html", "/app/settings": "app.html",
-                "/app/replay": "app.html",
             }
             filename = page_files.get(page)
             if filename is None and (page in {"/app/runs/" + DEMO_ID, "/app/runs/demo-diagnostic-2026-11-08"} or
