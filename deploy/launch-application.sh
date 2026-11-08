@@ -19,6 +19,56 @@ ACCOUNT_BUDGET="${REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET:-16}"
    "$BUDGET" =~ ^[0-9]{1,4}$ && "$ACCOUNT_BUDGET" =~ ^[0-9]{1,3}$ ]] &&
   ((BUDGET >= 1 && BUDGET <= 2048 &&
     ACCOUNT_BUDGET >= 1 && ACCOUNT_BUDGET <= 512))
+# ONE-TIME owner-authorized Nov 8 capacity recovery. Deliberately static:
+# no web/API request, GitHub workflow input, or arbitrary repo variable can
+# choose the new budgets. Remove this bootstrap immediately after promotion.
+# The root-owned host budget file remains the source of truth thereafter.
+python3 - <<'PY_QUOTA_REPAIR'
+import os, pathlib, re, secrets, stat
+path = pathlib.Path("/etc/refit/host-ssh/budgets.env")
+if os.geteuid() != 0 or path.is_symlink():
+    raise SystemExit("Refusing public quota adjustment outside root-owned host")
+metadata = path.stat()
+if metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0o600 or not stat.S_ISREG(metadata.st_mode):
+    raise SystemExit("Budget configuration ownership/mode invalid")
+raw = path.read_text(encoding="utf8")
+lines = raw.splitlines()
+patterns = (r"REFIT_APPLICATION_DAILY_BUDGET=(\\d+)",
+            r"REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET=(\\d+)")
+if len(lines) != 2:
+    raise SystemExit("Unexpected budget configuration format")
+matched = [re.fullmatch(pattern, line) for pattern, line in zip(patterns, lines)]
+if any(m is None for m in matched):
+    raise SystemExit("Invalid budget file (no arbitrary shell parsing)")
+old_daily, old_account = map(lambda m: int(m.group(1)), matched)
+if not (1 <= old_daily <= 2048 and 1 <= old_account <= 512):
+    raise SystemExit("Existing quota outside supported bounds")
+new_daily, new_account = max(192, old_daily), max(32, old_account)
+if (old_daily, old_account) != (new_daily, new_account):
+    dest = path.with_name(".budgets.refit-" + secrets.token_hex(8))
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "w") as out:
+            out.write(f"REFIT_APPLICATION_DAILY_BUDGET={new_daily}\\n"
+                      f"REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET={new_account}\\n")
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(dest, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(directory_fd)
+        finally: os.close(directory_fd)
+    finally:
+        dest.unlink(missing_ok=True)
+print(f"Owner-authorized capacity adjustment: global {old_daily}->{new_daily}, "
+      f"per-account {old_account}->{new_account} requests/day")
+PY_QUOTA_REPAIR
+# The forced SSH handler loaded the previous root-only file before entering
+# the installer; this one release must use the just-validated new values.
+BUDGET="$(sed -nE 's/^REFIT_APPLICATION_DAILY_BUDGET=([0-9]+)$/\\1/p' /etc/refit/host-ssh/budgets.env)"
+ACCOUNT_BUDGET="$(sed -nE 's/^REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET=([0-9]+)$/\\1/p' /etc/refit/host-ssh/budgets.env)"
+[[ "$BUDGET" =~ ^[0-9]{1,4}$ && "$ACCOUNT_BUDGET" =~ ^[0-9]{1,3}$ ]] &&
+  ((BUDGET >= 1 && BUDGET <= 2048 && ACCOUNT_BUDGET >= 1 && ACCOUNT_BUDGET <= 512))
+
 # The bounded generated-Python diagnostic runs in a separate approved image.
 # Pull on the trusted host at deploy time; the worker itself has no network.
 docker pull python:3.11-alpine >/dev/null
