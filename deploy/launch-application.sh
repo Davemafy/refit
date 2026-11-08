@@ -102,6 +102,9 @@ WorkingDirectory=$REPO
 EnvironmentFile=/etc/refit/inference.env
 EnvironmentFile=/etc/refit/application.env
 EnvironmentFile=-/etc/refit/application-public.env
+# Root-controlled optional model and guest-capacity settings. Never sourced
+# from an imported repository, anonymous form or untrusted container.
+EnvironmentFile=-/etc/refit/application-policy.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
 # Same-origin requests from either documented HTTPS ingress are valid.
