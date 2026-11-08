@@ -378,8 +378,8 @@ class ApplicationService:
             self.imports[ident] = (time.monotonic(), snapshot, summary)
         return summary
 
-    def public_trial(self, client_digest, sample="knowledge"):
-        """One real bounded original-agent run, no login and no arbitrary inputs."""
+    def public_trial(self, client_digest, sample="knowledge", existing_owner=None):
+        """Run a reviewed real agent under the same durable guest budget as imports."""
         if os.getenv("REFIT_PUBLIC_TRIAL_ENABLED") != "1":
             raise ApiProblem(503, "public_trial_disabled", "Live public trials are temporarily unavailable.")
         if sample == "refund":
@@ -414,29 +414,28 @@ class ApplicationService:
             if self.quarantined:
                 raise ApiProblem(503, "operator_review_required",
                                  "Sandbox containment requires review before new work.")
-            if self.reserved(day) + trial_budget + PUBLIC_TRIAL_GLOBAL_RESERVE > self.daily_budget:
+            if self.reserved(day) + trial_budget > self.daily_budget:
                 raise ApiProblem(429, "trial_capacity_full",
                                  "Today's live sample capacity is full; recorded evidence remains available.")
             if sum(run["status"] in ACTIVE for run, _ in self.runs.values()) >= QUEUE_LIMIT:
                 raise ApiProblem(429, "trial_queue_full", "The live trial queue is full.")
             try:
-                # Validate host inference configuration *before* claiming a
-                # visitor's scarce, persistent one-shot slot.
+                # Fail before reserving billable capacity if inference is not configured.
                 self.broker(trial_budget)
             except (OSError, ValueError, RuntimeError) as exc:
                 raise ApiProblem(503, "inference_unavailable", "Vultr inference is unavailable.") from exc
-            owner = "guest-" + secrets.token_hex(16)
-            reserved = self.accounts.claim_public_trial(
-                day, client_digest, owner, PUBLIC_TRIAL_DAILY_LIMIT)
-            if reserved != "reserved":
-                raise ApiProblem(429, "trial_already_used" if reserved == "already_used" else "trial_capacity_full",
-                                 "This visitor's live trial has already been reserved today."
-                                 if reserved == "already_used" else
-                                 "Today's live sample capacity is full; recorded evidence remains available.")
+            owner = existing_owner or ("guest-" + secrets.token_hex(16))
+            reservation = secrets.token_hex(16)
+            claimed = (not owner.startswith("guest-") or self.accounts.claim_guest_run(
+                day, client_digest, owner, trial_budget, reservation))
+            if not claimed:
+                raise ApiProblem(429, "visitor_budget_full",
+                                 "This connection's live evaluation capacity is full today.")
             try:
-                # The guest principal must exist before a project can satisfy
-                # SQLite's owner foreign-key constraint.
-                secret = self.accounts.review_session(owner, int(time.time()) + SESSION_TTL)
+                # Reuse existing sessions and history. A live-sample click must
+                # never silently overwrite the visitor's previous workspace.
+                secret = (None if existing_owner else
+                          self.accounts.review_session(owner, int(time.time()) + SESSION_TTL))
                 summary = self.save_import(snapshot, owner, time.monotonic())
                 run = self.start({
                     "import_id": summary["id"],
@@ -446,12 +445,10 @@ class ApplicationService:
                     "authorize": True,
                     "setup": prepared_setup,
                 }, owner, trusted_trial=True)
-                # Cookie is issued only after a durable run is established.
-                # Guest identifiers remain unguessable and owner-scoped.
                 return run, secret
             except Exception:
-                if not any(r.get("owner") == owner for r, _ in self.runs.values()):
-                    self.accounts.release_public_trial(day, client_digest, owner)
+                if owner.startswith("guest-"):
+                    self.accounts.release_guest_run(reservation, owner)
                 raise
 
     def start(self, data, owner="operator", *, trusted_trial=False):
@@ -821,9 +818,13 @@ class ApplicationHandler(RefitHandler):
                         raise ApiProblem(422, "invalid_trial_request",
                                          "The public sample accepts no prompts, URLs or user code.")
                     chosen = "refund" if path.endswith("/try-refund") else "knowledge"
-                    run, secret = self.service.public_trial(self.public_client_digest(), sample=chosen)
-                    self._session_cookie = (f"{COOKIE}={secret}; Path=/; Secure; HttpOnly; SameSite=Strict; "
-                                            f"Max-Age={SESSION_TTL}")
+                    existing = self.service.accounts.resolve(self.session_secret())
+                    run, secret = self.service.public_trial(
+                        self.public_client_digest(), sample=chosen,
+                        existing_owner=existing[0] if existing else None)
+                    if secret:
+                        self._session_cookie = (f"{COOKIE}={secret}; Path=/; Secure; HttpOnly; SameSite=Strict; "
+                                                f"Max-Age={SESSION_TTL}")
                     return self._send(202, {"id": run["id"], "status": run["status"],
                                             "sample": True, "live": True})
                 if path == "/api/application/review-session":
