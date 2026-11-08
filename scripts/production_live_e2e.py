@@ -13,7 +13,9 @@ import secrets
 import time
 import zipfile
 
-import requests
+from http.cookiejar import CookieJar
+from urllib.error import HTTPError
+from urllib.request import Request, build_opener, HTTPCookieProcessor
 
 AGENT = '''import json,os,sys
 from urllib.request import Request,urlopen
@@ -30,19 +32,26 @@ print(text.strip().strip('"').upper())'''
 
 
 def run(origin, revision):
-    session = requests.Session()
-    session.headers.update({"Origin": origin})
+    session = build_opener(HTTPCookieProcessor(CookieJar()))
     base = origin + "/api/application"
 
     def call(method, endpoint, value=None):
-        response = session.request(method, base+endpoint, json=value, timeout=30)
-        if response.status_code not in (200, 201, 202):
+        encoded = None if value is None else json.dumps(value, separators=(",", ":")).encode()
+        request = Request(
+            base + endpoint, data=encoded, method=method,
+            headers={"Origin": origin, "Content-Type": "application/json",
+                     "Accept": "application/json"})
+        try:
+            with session.open(request, timeout=30) as response:
+                if response.status not in (200, 201, 202):
+                    raise AssertionError(f"{method} {endpoint}: HTTP {response.status}")
+                return json.load(response)
+        except HTTPError as error:
             try:
-                reason = response.json().get("error", {}).get("code", "unknown")
-            except ValueError:
+                reason = json.load(error).get("error", {}).get("code", "unknown")
+            except (ValueError, TypeError):
                 reason = "unparsed"
-            raise AssertionError(f"{method} {endpoint}: HTTP {response.status_code} {reason}")
-        return response.json()
+            raise AssertionError(f"{method} {endpoint}: HTTP {error.code} {reason}") from None
 
     assert call("GET", "/release")["revision"] == revision
     review_token = os.environ.get("REFIT_REVIEW_TOKEN")
