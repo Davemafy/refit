@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Release public deep link for verified recorded Challenge 1 diagnostic"
+  "reason": "Deploy content-pinned gVisor diagnostics, root-attested containment proof and public C1 film"
 }
