@@ -40,7 +40,7 @@ try{
  await page.screenshot({path:"artifacts/saas-ui/01-landing.png",fullPage:true});
  await page.goto(url+"/app");
  await page.getByRole("heading",{name:"Overview"}).waitFor();
- await page.getByText(/Recorded execution/).first().waitFor();
+ await page.locator(".overview-recent").waitFor();
  await page.screenshot({path:"artifacts/saas-ui/00-guest-workspace.png",fullPage:true});
  await page.goto(url+"/app/agents/new");
  await page.getByRole("button",{name:/Inspect this agent/}).click();
