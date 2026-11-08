@@ -48,8 +48,12 @@ def run(origin, revision):
     passwd = secrets.token_urlsafe(24)
     assert call("POST", "/register", {"username": user, "password": passwd})["signed_in"]
     assert call("GET", "/session")["username"] == user
-    models = call("GET", "")["models"]
-    assert {"glm-5.2", "deepseek-v4.1-flash-1017"} <= set(models)
+    capacity = call("GET", "")
+    assert {"glm-5.2", "deepseek-v4.1-flash-1017"} <= set(capacity["models"])
+    assert capacity["max_requests"] >= 9, (
+        "Shared inference capacity is too low for one complete acceptance; "
+        "no run was submitted or inference billed."
+    )
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("agent.py", AGENT)
