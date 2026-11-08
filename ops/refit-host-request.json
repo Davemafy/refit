@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Deploy current main including login-free live migration and repaired guest browser acceptance"
+  "reason": "Rerun bounded anonymous Vultr migration with sufficient fresh verification budget"
 }
