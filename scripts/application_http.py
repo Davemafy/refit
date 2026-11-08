@@ -812,13 +812,24 @@ class ApplicationHandler(RefitHandler):
                 with self.service.lock:
                     date = now()[:10]
                     reserved = self.service.reserved(date, owner)
+                    global_reserved = self.service.reserved(date)
                 allowance = self.service.account_budget if owner != "operator" else self.service.daily_budget
-                if owner.startswith(REVIEW_PREFIX):
+                is_review = owner.startswith(REVIEW_PREFIX)
+                if is_review:
                     allowance = REVIEW_BUDGET
+                account_remaining = max(0, allowance - reserved)
+                global_remaining = max(0, self.service.daily_budget - global_reserved)
+                # A review-pass reservation is separately controlled and
+                # currently exempt from the account-level global allowance.
+                available = min(BUDGET_LIMIT, account_remaining,
+                                BUDGET_LIMIT if is_review else global_remaining)
                 return self._send(200, {
-                    "models": MODELS, "max_requests": min(BUDGET_LIMIT, allowance),
+                    "models": MODELS, "max_requests": available,
                     "account_daily_allowance": allowance, "account_reserved_today": reserved,
+                    "account_remaining_today": account_remaining,
                     "global_daily_ceiling": self.service.daily_budget,
+                    "global_reserved_today": global_reserved,
+                    "global_remaining_today": global_remaining,
                 })
             source = re.fullmatch(r"/api/application/projects/(import-[0-9a-f]{16})/source", url.path)
             if source and owner != "operator":
