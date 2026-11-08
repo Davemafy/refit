@@ -2,10 +2,6 @@ name: Record native 4K Challenge 1 evidence film
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'ops/refit-host-request.json'
 
 permissions:
   contents: read
