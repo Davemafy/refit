@@ -98,7 +98,15 @@ for attempt in {1..15}; do
     python3 -c 'import json,sys; print(json.load(sys.stdin).get("revision", ""))' 2>/dev/null || true)"
   if [[ "$installed" == "$REVISION" ]] &&
      curl --max-time 2 -fsS http://127.0.0.1:8098/bring >/dev/null; then
-    echo "Refit operator service is ready on 127.0.0.1:8098 at revision $REVISION with worker $IMAGE_ID."
+    # Non-destructive real-host gVisor containment acceptance. Full synthetic
+    # receipts remain in a root-owned file on this Vultr VM.
+    install -d -o root -g root -m 0700 /var/lib/refit-application/c1-acceptance
+    (
+      cd "$REPO"
+      timeout --signal=TERM --kill-after=5s 2m python3 -m scripts.c1_acceptance \
+        --output "/var/lib/refit-application/c1-acceptance/$REVISION.json"
+    )
+    echo "Refit application and Vultr-host containment verified at revision $REVISION with worker $IMAGE_ID."
     exit 0
   fi
   sleep 1
