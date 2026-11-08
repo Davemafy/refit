@@ -86,3 +86,7 @@ jobs:
             -i "$HOME/.ssh/refit_host_ed25519" \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             root@80.240.30.92 "$COMMAND"
+      - name: Verify unauthenticated branded-domain experience without inference
+        if: steps.request.outputs.action == 'deploy'
+        run: |
+          python3 -m scripts.smoke_branded_domain --expected-revision "${{ github.sha }}"
