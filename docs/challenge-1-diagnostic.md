@@ -45,11 +45,13 @@ For real inference in the deployed web application, sign in, open a completed mi
 | Cleanup & containment | Runner's forced remove/inspect receipts and separate synthetic containment acceptance |
 | Judge access | Public recorded workspace, account-gated live migration and diagnostic |
 
+**Current verified proof (November 8, 2026):** [Native 4K 2:40 submission film](https://github.com/Davemafy/refit/releases/download/c1-4k-4e68d190cabb/refit-vultr-challenge1-4k.mp4), [published provenance/assets](https://github.com/Davemafy/refit/releases/tag/c1-4k-4e68d190cabb), and [Vultr-host acceptance job](https://github.com/Davemafy/refit/actions/runs/42484161419). The film is editorially composed from a real, previously verified model-written diagnostic and separate observed host-security probes. Its on-screen historical diagnostic output is not a live new execution. Subsequent diagnostic generator changes add case-level `newly_failed_cases` and `recovered_cases`, verified by unit tests; that expanded generation was not the subject of the historical recorded film.
+
 ## Limits that must remain explicit
 
 1. The generated program summarizes **training evidence**; it is **not** the migration's independent business oracle and cannot unlock a withheld export.
 2. The current managed application importer supports a defined Python/Node contract; Refit does not claim arbitrary-agent compatibility.
-3. The application service currently belongs to the host Docker group. Docker control is privileged even for a non-root account, and hardening that trusted control plane remains a distinct requirement. Generated code is not given the Docker socket or Docker group.
+3. The application service now runs **without Docker-group membership**. A separate root-owned broker validates UID, exact `runsc` commands, content-addressed images and private staging paths before launching a worker. Host Docker access remains privileged inside this narrow trusted broker; neither the application service nor generated code receives the unrestricted Docker socket. [Real Vultr broker/containment acceptance](https://github.com/Davemafy/refit/actions/runs/42484161419).
 4. gVisor does not provide a distinct host kernel; the signed binary, registration, container runtime, worker policy and actual observed denial must be checked on the **Vultr VM**, not inferred from Github CI.
 5. Bounded workers have enforced timeouts; an additional UI cancellation action for a running diagnostic is not yet provided. Each invocation is single-use.
 6. The image is deployed via a trusted `python:3.11-alpine` tag pull, not a supplied immutable digest; image pinning and provenance hardening are follow-ups.
