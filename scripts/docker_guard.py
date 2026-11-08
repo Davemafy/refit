@@ -303,9 +303,10 @@ def client(args):
             def stdin_pump():
                 try:
                     while True:
-                        # read1 forwards an available JSON frame immediately. Buffered read(n)
-                        # would wait for n bytes or EOF, deadlocking interactive agents.
-                        data = sys.stdin.buffer.read1(MAX_CHUNK)
+                        # A raw pipe read forwards available bytes immediately
+                        # without holding BufferedReader's interpreter-shutdown
+                        # lock. The worker may exit while parent stdin stays open.
+                        data = os.read(sys.stdin.fileno(), MAX_CHUNK)
                         if not data:
                             send(sock, b"E", b"", threading.Lock())
                             return
