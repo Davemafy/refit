@@ -114,6 +114,38 @@ class ApplicationQueueTests(TestCase):
         alice, ordinary = self.project(service, "alice")
         self.assertEqual(service.start({**ordinary, "budget": 1}, alice)["status"], "queued")
 
+    def test_expiring_judge_pass_can_request_one_model_written_diagnostic(self):
+        import os
+        from scripts.application_http import now
+        code = "r" * 43
+        service = self.service(
+            daily_budget=1, account_budget=1,
+            review_passes={digest(code): int(time.time()) + 3600})
+        owner = service.accounts.resolve(service.review_session(code))[0]
+        summary = service.save_import(SNAPSHOT, owner, 0)
+        request = {**REQUEST, "import_id": summary["id"]}
+        with self.assertRaises(ApiProblem) as limit:
+            service.start({**request, "budget": 16}, owner)
+        self.assertEqual(limit.exception.code, "review_budget_limit")
+        run = service.start({**request, "budget": 8}, owner)
+        persisted = service.runs[run["id"]][0]
+        persisted.update(status="compatible_on_sample", model_requests=7,
+                         report={"source_training": {"passed": 1, "failed": []},
+                                 "target_training": {"passed": 1, "failed": []}})
+        with patch.dict(os.environ, {
+            "REFIT_ENABLE_SANDBOX_DIAGNOSTICS": "1",
+            "REFIT_SANDBOX_RUNTIME": "runsc",
+        }), patch("scripts.application_http.diagnostics_input",
+                  return_value={"phases": {"source_training": {}, "target_training": {}}}):
+            result = service.diagnose(run["id"], owner)
+            self.assertEqual(result["status"], "running")
+            self.assertEqual(result["generator_model"], "deepseek-v4.1-flash-1017")
+            self.assertEqual(service.reserved(now()[:10]), 0,
+                             "Judge pass may not deplete ordinary accounts")
+            with self.assertRaises(ApiProblem) as repeated:
+                service.diagnose(run["id"], owner)
+            self.assertEqual(repeated.exception.code, "diagnostic_already_requested")
+
     def test_simultaneous_submissions_cannot_oversubscribe(self):
         service = self.service(daily_budget=2, max_active=2)
         projects = [self.project(service, name) for name in ("alice", "bob")]
