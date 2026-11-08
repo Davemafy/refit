@@ -15,7 +15,7 @@ Specialized refund and retail integrations run their original tools and stateful
 | Trusted evaluator | Checks declared outcomes outside the imported source container and gates exports on independent verification. Specialized agent integrations additionally check stateful business invariants. |
 | Export verifier | Restarts an original-runtime process with the exported model configuration and independently rechecks protected cases. A failed check withholds export. |
 
-The application API process runs as a dedicated non-root Linux account **with Docker-group membership**. Docker control is privileged even from a non-root account. Thus the trusted control plane is **not** itself contained by gVisor. Separating its HTTP and container-management privileges is a remaining security objective.
+The application API runs as the dedicated non-root `refit-application` Linux account **without Docker-group membership**. Container-management authority is isolated in the root-owned `refit-docker-guard` service. Its Unix-socket broker checks Linux peer UID and allows only exact, host-approved `runsc` commands with content-addressed worker images, fixed resource isolation and constrained mount staging. The HTTP process cannot access `/var/run/docker.sock` or request arbitrary Docker operations. The broker is still privileged host-side code and remains part of the trusted computing base; gVisor isolates the untrusted worker, not the Docker daemon. The deployment verifies an actual container spawned via the unprivileged broker and its cleanup [on Vultr](https://github.com/Davemafy/refit/actions/runs/42484161419).
 
 ## Ingestion and execution
 
