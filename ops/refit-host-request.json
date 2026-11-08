@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Promote account-bound Vultr generated diagnostics and gVisor verification to production"
+  "reason": "Deploy f07b PrivateTmp staging fix and verify live gVisor diagnostic"
 }
