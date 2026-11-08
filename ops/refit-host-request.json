@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Promote branded-domain SNI routing and verify live anonymous workspace through Cloudflare"
+  "reason": "Redeploy main; verify Vultr host and sandbox without Cloudflare bot-sensitive public probe"
 }
