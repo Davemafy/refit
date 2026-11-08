@@ -213,6 +213,7 @@ class ApplicationService:
         if not 7 <= self.guest_daily_allowance <= 512:
             raise ValueError("Guest daily request allowance must be within 7–512.")
         self.lock = threading.RLock()
+        self.last_guest_prune = 0.0
         self.streams = threading.BoundedSemaphore(8)
         self.import_slots = threading.BoundedSemaphore(2)
         self.imports = {}
@@ -248,6 +249,46 @@ class ApplicationService:
 
         with self.lock:
             self.dispatch()
+        self.prune_guest_workspaces(force=True)
+
+    def prune_guest_workspaces(self, *, force=False):
+        """Reclaim expired private source/evidence only after billing days pass.
+
+        Never discard active work, current-day reservations, unverified cleanup
+        or recent evidence. The SQLite per-address abuse ledger is preserved.
+        """
+        if not self.accounts or self.quarantined:
+            return 0
+        with self.lock:
+            instant = time.monotonic()
+            if not force and instant - self.last_guest_prune < 600:
+                return 0
+            self.last_guest_prune = instant
+            day = now()[:10]
+            # 24h after final execution, and never on the same UTC billing day.
+            cutoff = time.time() - 86400
+            removed = 0
+            for owner in self.accounts.expired_guest_owners():
+                owned = [(key, record[0]) for key, record in self.runs.items()
+                         if record[0].get("owner") == owner]
+                def safe_to_remove(run):
+                    completed = run.get("finished_at")
+                    if not completed or run["status"] in ACTIVE | {"interrupted"}:
+                        return False
+                    if run.get("started_at", "")[:10] >= day or completed[:10] >= day:
+                        return False
+                    try:
+                        return datetime.fromisoformat(completed.replace("Z", "+00:00")).timestamp() < cutoff
+                    except (ValueError, TypeError, OverflowError):
+                        return False
+                if any(not safe_to_remove(run) for _, run in owned):
+                    continue
+                for ident, _ in owned:
+                    (self.store.directory / (ident + ".json")).unlink(missing_ok=True)
+                    self.runs.pop(ident, None)
+                if self.accounts.purge_guest_owner(owner):
+                    removed += 1
+            return removed
 
     def review_session(self, code):
         if not isinstance(code, str) or not TOKEN.fullmatch(code):
@@ -1028,6 +1069,8 @@ class ApplicationHandler(RefitHandler):
             if url.path == "/api/application/containment-proof" and self.public():
                 return self._send(200, public_containment_proof(self.deployed_revision))
             if url.path == "/api/application/session":
+                if self.public():
+                    self.service.prune_guest_workspaces()
                 if not self.public():
                     return self._send(200, {"mode": "operator"})
                 session = self.service.accounts.resolve(self.session_secret())
