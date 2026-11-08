@@ -856,20 +856,27 @@ class ApplicationHandler(RefitHandler):
                     date = now()[:10]
                     reserved = self.service.reserved(date, owner)
                     global_reserved = self.service.reserved(date)
+                    is_review = owner.startswith(REVIEW_PREFIX)
+                    review_used = (is_review and any(
+                        run.get("owner") == owner for run, _ in self.service.runs.values()))
+                    review_expired = (is_review and
+                        self.service.review_passes.get(owner, 0) <= time.time())
                 allowance = self.service.account_budget if owner != "operator" else self.service.daily_budget
-                is_review = owner.startswith(REVIEW_PREFIX)
                 if is_review:
-                    # Protect one call for the subsequent Challenge 1
-                    # model-generated diagnostic, separate from the migration.
+                    # Reserve one invocation for generated diagnostics while
+                    # making the single-use migration contract visible in UI.
                     allowance = REVIEW_BUDGET - 1 if reserved == 0 else REVIEW_BUDGET
                 account_remaining = max(0, allowance - reserved)
                 global_remaining = max(0, self.service.daily_budget - global_reserved)
-                # A review-pass reservation is separately controlled and
-                # currently exempt from the account-level global allowance.
-                available = min(BUDGET_LIMIT, account_remaining,
-                                BUDGET_LIMIT if is_review else global_remaining)
+                # Completed reviewer sessions can still inspect saved runs and
+                # trigger their reserved diagnostic, but never a second migration.
+                available = (0 if review_used or review_expired else
+                    min(BUDGET_LIMIT, account_remaining,
+                        BUDGET_LIMIT if is_review else global_remaining))
                 return self._send(200, {
                     "models": MODELS, "max_requests": available,
+                    "review_run_used": bool(review_used),
+                    "review_pass_expired": bool(review_expired),
                     "minimum_complete_migration_requests": 7,
                     "account_daily_allowance": allowance, "account_reserved_today": reserved,
                     "account_remaining_today": account_remaining,
