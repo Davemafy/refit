@@ -1,0 +1,62 @@
+name: Refit audio-first UI recording
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/audio_first_capture.mjs
+      - .github/workflows/audio-first-ui-recording.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    name: Record real Refit UI for 2m40 soundtrack
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Record fifteen authentic synchronized browser scenes
+        run: node scripts/audio_first_capture.mjs
+      - name: Encode high-quality 1080p timeline
+        run: |
+          ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -ss 5 -i artifacts/audio-first-capture/refit-ui-source.webm \
+            -t 160 -vf "fps=30,scale=1920:1080:flags=lanczos,format=yuv420p" \
+            -c:v libx264 -preset veryfast -crf 16 -movflags +faststart \
+            -an artifacts/audio-first-capture/refit-ui-synced-160s.mp4
+          ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -i artifacts/audio-first-capture/refit-ui-synced-160s.mp4 \
+            -vf "fps=1/10,scale=480:-1,tile=4x4" -frames:v 1 \
+            artifacts/audio-first-capture/contact-sheet.jpg
+          python - <<'PY'
+          import json,subprocess,os
+          p='artifacts/audio-first-capture/refit-ui-synced-160s.mp4'
+          meta=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams',
+                                                  '-show_format','-of','json',p]))
+          s=next(x for x in meta['streams'] if x['codec_type']=='video')
+          dur=float(meta['format']['duration'])
+          assert (s['width'],s['height'])==(1920,1080)
+          assert 158.5 <= dur <= 160.5, f'Unexpected duration: {dur}'
+          print('REAL FOOTAGE',dur,'seconds',os.path.getsize(p),'bytes')
+          PY
+      - name: Upload real UI footage and synced scene markers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-audio-first-real-ui-160s
+          path: |
+            artifacts/audio-first-capture/refit-ui-synced-160s.mp4
+            artifacts/audio-first-capture/scenes.json
+            artifacts/audio-first-capture/final-ui.png
+            artifacts/audio-first-capture/contact-sheet.jpg
+          retention-days: 14
+          if-no-files-found: warn
