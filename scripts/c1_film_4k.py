@@ -181,6 +181,65 @@ class Studio:
 def scene_content(st, scene, number, record):
     id, label, eyebrow, title, subtitle, panel, color = scene
     im, dr = st.new(label, number, color)
+    run, events, host, count = record
+    d = run["diagnostic"]
+    # Editorial hero scenes interrupt the investigation grid with intentional
+    # full-width typography, split-screen comparisons and generous scale.
+    if panel == "hero":
+        st.text(dr,(205,425),eyebrow.upper(),53,color,True)
+        for idx,ln in enumerate(title):
+            raw=ln.lstrip("*")
+            st.text(dr,(200,650+idx*265),raw,230,
+                    color if ln.startswith("*") else INK)
+        st.text(dr,(210,1550),subtitle[0],83,MUTED)
+        st.text(dr,(210,1665),subtitle[1],83,MUTED)
+        dr.ellipse((2760,1180,3350,1770),outline=(55,105,81),width=8)
+        dr.ellipse((2910,1330,3200,1620),outline=(88,142,104),width=8)
+        return im
+    if panel == "calls":
+        st.text(dr,(205,430),eyebrow.upper(),53,MINT,True)
+        st.text(dr,(240,535),"07",640,MINT)
+        st.text(dr,(1700,750),"VULTR REQUESTS",108,INK)
+        st.text(dr,(1700,925),"REAL MIGRATION",85,MUTED)
+        dr.line((1700,1090,3550,1090),fill=BORDER,width=5)
+        st.text(dr,(1700,1180),"01 extra request wrote Python",67,INK)
+        st.text(dr,(1700,1325),"Fresh export independently verified",61,MUTED)
+        return im
+    if panel == "unseen":
+        st.text(dr,(205,425),eyebrow.upper(),53,MINT,True)
+        st.text(dr,(370,635),"0",480,INK)
+        st.text(dr,(1050,870),"→",220,MINT)
+        st.text(dr,(1600,635),str(d["cross_check"]["observed"]["training_regression_delta"]),480,MINT)
+        st.text(dr,(215,1330),"PRIMARY EVIDENCE",74,MUTED,True)
+        st.text(dr,(1630,1330),"UNSEEN INPUT",74,MINT,True)
+        dr.line((205,1560,3610,1560),fill=BORDER,width=5)
+        st.text(dr,(205,1640),"Same model-written program. Different data. Oracle agrees.",75,INK)
+        return im
+    if panel == "host":
+        st.text(dr,(205,425),eyebrow.upper(),53,CORAL,True)
+        st.text(dr,(245,620),"5/5",550,CORAL)
+        st.text(dr,(1850,800),"BLOCKED",230,INK)
+        st.text(dr,(1850,1080),"ON THE REAL",96,MUTED)
+        st.text(dr,(1850,1210),"VULTR HOST",96,MUTED)
+        dr.line((205,1580,3610,1580),fill=BORDER,width=5)
+        st.text(dr,(215,1650),"A separate, controlled synthetic security test",75,INK)
+        return im
+    if panel == "cleanup":
+        st.text(dr,(205,425),eyebrow.upper(),53,MINT,True)
+        st.text(dr,(210,580),"4 / 4",500,MINT)
+        st.text(dr,(210,1180),"DIAGNOSTIC + HOST PROBE WORKERS REMOVED",75,INK)
+        dr.line((205,1370,3610,1370),fill=BORDER,width=4)
+        st.text(dr,(210,1485),str(count)+" original migration cleanup receipts verified.",85,MUTED)
+        st.text(dr,(210,1650),"Container absence checked against the Docker daemon.",69,MUTED)
+        return im
+    if panel == "final":
+        st.text(dr,(205,480),eyebrow.upper(),53,MINT,True)
+        st.text(dr,(195,650),"CHANGE THE MODEL.",226,INK)
+        st.text(dr,(195,930),"KEEP THE BEHAVIOR.",226,MINT)
+        dr.line((205,1260,3600,1260),fill=BORDER,width=5)
+        st.text(dr,(215,1380),"VERIFIED EXECUTION. INDEPENDENT ORACLE.",83,INK)
+        st.text(dr,(215,1570),"80.240.30.92/app",110,MINT,True)
+        return im
     lines = [(part.startswith("*") and part[1:] or part,part.startswith("*"))
              for part in title]
     st.title(dr,eyebrow,lines,subtitle,color)
