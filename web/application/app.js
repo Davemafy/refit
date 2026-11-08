@@ -189,13 +189,14 @@ async function overview(){
   const unknown=completed.length-passed-failed;
   const observationBars=completed.slice(0,20).map(e=>
    '<span class="verification-tick '+(e.details?.passed===true?"is-passed":e.details?.passed===false?"is-failed":"is-pending")+'"></span>').join("");
-  page.innerHTML=lead("Overview","Inspect model migration outcomes and recorded execution.")+
+  page.innerHTML=lead("Overview","Compare actual agent behavior across models.")+
    '<section class="workspace-start workspace-start--visual" aria-label="Try Refit live">'+
-   '<div class="workspace-start-copy"><h2>Bring your agent. Run a real migration.</h2>'+
-   '<p>No account required. Import a GitHub repository or ZIP, compare models, and inspect the resulting sandbox execution and verification evidence.</p>'+
-   '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="new-agent">'+ico("plus")+' Import your agent '+ico("arrow")+'</button>'+
+   '<div class="workspace-start-copy"><h2>One model change. See what really happens.</h2>'+
+   '<p>Run a real refund agent against two Vultr models. Watch the tool calls, authorization checks, sandbox cleanup and verification. No sign-in.</p>'+
+   '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-refund">'+ico("arrow")+' Run refund agent</button>'+ 
+   '<button class="btn" type="button" data-action="new-agent">Import your own agent</button>'+
    '</div>'+
-   '<p class="small sub">Public repositories and ZIPs supported. Code executes in an isolated Vultr sandbox.</p></div>'+
+   '<p class="small sub">Sample orders are synthetic. Inference, tool decisions, state updates and verification are real.</p></div>'+
    illustratedAsset("programs")+'</section>'+
    '<section class="overview-recent" aria-label="Recorded migration">'+
    '<div class="overview-recent-heading"><div class="overview-recent-heading-text"><span class="overview-recent-label">Python knowledge-base agent</span>'+
@@ -432,7 +433,7 @@ async function flow(){
    '<div id="zipField" hidden><label class="field" for="zip">Source archive</label><input id="zip" class="control import-file" type="file" accept=".zip,application/zip"><p class="import-helper">Up to 32 MiB compressed. Refit reads eligible files within the 12 MiB source budget.</p></div>'+
    '<details class="import-advanced" id="advancedImport"><summary>Advanced options '+ico("arrow")+'</summary><div class="import-advanced-fields"><label class="field" for="revision">Exact commit SHA <span class="hint">Optional · overrides latest commit</span></label><input class="control mono" id="revision" placeholder="40-character commit hash" maxlength="40" autocomplete="off" spellcheck="false"><label class="field" for="repoToken">Private repository token <span class="hint">Optional · used only for this import</span></label><input type="password" id="repoToken" class="control mono" placeholder="GitHub read token" autocomplete="new-password" spellcheck="false" data-lpignore="true"><label class="field" for="sourceDirectory">Application directory <span class="hint">Optional · relative to repository root</span></label><input class="control mono" id="sourceDirectory" placeholder="apps/support-agent" spellcheck="false"><label class="field" for="sourceFiles">Source file override <span class="hint">Optional · one path per line relative to the application directory</span></label><textarea class="control mono" id="sourceFiles" rows="3" spellcheck="false"></textarea></div></details></div>'+
    '<div class="import-actions"><p>'+ico("shield")+' Inspection is private. No inference at this step.</p><button class="btn primary" type="submit">Inspect agent '+ico("arrow")+'</button></div></form></section>'+
- '<p class="section-footnote">Don’t have an agent ready? <button type="button" class="btn compact" data-action="try-live">Run a live sample instead</button></p>'+importPathSteps+'</div>';
+ '<p class="section-footnote">Don’t have an agent ready? <button type="button" class="btn compact" data-action="try-refund">Run the refund agent on Vultr</button></p>'+importPathSteps+'</div>';
   return;
  }
  const p=state.wizard.project,d=selectedDiscovery();
@@ -1137,12 +1138,12 @@ document.addEventListener("click",async event=>{
  const button=event.target.closest("[data-action]");if(!button)return;
  const action=button.dataset.action,id=button.dataset.id;
  try{
-  if(action==="try-live"){
+  if(action==="try-live"||action==="try-refund"){
    button.disabled=true;
    const previous=button.innerHTML;
    button.innerHTML=ico("clock")+" Starting live migration…";
    try{
-     const started=await req("/try",{});
+     const started=await req(action==="try-refund"?"/try-refund":"/try",{});
      if(!/^app-[0-9a-f]{16}$/.test(started.id))throw Error("Run identity was not returned.");
      state.username="Live visitor";state.trial=true;state.guest=false;
      document.body.classList.remove("guest-session");
