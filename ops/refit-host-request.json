@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Promote clean signup-free agent import with single primary action"
+  "reason": "Deploy real refund-agent migration flow and remove prerecorded replay UI"
 }
