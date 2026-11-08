@@ -479,7 +479,9 @@ async function flow(){
    ?{models:[state.demo.run.source,state.demo.run.target],max_requests:state.demo.run.budget}
    :await req("");
  const remaining=state.capabilities.max_requests;
- const budgetValue=remaining>0?Math.min(Number(state.wizard.budget)||remaining,remaining):0;
+ const minimum=state.capabilities.minimum_complete_migration_requests||7;
+ const canVerify=remaining>=minimum;
+ const budgetValue=canVerify?Math.min(Math.max(Number(state.wizard.budget)||remaining,minimum),remaining):0;
  const models=state.capabilities.models||[];
  const source=state.wizard.source||models[0]||"",target=state.wizard.target||models[1]||"";
  page.innerHTML=lead("Configure migration","Choose the source and replacement models, then supply independent evaluation cases.")+
@@ -487,11 +489,11 @@ async function flow(){
  '<label class="field">Replacement model <span class="hint">The model whose behavior will be verified.</span><select class="control" id="target">'+models.map(m=>'<option '+(target===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
  (d.preset?'<div class="hint-note">'+safe(d.evaluation||"Reviewed native evaluation preset will be used.")+'</div>':
   setupFields(d))+
- '<label class="field">Maximum Vultr requests<input type="number" id="budget" class="control" min="1" max="'+safe(remaining)+'" value="'+safe(budgetValue)+'" '+(remaining===0?"disabled":"")+'></label>'+
- (remaining===0?'<p class="hint-note" role="status">No live inference capacity remains today. Your imported agent is saved; live migrations will be available when the daily allowance resets.</p>':'<p class="small sub">Available now: '+safe(remaining)+' requests · shared pool remaining: '+safe(state.capabilities.global_remaining_today??remaining)+'</p>')+
+ '<label class="field">Maximum Vultr requests<input type="number" id="budget" class="control" min="'+safe(minimum)+'" max="'+safe(remaining)+'" value="'+safe(budgetValue)+'" '+(!canVerify?"disabled":"")+'></label>'+
+ (!canVerify?'<p class="hint-note" role="status">A full evaluation needs at least '+safe(minimum)+' requests. Only '+safe(remaining)+' remain today; your imported agent is saved until the UTC allowance resets.</p>':'<p class="small sub">Available now: '+safe(remaining)+' requests · minimum for complete evaluation: '+safe(minimum)+' · shared pool remaining: '+safe(state.capabilities.global_remaining_today??remaining)+'</p>')+
  '<label class="hstack" style="font-size:13px"><input id="authorize" type="checkbox" style="width:17px;height:17px"> I authorize this bounded live inference run.</label></section>'+
  '<aside class="card inner side-facts"><h3>Migration summary</h3><hr><div class="pair-line"><span class="sub">Source</span><span>'+safe(p.repository||"Uploaded ZIP")+'</span></div><div class="pair-line"><span class="sub">Entry point</span><span>'+safe(d.entry||"Operator-configured")+'</span></div><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(d.runtime)+'</span></div><div class="pair-line"><span class="sub">Verification</span><span>Original-runtime fresh check</span></div><div class="hint-note">'+ico("shield")+' Untrusted source runs inside a bounded disposable gVisor container. No production services are enabled by default.</div></aside></div>'+
- '<div class="flow-footer"><button class="btn" data-action="flow-inspect">'+ico("back")+' Back to inspection</button>'+(state.guest?'<button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">View recorded results '+ico("arrow")+'</button><a class="btn" href="/login?next=/app/agents/new">Sign in to run your agent</a>':'<button id="start" class="btn primary" data-action="start-migration" '+(remaining===0?"disabled":"")+'>Run migration '+ico("arrow")+'</button>')+'</div>';
+ '<div class="flow-footer"><button class="btn" data-action="flow-inspect">'+ico("back")+' Back to inspection</button>'+(state.guest?'<button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">View recorded results '+ico("arrow")+'</button><a class="btn" href="/login?next=/app/agents/new">Sign in to run your agent</a>':'<button id="start" class="btn primary" data-action="start-migration" '+(!canVerify?"disabled":"")+'>Run migration '+ico("arrow")+'</button>')+'</div>';
 }
 async function importProject(){
  if(state.guest){notify("Sign in before submitting a private source import.");return;}
@@ -540,9 +542,10 @@ async function startMigration(){
    if(source===target)throw Error("Select two different models.");
    if(!el("authorize").checked)throw Error("Authorize the inference budget before starting.");
    state.capabilities=await req("");
-   if(state.capabilities.max_requests===0)throw Error("Today's live inference capacity is exhausted. Your imported agent remains saved.");
+   const minimum=state.capabilities.minimum_complete_migration_requests||7;
+   if(state.capabilities.max_requests<minimum)throw Error("Not enough inference capacity for one complete evaluation. Your imported agent remains saved.");
    const budget=Number(el("budget").value);
-   if(!Number.isInteger(budget)||budget<1||budget>state.capabilities.max_requests)throw Error("Choose a valid request budget.");
+   if(!Number.isInteger(budget)||budget<minimum||budget>state.capabilities.max_requests)throw Error("Choose a request budget of at least "+minimum+" to verify a complete migration.");
    const body={import_id:p.id,source,target,budget,authorize:true};
    if(!d.preset)body.setup=readSetup(d);
    state.wizard.source=source;state.wizard.target=target;state.wizard.budget=budget;
