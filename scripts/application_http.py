@@ -209,7 +209,7 @@ class ApplicationService:
         # Anonymous access is a first-class workspace, not a low-capacity demo.
         # The shared daily broker ceiling still limits total provider requests.
         self.guest_daily_allowance = int(os.getenv(
-            "REFIT_GUEST_DAILY_BUDGET", str(max(32, account_budget))))
+            "REFIT_GUEST_DAILY_BUDGET", str(max(64, account_budget))))
         if not 7 <= self.guest_daily_allowance <= 512:
             raise ValueError("Guest daily request allowance must be within 7–512.")
         self.lock = threading.RLock()
