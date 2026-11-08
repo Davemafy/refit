@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Validate lock-free broker stdin and seven real imported-agent gVisor workers end to end"
+  "reason": "Release live capacity transparency, safe zero-capacity UX and hardened seven-worker migration acceptance"
 }
