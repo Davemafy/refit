@@ -1,5 +1,8 @@
 # Refit
 
+**Verified Challenge 1 evidence:** [Watch the native 4K, 2:40 film](https://github.com/Davemafy/refit/releases/download/c1-4k-4e68d190cabb/refit-vultr-challenge1-4k.mp4) · [Public proof bundle](https://github.com/Davemafy/refit/releases/tag/c1-4k-4e68d190cabb) · [Live recorded evidence inspector](https://80.240.30.92/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=diagnostic). The film re-composes actual deployed diagnostic and separate Vultr host-containment receipts; it is recorded evidence, not an anonymous live execution endpoint.
+
+
 **Change the model. Keep the behavior.**
 
 Refit helps developers migrate existing AI agents between language models without silently losing required tool-use behavior or business outcomes. It runs the original agent against source and replacement models, collects execution evidence, identifies regressions, tests bounded model-facing adaptations where the original application permits them, and withholds exports that fail independent verification.
@@ -56,7 +59,7 @@ Browser ── HTTPS ──► Nginx (TLS and rate limits)
                Verified export or rejection
 ```
 
-The **host controller is trusted and outside gVisor**. The application process runs under a dedicated Linux account but currently has Docker-group access to launch workers; that privileged control-plane boundary remains a hardening task. The sandbox itself has no Docker socket or inference credential. See [architecture](docs/architecture.md) and [sandbox runtime](docs/sandbox-runtime.md).
+The **host control plane is trusted and outside gVisor**, but its privileges are separated: the public application service runs under a dedicated non-root Linux account **without Docker-group access**. An independently running root-owned Unix-socket broker authenticates the application's UID and accepts only exact, resource-limited `runsc` launch/inspection/cleanup commands using host-approved immutable image IDs. The generated worker never sees the Docker socket, broker credentials, or inference API key. The broker remains a privileged, deliberately narrow trusted component—not an unprivileged sandbox itself. [Architecture](docs/architecture.md) · [Sandbox runtime](docs/sandbox-runtime.md) · [Vultr deployment acceptance](https://github.com/Davemafy/refit/actions/runs/42484161419).
 
 ## Verified results
 
