@@ -27,18 +27,22 @@ jobs:
         run: node scripts/demo_capture.mjs
       - name: Install FFmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
-      - name: Encode MP4
-        if: always()
+      - name: Encode full-quality 1080p MP4
         run: |
-          if [ -f demo-output/raw-capture.webm ]; then
-            ffmpeg -hide_banner -y -i demo-output/raw-capture.webm -vf "scale=1920:1080:flags=lanczos,fps=30,format=yuv420p" -c:v libx264 -preset medium -crf 20 -movflags +faststart -an demo-output/refit-product-demo.mp4
-            ffprobe -v error -show_entries format=duration,size -of default=nw=1 demo-output/refit-product-demo.mp4
-          fi
+          test -s demo-output/frames.ffconcat
+          ffmpeg -hide_banner -y -safe 0 -f concat -i demo-output/frames.ffconcat -vf "fps=30,scale=1920:1080:flags=lanczos,format=yuv420p" -c:v libx264 -preset medium -crf 14 -maxrate 20M -bufsize 40M -movflags +faststart -an demo-output/refit-product-demo-hq.mp4
+          ffprobe -v error -show_entries stream=codec_name,width,height,bit_rate -show_entries format=duration,size,bit_rate -of default=nw=1 demo-output/refit-product-demo-hq.mp4
+          ffmpeg -hide_banner -loglevel error -y -ss 00:00:24 -i demo-output/refit-product-demo-hq.mp4 -frames:v 1 demo-output/quality-check-frame.png
       - name: Upload footage and evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: refit-product-demo-footage
-          path: demo-output/
+          path: |
+            demo-output/refit-product-demo-hq.mp4
+            demo-output/quality-check-frame.png
+            demo-output/final-frame.png
+            demo-output/timeline.json
+            demo-output/capture-summary.json
           if-no-files-found: warn
           retention-days: 7
