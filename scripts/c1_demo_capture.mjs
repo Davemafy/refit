@@ -41,24 +41,33 @@ function attachLabel() {
     if(shell)shell.style.zoom='1.4';
   });
 }
-async function beginCapture(){
-  capture=await ctx.newCDPSession(page);
-  capture.on('Page.screencastFrame',frame=>{
+let frameBusy=false;
+async function captureFrame(){
+  if(frameBusy)return;
+  frameBusy=true;
+  try {
+    // Explicit native-resolution screenshots reliably capture static text,
+    // scrolls and held evidence, unlike compositor-dependent CDP screencasts.
+    const data=await page.screenshot({type:'jpeg',quality:94,timeout:12000});
     const idx=recorded.length,name=String(idx).padStart(6,'0')+'.jpg';
-    fs.writeFileSync(path.join(frames,name),Buffer.from(frame.data,'base64'));
-    recorded.push({name,timestamp:frame.metadata.timestamp});
-    capture.send('Page.screencastFrameAck',{sessionId:frame.sessionId}).catch(()=>{});
-  });
-  await capture.send('Page.startScreencast',{
-    format:'jpeg',quality:97,maxWidth:2560,maxHeight:1440,everyNthFrame:1,
-  });
-  note('recording_started',{source:'production Chromium',resolution:'2560x1440'});
+    fs.writeFileSync(path.join(frames,name),data);
+    recorded.push({name,timestamp:Date.now()/1000});
+  } finally {
+    frameBusy=false;
+  }
+}
+async function beginCapture(){
+  await captureFrame();
+  capture=setInterval(()=>{captureFrame().catch(err=>note('frame_error',{error:String(err)}));},160);
+  note('recording_started',{source:'repeated production browser screenshots',
+    resolution:'2560x1440',quality:94});
 }
 async function endCapture(){
   if(!capture)return;
-  await capture.send('Page.stopScreencast');ended=Date.now();
-  await sleep(350);
-  assert(recorded.length>=12,'Missing source video frames');
+  clearInterval(capture);
+  while(frameBusy)await sleep(100);
+  ended=Date.now();
+  assert(recorded.length>=20,'Insufficient high-resolution source frames');
   const manifest=['ffconcat version 1.0'];
   for(let i=0;i<recorded.length;i++){
     const current=recorded[i],next=recorded[i+1];
@@ -68,8 +77,8 @@ async function endCapture(){
   }
   manifest.push("file 'frames/"+recorded.at(-1).name+"'");
   fs.writeFileSync(path.join(out,'frames.ffconcat'),manifest.join('\n')+'\n');
-  fs.writeFileSync(path.join(out,'timeline.json'),JSON.stringify(timeline,null,2));
   note('recording_finished',{frames:recorded.length});
+  fs.writeFileSync(path.join(out,'timeline.json'),JSON.stringify(timeline,null,2));
 }
 async function hold(label,ms=2600){
   note(label);
