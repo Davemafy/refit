@@ -124,7 +124,7 @@ for attempt in {1..15}; do
     # Publish only a root-attested, redacted synthetic containment receipt.
     # Never expose raw Docker or host-state receipts to the web service.
     install -d -o root -g root -m 0755 /usr/local/share/refit
-    python3 -m scripts.c1_public_receipt \
+    PYTHONPATH="$REPO" python3 -m scripts.c1_public_receipt \
       --source "/var/lib/refit-application/c1-acceptance/$REVISION.json" \
       --revision "$REVISION" \
       --output /usr/local/share/refit/c1-containment.json
