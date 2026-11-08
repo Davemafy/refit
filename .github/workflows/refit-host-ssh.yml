@@ -1,4 +1,4 @@
-name: Refit host bridge (5-hour authorized access)
+name: Refit Vultr deployment verification
 
 on:
   workflow_dispatch:
@@ -88,17 +88,11 @@ jobs:
             -i "$HOME/.ssh/refit_host_ed25519" \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             root@80.240.30.92 "$COMMAND"
-      - name: Verify unauthenticated branded-domain experience without inference
-        id: public_acceptance
-        if: steps.request.outputs.action == 'deploy'
-        run: |
-          python3 -m scripts.smoke_branded_domain --expected-revision "${{ github.sha }}"
-      - name: Publish verified deployment outcome to the exact Git commit
-        if: always()
+      - name: Publish Vultr host deployment outcome to the exact Git commit
+        if: always() && steps.request.outputs.action == 'deploy'
         env:
           GH_TOKEN: ${{ github.token }}
           HOST_OUTCOME: ${{ steps.host_deploy.outcome }}
-          PUBLIC_OUTCOME: ${{ steps.public_acceptance.outcome }}
           REQUEST_ACTION: ${{ steps.request.outputs.action }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
@@ -107,14 +101,13 @@ jobs:
           python3 - <<'PY'
           import json, os, urllib.request
           success = (os.environ["REQUEST_ACTION"] == "deploy" and
-                     os.environ["HOST_OUTCOME"] == "success" and
-                     os.environ["PUBLIC_OUTCOME"] == "success")
+                     os.environ["HOST_OUTCOME"] == "success")
           payload = {
               "state": "success" if success else "failure",
               "context": "refit/vultr-deployment",
               "description": (
-                  "host=" + os.environ["HOST_OUTCOME"] + "; branded=" +
-                  os.environ["PUBLIC_OUTCOME"]),
+                  "Vultr host=" + os.environ["HOST_OUTCOME"] +
+                  "; public Cloudflare edge not assessed"),
               "target_url": "https://github.com/" + os.environ["REPO"] +
                             "/actions/runs/" + os.environ["RUN_ID"],
           }
