@@ -31,6 +31,54 @@ APP_COMMAND="/usr/bin/python3 -m scripts.application_http --state /var/lib/refit
 getent group docker >/dev/null
 id refit-application >/dev/null 2>&1 || useradd --system --home-dir /var/lib/refit-application --shell /usr/sbin/nologin refit-application
 install -d -m 0700 -o refit-application -g refit-application /var/lib/refit-application
+# The public HTTP process is NOT a Docker client with host-root authority.
+# A separate root-owned broker checks full command vectors, immutable image
+# IDs, gVisor policy and staging paths. It accepts only this service UID.
+if id -nG refit-application | tr ' ' '\n' | grep -qx docker; then
+  gpasswd -d refit-application docker >/dev/null
+fi
+install -d -m 0755 -o root -g root /usr/local/libexec/refit /usr/local/libexec/refit-cli
+install -m 0755 -o root -g root "$REPO/scripts/docker_guard.py" /usr/local/libexec/refit/docker-guard.py
+ln -sfn /usr/local/libexec/refit/docker-guard.py /usr/local/libexec/refit-cli/docker
+python3 - "$IMAGE_ID" "$DIAGNOSTIC_IMAGE_ID" <<'PY'
+import json,sys
+from pathlib import Path
+p=Path("/etc/refit/docker-guard.json")
+p.write_text(json.dumps({"application":sys.argv[1],"diagnostic":sys.argv[2]})+"\n")
+p.chmod(0o600)
+PY
+cat > /etc/systemd/system/refit-docker-guard.service <<UNIT
+[Unit]
+Description=Refit restricted gVisor Docker command broker
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/refit/docker-guard.py --server
+RuntimeDirectory=refit-docker-guard
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/run/refit-docker-guard
+MemoryMax=160M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 # Docker's daemon and systemd's PrivateTmp service must see the same
 # explicitly approved mount source. The generated worker gets only a
 # read-only subdirectory, never the staging root or host credentials.
@@ -50,7 +98,6 @@ After=docker.service
 Type=simple
 User=refit-application
 Group=refit-application
-SupplementaryGroups=docker
 WorkingDirectory=$REPO
 EnvironmentFile=/etc/refit/inference.env
 EnvironmentFile=/etc/refit/application.env
@@ -60,6 +107,7 @@ Environment=REFIT_DEPLOYED_REVISION=$REVISION
 Environment=REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1
 Environment=REFIT_SANDBOX_RUNTIME=runsc
 Environment=REFIT_DIAGNOSTIC_IMAGE_ID=$DIAGNOSTIC_IMAGE_ID
+Environment=PATH=/usr/local/libexec/refit-cli:/usr/local/bin:/usr/bin:/bin
 ExecStart=$APP_COMMAND
 UMask=0077
 Restart=on-failure
@@ -93,6 +141,20 @@ ExecStart=
 ExecStart=$APP_COMMAND
 OVERRIDE
 systemctl daemon-reload
+systemctl enable refit-docker-guard
+systemctl restart refit-docker-guard
+for attempt in $(seq 1 30); do
+  test -S /run/refit-docker-guard/docker.sock && break
+  sleep 0.2
+done
+test -S /run/refit-docker-guard/docker.sock
+if id -nG refit-application | tr ' ' '\n' | grep -qx docker; then
+  echo "Refit HTTP service still has privileged Docker group access" >&2
+  exit 1
+fi
+runuser -u refit-application -- env PATH=/usr/local/libexec/refit-cli:/usr/bin:/bin \
+  /usr/local/libexec/refit-cli/docker info --format '{{json .ID}}' |
+  python3 -c 'import json,sys; assert len(json.load(sys.stdin)) >= 1'
 SERVICE_DIRECTORY="$(systemctl show refit-application --property=WorkingDirectory --value)"
 if [[ "$SERVICE_DIRECTORY" != "$REPO" ]]; then
   printf 'Refit service checkout mismatch: expected %s, got %s.\n' "$REPO" "$SERVICE_DIRECTORY" >&2
@@ -112,6 +174,15 @@ for attempt in {1..15}; do
     python3 -c 'import json,sys; print(json.load(sys.stdin).get("revision", ""))' 2>/dev/null || true)"
   if [[ "$installed" == "$REVISION" ]] &&
      curl --max-time 2 -fsS http://127.0.0.1:8098/bring >/dev/null; then
+    # Verify actual gVisor execution through the unprivileged controller's
+    # restricted broker, not just a privileged root-only acceptance path.
+    (
+      cd "$REPO"
+      runuser -u refit-application -- env \
+        PATH=/usr/local/libexec/refit-cli:/usr/local/bin:/usr/bin:/bin \
+        REFIT_DIAGNOSTIC_IMAGE_ID="$DIAGNOSTIC_IMAGE_ID" \
+        python3 -c 'from pathlib import Path; from scripts.sandbox_runner import DockerSandbox; r=DockerSandbox(runtime="runsc",staging_root=Path("/var/lib/refit-application/sandbox-staging")).run("print(\"REFIT-UNPRIVILEGED-EXECUTION\")",{},label="broker_acceptance"); assert r["status"]=="passed" and "REFIT-UNPRIVILEGED-EXECUTION" in r["stdout"] and r["container_removed_verified"] and r["ledger_valid"]; print("Unprivileged broker gVisor execution and cleanup verified")'
+    )
     # Non-destructive real-host gVisor containment acceptance. Full synthetic
     # receipts remain in a root-owned file on this Vultr VM.
     install -d -o root -g root -m 0700 /var/lib/refit-application/c1-acceptance
