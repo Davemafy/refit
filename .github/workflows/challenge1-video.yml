@@ -33,6 +33,25 @@ jobs:
           REFIT_URL: https://80.240.30.92
           REFIT_EXPECTED_REVISION: ${{ github.sha }}
         run: |
+          python - <<'PY'
+          import json,os,time,urllib.request,urllib.error
+          origin=os.environ['REFIT_URL']
+          sha=os.environ['REFIT_EXPECTED_REVISION']
+          for attempt in range(48):
+              try:
+                  with urllib.request.urlopen(origin+'/api/application/release',timeout=8) as r:
+                      revision=json.load(r)['revision']
+                  with urllib.request.urlopen(origin+'/api/application/containment-proof',timeout=8) as r:
+                      proof=json.load(r)
+                  if revision==sha and proof['revision']==sha and proof['verified'] is True:
+                      print('Exact Vultr deployment, host containment and release match',sha)
+                      break
+              except (OSError,KeyError,ValueError,TypeError):
+                  pass
+              if attempt==47:
+                  raise SystemExit('Refit production never exposed the exact verified deployment')
+              time.sleep(5)
+          PY
           python -m scripts.c1_film_4k
           test -s artifacts/challenge1-4k/storyboard.ffconcat
           test -s artifacts/challenge1-4k/evidence.json
