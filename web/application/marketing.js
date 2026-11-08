@@ -1,39 +1,51 @@
 "use strict";
-/* Published sample only: no authentication, mutation, model invocation or fabricated counters. */
-(async function hydrateRecordedPreview(){
- const label=(id)=>document.getElementById(id);
- try {
-  const result=await fetch("/api/application/demo",{credentials:"omit",cache:"no-store"});
-  if(!result.ok)throw Error("Published sample unavailable");
-  const sample=await result.json();
-  if(sample.public_sample!==true || sample.recorded!==true || !sample.run || !Array.isArray(sample.events))
-   throw Error("Published sample provenance missing");
-  const {run,events}=sample;
-  const cases=events.filter(item=>item.type==="case_completed");
-  if(run.id!=="demo-python-2026-11-07" || cases.length===0)throw Error("Unknown public example");
-  const passed=cases.filter(item=>item.details?.passed===true).length;
-  const failed=cases.filter(item=>item.details?.passed===false).length;
-  label("previewSource").textContent=run.source;
-  label("previewTarget").textContent=run.target;
-  label("previewPassed").textContent=passed;
-  label("previewFailed").textContent=failed?failed+" failed":"";
-  label("previewState").textContent=run.status==="compatible_on_sample"?
-   "Compatible on sample":run.status==="verified_adaptation"?"Verified repair":"Measured";
-  const ticks=label("previewTicks");
-  ticks.replaceChildren();
-  for(const item of cases.slice(0,32)){
-   const tick=document.createElement("span");
-   tick.className="m-tick "+(item.details?.passed===true?"m-tick--pass":
-                            item.details?.passed===false?"m-tick--fail":"m-tick--pending");
-   ticks.appendChild(tick);
+
+(async function hydrateRecordedPreview() {
+  const label = id => document.getElementById(id);
+  const results = label("previewCases");
+  try {
+    const response = await fetch("/api/application/demo", {credentials: "omit", cache: "no-store"});
+    if (!response.ok) throw new Error("Published sample unavailable");
+    const {public_sample, recorded, run, events} = await response.json();
+    if (public_sample !== true || recorded !== true || run?.id !== "demo-python-2026-11-07") {
+      throw new Error("Published sample provenance missing");
+    }
+
+    const partitions = [["train", "Training"], ["validation", "Validation"], ["holdout", "Holdout"]];
+    const cases = events.filter(event => event.type === "case_completed");
+    function result(phase, model) {
+      const checks = cases.filter(event => event.details?.phase === phase && event.details?.model === model);
+      if (!checks.length) return "—";
+      const passed = checks.filter(event => event.details.passed === true).length;
+      return passed + "/" + checks.length + " passed";
+    }
+
+    const rows = partitions.map(([phase, title]) => {
+      const row = document.createElement("tr");
+      const heading = document.createElement("th");
+      heading.scope = "row";
+      heading.textContent = title;
+      row.append(heading);
+      for (const model of [run.source, run.target]) {
+        const cell = document.createElement("td");
+        cell.textContent = result(phase, model);
+        row.append(cell);
+      }
+      return row;
+    });
+
+    label("previewSource").textContent = run.source;
+    label("previewTarget").textContent = run.target;
+    label("previewState").textContent = run.status === "compatible_on_sample"
+      ? "Compatible on sample"
+      : run.status === "verified_adaptation" ? "Verified repair" : "Recorded evaluation";
+    const verified = run.verification?.length && run.verification.every(check => check.passed === true);
+    label("previewProvenance").textContent = verified && run.export_available
+      ? "Export passed fresh original-runtime verification"
+      : "Published evaluation evidence";
+    results.replaceChildren(...rows);
+  } catch {
+    label("previewState").textContent = "Preview unavailable";
+    results.rows[0].cells[0].textContent = "Open the recorded run to see its evidence.";
   }
-  ticks.setAttribute("aria-label",passed+" passed, "+failed+" failed among "+cases.length+" recorded case observations");
-  const verified=events.filter(item=>item.type==="sandbox_cleanup" && item.details?.receipt?.verified===true).length;
-  label("previewProvenance").textContent=cases.length+" observed cases · "+verified+
-    " verified cleanups · Published run, Nov 2026";
- } catch {
-  label("previewState").textContent="Preview unavailable";
-  label("previewPassed").textContent="—";
-  label("previewProvenance").textContent="Open the workspace to inspect the published sample when available.";
- }
 })();
