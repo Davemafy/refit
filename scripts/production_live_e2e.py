@@ -8,6 +8,7 @@ import argparse
 import base64
 import io
 import json
+import os
 import secrets
 import time
 import zipfile
@@ -44,14 +45,19 @@ def run(origin, revision):
         return response.json()
 
     assert call("GET", "/release")["revision"] == revision
-    user = "qa-" + secrets.token_hex(6)
-    passwd = secrets.token_urlsafe(24)
-    assert call("POST", "/register", {"username": user, "password": passwd})["signed_in"]
-    assert call("GET", "/session")["username"] == user
+    review_token = os.environ.get("REFIT_REVIEW_TOKEN")
+    if review_token:
+        assert call("POST", "/review-session", {"code": review_token})["signed_in"]
+        assert call("GET", "/session")["username"] == "Review workspace"
+    else:
+        user = "qa-" + secrets.token_hex(6)
+        passwd = secrets.token_urlsafe(24)
+        assert call("POST", "/register", {"username": user, "password": passwd})["signed_in"]
+        assert call("GET", "/session")["username"] == user
     capacity = call("GET", "")
     assert {"glm-5.2", "deepseek-v4.1-flash-1017"} <= set(capacity["models"])
     assert capacity["max_requests"] >= 9, (
-        "Shared inference capacity is too low for one complete acceptance; "
+        "No authorized capacity remains for one complete acceptance; "
         "no run was submitted or inference billed."
     )
     archive = io.BytesIO()
