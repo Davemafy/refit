@@ -1109,6 +1109,7 @@ async function show(){
  if(window.RefitReplay)RefitReplay.stop();
  page.innerHTML='<div class="small muted">Loading…</div>';
  const pathname=location.pathname;
+ document.body.classList.toggle("replay-film",pathname==="/app/replay"&&new URLSearchParams(location.search).get("studio")==="1");
  if(pathname==="/app"){await overview();return;}
  if(pathname==="/app/replay"){
   header("Execution replay");
