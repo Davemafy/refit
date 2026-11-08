@@ -166,65 +166,18 @@ async function overview(){
  header("Overview");
  await refreshWorkspace();
  if(state.guest){
-  const r=state.demo.run;
-  const evidence=state.demo.events||[];
-  const completed=evidence.filter(e=>e.type==="case_completed");
-  const modelCalls=evidence.filter(e=>e.type==="inference_completed");
-  const cleanup=evidence.filter(e=>e.type==="sandbox_cleanup"&&e.details?.receipt?.verified===true);
-  const recent=evidence.slice(-8).reverse();
-  const activity=recent.length?
-   '<section class="overview-activity"><div class="overview-activity-head"><h3>Recorded activity</h3>'+
-   '<span>'+safe(evidence.length)+' events · '+safe(completed.length)+' case observations · '+safe(modelCalls.length)+' model responses · '+safe(cleanup.length)+' verified cleanups</span></div>'+
-   '<div class="overview-event-list">'+recent.map(e=>{
-    const d=e.details||{},verified=d.receipt?.verified===true||d.passed===true;
-    const failure=d.passed===false||d.receipt?.verified===false||!!d.error;
-    return '<button type="button" class="overview-event" data-action="overview-trace" data-id="'+safe(r.id)+'" data-seq="'+safe(e.seq)+'">'+
-     '<span class="overview-event-dot '+(failure?"failed":verified?"passed":"")+'"></span>'+
-     '<span class="overview-event-name">'+safe(RefitOutcomes.eventLabel(e.type))+'</span>'+
-     '<span class="overview-event-context">'+safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</span>'+
-     '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
-   }).join("")+'</div></section>':'';
-  const passed=completed.filter(e=>e.details?.passed===true).length;
-  const failed=completed.filter(e=>e.details?.passed===false).length;
-  const unknown=completed.length-passed-failed;
-  const observationBars=completed.slice(0,20).map(e=>
-   '<span class="verification-tick '+(e.details?.passed===true?"is-passed":e.details?.passed===false?"is-failed":"is-pending")+'"></span>').join("");
-  page.innerHTML=lead("Overview","Compare actual agent behavior across models.")+
-   '<section class="workspace-start workspace-start--visual" aria-label="Try Refit live">'+
-   '<div class="workspace-start-copy"><h2>One model change. See what really happens.</h2>'+
-   '<p>Run a real refund agent against two Vultr models. Watch the tool calls, authorization checks, sandbox cleanup and verification. No sign-in.</p>'+
-   '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-refund">'+ico("arrow")+' Run refund agent</button>'+ 
-   '<button class="btn" type="button" data-action="new-agent">Import your agent</button>'+
-   '</div>'+
-   '<p class="small sub">Sample orders are synthetic. Inference, tool decisions, state updates and verification are real.</p></div>'+
+  page.innerHTML=lead("Overview","Run an actual model migration. Inspect what it does, not what it says.")+
+   '<section class="workspace-start workspace-start--visual refund-start" aria-label="Run a real refund agent">'+
+   '<div class="workspace-start-copy"><h2>Change the model. See what breaks.</h2>'+
+   '<p>Start an actual refund workflow on Vultr. Refit checks tool calls, customer authorization and committed state, then runs independent verification. No signup.</p>'+
+   '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-refund">'+ico("arrow")+' Run refund agent</button>'+
+   '<button class="btn" type="button" data-action="new-agent">Import your agent</button></div>'+
+   '<p class="small sub">Synthetic orders. Real model execution, stateful tools and disposable gVisor workers.</p></div>'+
    illustratedAsset("programs")+'</section>'+
-   '<section class="overview-recent" aria-label="Recorded migration">'+
-   '<div class="overview-recent-heading"><div class="overview-recent-heading-text"><span class="overview-recent-label">Python knowledge-base agent</span>'+
-   '<span class="overview-recent-meta">Recorded evaluation · Read-only sample</span></div>'+statusChip(r.status)+'</div>'+
-   '<div class="migration-route" role="group" aria-label="Original model and replacement model">'+
-   '<div class="migration-endpoint"><span class="migration-endpoint-label">Original model</span>'+modelIdentity(r.source)+'</div>'+
-   '<div class="migration-connector" aria-hidden="true"><svg width="48" height="20" viewBox="0 0 48 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 10h43m-7-6 7 6-7 6"/></svg></div>'+
-   '<div class="migration-endpoint"><span class="migration-endpoint-label">Replacement</span>'+modelIdentity(r.target)+'</div></div>'+
-   '<div class="verification-strip" aria-label="'+safe(passed+' passed, '+failed+' failed, '+unknown+' not recorded among '+completed.length+' case observations')+'">'+
-   '<div class="verification-caption"><span>Observed checks</span><strong>'+safe(passed)+' passed'+(failed?', '+safe(failed)+' failed':'')+'</strong></div>'+
-   '<div class="verification-bars" aria-hidden="true">'+observationBars+'</div></div>'+
-   '<div class="overview-recent-footer"><span class="overview-footnote">'+safe(modelCalls.length)+' model responses · '+safe(cleanup.length)+' verified cleanups</span>'+
-   '<button class="btn" type="button" data-action="run" data-id="'+safe(r.id)+'">Inspect run '+ico("arrow")+'</button></div>'+
-   '</section>'+
-   '<section class="overview-activity" aria-label="Recorded activity"><div class="overview-activity-head"><h3>Activity</h3>'+
-   '<span>'+safe(evidence.length)+' events</span></div>'+
-   '<div class="overview-event-list">'+recent.map(e=>{
-    const d=e.details||{},verified=d.receipt?.verified===true||d.passed===true;
-    const failure=d.passed===false||d.receipt?.verified===false||!!d.error;
-    return '<button type="button" class="overview-event" data-action="overview-trace" data-id="'+safe(r.id)+'" data-seq="'+safe(e.seq)+'">'+
-     '<span class="overview-event-dot '+(failure?"failed":verified?"passed":"")+'"></span>'+
-     '<span class="overview-event-name">'+safe(RefitOutcomes.eventLabel(e.type))+'</span>'+
-     '<span class="overview-event-context">'+safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</span>'+
-     '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
-   }).join("")+'</div></section>'+
-   '<div class="section-footnote">Recorded example. Import your own agent above to run a new migration.</div>';
+   '<p class="section-footnote">Already have an agent? Import its GitHub revision or ZIP. Previous evaluation records remain available under Evidence.</p>';
   return;
  }
+
  const capacity=await req("");
  if(!state.projects.length&&!state.runs.length){
   page.innerHTML=lead("Your workspace","Connect an existing agent to begin.")+
@@ -301,7 +254,7 @@ function runFilters(action=""){
 async function agents(){
  header("Agents");
  await refreshWorkspace();
- page.innerHTML=lead("Agents",state.guest?"Inspect the existing example or bring your own agent.":"Your imported application source snapshots and detected runtimes.",importButton())+
+ page.innerHTML=lead("Agents",state.guest?"Run the refund agent or bring your own source.":"Your imported application source snapshots and detected runtimes.",(state.guest?'<button class="btn" type="button" data-action="try-refund">Run refund agent</button> ':"")+importButton())+
  (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("code")+'</div><div class="agent-record-body"><button type="button" class="agent-record-title" data-action="example-agent">Recorded Python agent</button><p>Knowledge-base application · Verified on Vultr</p><div class="agent-record-meta"><span>Python</span><span>gVisor execution</span>'+compactStatus(state.demo.run.status)+'</div></div><div class="agent-record-actions"><button class="btn agent-record-review" data-action="run" data-id="demo-python-2026-11-07">Review run '+ico("arrow")+'</button></div></section>':"")+
  (state.guest?"":state.projects.length?
  '<label class="run-search agent-search">'+ico("search")+'<input type="search" id="agentQuery" aria-label="Search agents" placeholder="Search repositories or runtimes"></label>'+
