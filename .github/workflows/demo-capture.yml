@@ -1,0 +1,42 @@
+name: Refit product video capture
+on:
+  push:
+    branches: [demo-video-capture]
+    paths:
+      - '.github/workflows/demo-capture.yml'
+      - 'scripts/demo_capture.mjs'
+  workflow_dispatch:
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser automation
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Record real public Refit workspace
+        env:
+          REFIT_URL: https://80.240.30.92
+        run: node scripts/demo_capture.mjs
+      - name: Encode MP4
+        if: always()
+        run: |
+          if [ -f demo-output/raw-capture.webm ]; then
+            ffmpeg -hide_banner -y -i demo-output/raw-capture.webm -vf "scale=1920:1080:flags=lanczos,fps=30,format=yuv420p" -c:v libx264 -preset medium -crf 20 -movflags +faststart -an demo-output/refit-product-demo.mp4
+            ffprobe -v error -show_entries format=duration,size -of default=nw=1 demo-output/refit-product-demo.mp4
+          fi
+      - name: Upload footage and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-product-demo-footage
+          path: demo-output/
+          if-no-files-found: warn
+          retention-days: 7
