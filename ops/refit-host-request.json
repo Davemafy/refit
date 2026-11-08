@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Deploy content-pinned gVisor diagnostics, root-attested containment proof and public C1 film"
+  "reason": "Publish real host containment receipt from repo checkout, validate public film"
 }
