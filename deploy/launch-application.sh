@@ -72,7 +72,7 @@ ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_UNIX
-ReadWritePaths=/run/refit-docker-guard
+ReadWritePaths=/run/refit-docker-guard /var/lib/refit-application/sandbox-staging
 MemoryMax=160M
 TasksMax=64
 
