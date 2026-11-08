@@ -35,7 +35,7 @@ try{
  }
  for(const size of [320,360,390]){
    await capture("landing","/",size,async()=>{
-    const link=page.getByRole("link",{name:"Open workspace",exact:true});
+    const link=page.getByRole("link",{name:"Try Refit live",exact:true});
     assert.equal(await link.isVisible(),true);
     const box=await link.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=size);
     assert.equal(await page.locator(".m-nav").isVisible(),false,"Desktop navigation should collapse");
@@ -57,8 +57,9 @@ try{
      assert.equal(await page.locator(".migration-route .model-mark").count(),2);
      assert.ok(await page.locator(".verification-tick").count()>0);
      assert.equal(await page.locator("#mobileNavigation summary").isVisible(),true);
-     const activity=await page.locator(".overview-activity").boundingBox();
-     assert.ok(activity.y<700,"Event list should begin within the mobile first screen");
+     const trial=await page.getByRole("button",{name:/Try a live migration/}).boundingBox();
+     assert.ok(trial&&trial.y<700,"Live trial action must be visible within the mobile first screen");
+     assert.ok(await page.locator(".overview-activity").count()===1,"Recorded activity remains accessible below the live trial");
      assert.equal(await page.locator(".metrics").count(),0,"demo must not impersonate account metrics");
      assert.equal(await page.locator(".run-table-desktop").count(),0);
    });

@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Recover production immediately using hardened installer; root-owned 192/32 quotas are already applied"
+  "reason": "Promote account-free real Vultr migration trial, fixed verified source and bounded guest quotas"
 }

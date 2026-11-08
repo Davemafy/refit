@@ -7,6 +7,9 @@ import binascii
 from datetime import datetime, timezone
 import fcntl
 import gzip
+import hashlib
+import hmac
+import ipaddress
 from http.cookies import CookieError, SimpleCookie
 from http.server import ThreadingHTTPServer
 import json
@@ -45,6 +48,12 @@ REVIEW_BUDGET = 16
 REVIEW_PREFIX = "review-"
 DEFAULT_ACCOUNT_BUDGET = 16
 DIAGNOSTIC_MODEL = "deepseek-v4.1-flash-1017"
+PUBLIC_TRIAL_DAILY_LIMIT = 32
+PUBLIC_TRIAL_BUDGET = 12
+PUBLIC_TRIAL_GLOBAL_RESERVE = 16
+PUBLIC_TRIAL_REPOSITORY = "simonw/llm"
+PUBLIC_TRIAL_REVISION = "b9786a2daa44a995ff7719c655c5338bf685d551"
+PUBLIC_TRIAL_ARCHIVE = ROOT / "data/trial/llm-0.37.1-b9786a2.zip"
 COOKIE = "__Host-refit-session"
 
 
@@ -363,7 +372,67 @@ class ApplicationService:
             self.imports[ident] = (time.monotonic(), snapshot, summary)
         return summary
 
-    def start(self, data, owner="operator"):
+    def public_trial(self, client_digest):
+        """One original-agent migration, no login and no arbitrary inputs."""
+        if os.getenv("REFIT_PUBLIC_TRIAL_ENABLED") != "1":
+            raise ApiProblem(503, "public_trial_disabled", "Live public trials are temporarily unavailable.")
+        # The source is a reviewed subset of immutable upstream commit; it is
+        # *not* a dynamic GitHub download or a user-provided archive.
+        try:
+            snapshot = source_snapshot(PUBLIC_TRIAL_ARCHIVE.read_bytes())
+            if snapshot["discovery"]["preset"] != "llm-0.37.1":
+                raise ValueError("Trial sample no longer matches reviewed runtime")
+        except (OSError, ValueError) as exc:
+            raise ApiProblem(503, "trial_sample_unavailable", "The reviewed sample is unavailable.") from exc
+        snapshot.update(repository=PUBLIC_TRIAL_REPOSITORY, revision=PUBLIC_TRIAL_REVISION)
+        day = now()[:10]
+        with self.lock:
+            if self.quarantined:
+                raise ApiProblem(503, "operator_review_required",
+                                 "Sandbox containment requires review before new work.")
+            if self.reserved(day) + PUBLIC_TRIAL_BUDGET + PUBLIC_TRIAL_GLOBAL_RESERVE > self.daily_budget:
+                raise ApiProblem(429, "trial_capacity_full",
+                                 "Today's live sample capacity is full; recorded evidence remains available.")
+            if sum(run["status"] in ACTIVE for run, _ in self.runs.values()) >= QUEUE_LIMIT:
+                raise ApiProblem(429, "trial_queue_full", "The live trial queue is full.")
+            try:
+                # Validate host inference configuration *before* claiming a
+                # visitor's scarce, persistent one-shot slot.
+                self.broker(PUBLIC_TRIAL_BUDGET)
+            except (OSError, ValueError, RuntimeError) as exc:
+                raise ApiProblem(503, "inference_unavailable", "Vultr inference is unavailable.") from exc
+            owner = "guest-" + secrets.token_hex(16)
+            reserved = self.accounts.claim_public_trial(
+                day, client_digest, owner, PUBLIC_TRIAL_DAILY_LIMIT)
+            if reserved != "reserved":
+                raise ApiProblem(429, "trial_already_used" if reserved == "already_used" else "trial_capacity_full",
+                                 "This visitor's live trial has already been reserved today."
+                                 if reserved == "already_used" else
+                                 "Today's live sample capacity is full; recorded evidence remains available.")
+            try:
+                # The guest principal must exist before a project can satisfy
+                # SQLite's owner foreign-key constraint.
+                secret = self.accounts.review_session(owner, int(time.time()) + SESSION_TTL)
+                summary = self.save_import(snapshot, owner, time.monotonic())
+                run = self.start({
+                    "import_id": summary["id"],
+                    "source": MODELS[0],
+                    "target": MODELS[1],
+                    "budget": PUBLIC_TRIAL_BUDGET,
+                    "authorize": True,
+                }, owner, trusted_trial=True)
+                # Cookie is issued only after a durable run is established.
+                # Guest identifiers remain unguessable and owner-scoped.
+                return run, secret
+            except Exception:
+                if not any(r.get("owner") == owner for r, _ in self.runs.values()):
+                    self.accounts.release_public_trial(day, client_digest, owner)
+                raise
+
+    def start(self, data, owner="operator", *, trusted_trial=False):
+        if owner.startswith("guest-") and not trusted_trial:
+            raise ApiProblem(403, "trial_fixed_source_only",
+                             "This visitor session supports one vetted live sample. Use an account for custom imports.")
         if not isinstance(data, dict) or set(data) - {"import_id", "source", "target", "budget", "authorize", "setup"}:
             raise ApiProblem(422, "invalid_run", "Provide an import, two model identities, a budget and authorization.")
         source, target, budget = data.get("source"), data.get("target"), data.get("budget")
@@ -619,6 +688,18 @@ class ApplicationHandler(RefitHandler):
             return ""
         return cookies[COOKIE].value if COOKIE in cookies else ""
 
+    def public_client_digest(self):
+        # Nginx overwrites this header with $remote_addr. Trust it ONLY
+        # when the local loopback peer is the authorized HTTPS proxy.
+        peer = self.client_address[0]
+        reported = self.headers.get("X-Refit-Client-IP", "")
+        candidate = reported if peer in ("127.0.0.1", "::1") and reported else peer
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            raise ApiProblem(403, "invalid_public_client", "A valid public visitor address is required.") from None
+        return hmac.new(self.service.token.encode(), address.packed, hashlib.sha256).hexdigest()
+
     def authorize(self):
         if self.public():
             session = self.service.accounts.resolve(self.session_secret())
@@ -698,6 +779,15 @@ class ApplicationHandler(RefitHandler):
             if self.public():
                 if self.headers.get("Origin") != self.service.public_origin:
                     raise ApiProblem(403, "origin_rejected", "Open the HTTPS Refit workspace to make changes.")
+                if path == "/api/application/try":
+                    if self.body(limit=64) != {}:
+                        raise ApiProblem(422, "invalid_trial_request",
+                                         "The public sample accepts no prompts, URLs or user code.")
+                    run, secret = self.service.public_trial(self.public_client_digest())
+                    self._session_cookie = (f"{COOKIE}={secret}; Path=/; Secure; HttpOnly; SameSite=Strict; "
+                                            f"Max-Age={SESSION_TTL}")
+                    return self._send(202, {"id": run["id"], "status": run["status"],
+                                            "sample": True, "live": True})
                 if path == "/api/application/review-session":
                     data = self.body(limit=256)
                     secret = self.service.review_session(data.get("code") if isinstance(data, dict) else None)
@@ -707,6 +797,11 @@ class ApplicationHandler(RefitHandler):
                 if path in ("/api/application/register", "/api/application/login", "/api/application/logout"):
                     return self.account_action(path)
             owner = self.authorize()
+            if owner.startswith("guest-") and path in {
+                    "/api/application/imports", "/api/application/imports/zip",
+                    "/api/application/runs"}:
+                raise ApiProblem(403, "trial_fixed_source_only",
+                                 "This live visitor trial uses a reviewed sample. Custom agents require a private workspace.")
             if path in {"/api/application/imports", "/api/application/imports/zip"}:
                 if not self.service.import_slots.acquire(blocking=False):
                     raise ApiProblem(429, "operator_busy", "Try the import again when a connection closes.")
@@ -873,7 +968,11 @@ class ApplicationHandler(RefitHandler):
                 username = session[1] if session else None
                 if session and session[0].startswith(REVIEW_PREFIX):
                     username = "Review workspace"
-                return self._send(200, {"mode": "account", "username": username})
+                trial = bool(session and session[0].startswith("guest-"))
+                if trial:
+                    username = "Live visitor"
+                return self._send(200, {"mode": "account", "username": username,
+                                        "trial": trial})
             owner = self.authorize()
             if url.path == "/api/application":
                 with self.service.lock:
@@ -894,7 +993,8 @@ class ApplicationHandler(RefitHandler):
                 global_remaining = max(0, self.service.daily_budget - global_reserved)
                 # Completed reviewer sessions can still inspect saved runs and
                 # trigger their reserved diagnostic, but never a second migration.
-                available = (0 if review_used or review_expired else
+                guest_used = owner.startswith("guest-")
+                available = (0 if review_used or review_expired or guest_used else
                     min(BUDGET_LIMIT, account_remaining,
                         BUDGET_LIMIT if is_review else global_remaining))
                 return self._send(200, {

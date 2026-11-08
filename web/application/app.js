@@ -33,7 +33,7 @@ const symbols={
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
 const C1_DEMO_ID="demo-diagnostic-2026-11-08";
-const state={username:null,guest:false,demo:null,c1demo:null,c1containment:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:"",runsPeriod:"all"};
+const state={username:null,guest:false,trial:false,demo:null,c1demo:null,c1containment:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:"",runsPeriod:"all"};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -151,8 +151,10 @@ const modelBrand=value=>{
 const modelMark=value=>'<span class="model-mark model-mark--'+modelBrand(value)+'" aria-hidden="true"></span>';
 const modelIdentity=value=>'<span class="model-identity" title="'+safe(value||"Unknown model")+'">'+modelMark(value)+
  '<span class="model-identity-name">'+safe(value||"Unknown model")+'</span></span>';
-const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
-const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Recorded results only; no model calls while browsing.</span><a href="/login?next=/app/agents/new">Sign in</a></div>';
+const importButton=()=>state.trial?
+ '<a class="btn" href="/signup">Use your own agent '+ico("arrow")+'</a>':
+ '<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
+const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Explore real evidence.</strong> Browsing is free. A live, bounded sample is available without an account.</span><button type="button" class="btn compact" data-action="try-live">Try live</button></div>';
 async function overview(){
  header("Overview");
  await refreshWorkspace();
@@ -181,6 +183,13 @@ async function overview(){
   const observationBars=completed.slice(0,20).map(e=>
    '<span class="verification-tick '+(e.details?.passed===true?"is-passed":e.details?.passed===false?"is-failed":"is-pending")+'"></span>').join("");
   page.innerHTML=lead("Overview","Inspect model migration outcomes and recorded execution.")+
+   '<section class="workspace-start workspace-start--visual" aria-label="Try Refit live">'+
+   '<div class="workspace-start-copy"><h2>See your first migration happen.</h2>'+
+   '<p>No account. No setup. Run a real, pinned Python agent with DeepSeek and GLM on Vultr, then inspect the tool calls, result and sandbox evidence.</p>'+
+   '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-live">'+ico("pulse")+' Try a live migration '+ico("arrow")+'</button>'+
+   '<a class="btn" href="/app/runs/demo-diagnostic-2026-11-08">Inspect recorded proof</a></div>'+
+   '<p class="small sub">One sample per visitor per day. The sample is predetermined; no arbitrary code is accepted.</p></div>'+
+   illustratedAsset("programs")+'</section>'+
    '<section class="overview-recent" aria-label="Recorded migration">'+
    '<div class="overview-recent-heading"><div class="overview-recent-heading-text"><span class="overview-recent-label">Python knowledge-base agent</span>'+
    '<span class="overview-recent-meta">Recorded evaluation · Read-only sample</span></div>'+statusChip(r.status)+'</div>'+
@@ -205,7 +214,7 @@ async function overview(){
      '<span class="overview-event-context">'+safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</span>'+
      '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
    }).join("")+'</div></section>'+
-   '<div class="section-footnote">Public example. <a href="/signup">Import your own agent</a> to start an independent evaluation.</div>';
+   '<div class="section-footnote">Recorded example. To compare models yourself, use Try a live migration above. No login required.</div>';
   return;
  }
  const capacity=await req("");
@@ -213,12 +222,12 @@ async function overview(){
   page.innerHTML=lead("Your workspace","Connect an existing agent to begin.")+
    '<section class="workspace-start workspace-start--visual">'+
    '<div class="workspace-start-copy"><h2>Your first migration starts with the source.</h2><p>Connect a GitHub repository or ZIP. Refit detects the runtime before any model request, then gives you a controlled path to evaluation and verified export.</p>'+
-   '<div class="workspace-start-actions">'+importButton+' <a class="btn" href="/docs">Read setup guide '+ico("arrow")+'</a></div>'+
+   '<div class="workspace-start-actions">'+importButton()+' <a class="btn" href="/docs">Read setup guide '+ico("arrow")+'</a></div>'+
    '<div class="workspace-start-process"><span>Inspect source</span><span aria-hidden="true">→</span><span>Compare models</span><span aria-hidden="true">→</span><span>Review evidence</span></div></div>'+
    illustratedAsset("folders")+'</section>';
   return;
  }
- page.innerHTML=lead("Your workspace","Your agent migrations and recorded outcomes.",importButton)+
+ page.innerHTML=lead("Your workspace","Your agent migrations and recorded outcomes.",importButton())+
  '<div class="workspace-capacity"><span>Daily request capacity</span><strong>'+
  safe(capacity.account_reserved_today)+' / '+safe(capacity.account_daily_allowance)+' reserved</strong><span class="small sub">Shared capacity remaining: '+safe(capacity.global_remaining_today)+' requests</span></div>'+
  '<div class="metrics"><div class="metric"><strong>'+state.projects.length+'</strong><span>Agents</span></div>'+
@@ -250,7 +259,7 @@ const runTable=(runs,view="")=>runs.length?
     modelIdentity(r.target)+'</div>'+
    '<time class="run-mobile-time">'+safe(formatTime(r.started_at))+'</time></article>';
  }).join("")+'</div>':
- empty("No runs yet","Your migrations will appear here. Import an agent to start.",importButton);
+ empty("No runs yet","Your migrations will appear here. Import an agent to start.",importButton());
 function filteredRuns(){
  const query=state.runsQuery.toLowerCase();
  const agent=new URLSearchParams(location.search).get("agent");
@@ -284,7 +293,7 @@ function runFilters(action=""){
 async function agents(){
  header("Agents");
  await refreshWorkspace();
- page.innerHTML=(state.guest?"":guestNote)+lead("Agents",state.guest?"":"Your imported application source snapshots and detected runtimes.",state.guest?'<a href="/signup" class="btn primary">Bring your own agent</a>':state.projects.length?importButton:"")+
+ page.innerHTML=(state.guest?guestNote:"")+lead("Agents",state.guest?"":"Your imported application source snapshots and detected runtimes.",state.guest?'<button type="button" data-action="try-live" class="btn primary">Try live migration '+ico("arrow")+'</button>':state.projects.length?importButton():"")+
  (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("code")+'</div><div class="agent-record-body"><button type="button" class="agent-record-title" data-action="example-agent">Recorded Python agent</button><p>Knowledge-base application · Verified on Vultr</p><div class="agent-record-meta"><span>Python</span><span>gVisor execution</span>'+compactStatus(state.demo.run.status)+'</div></div><div class="agent-record-actions"><button class="btn agent-record-review" data-action="run" data-id="demo-python-2026-11-07">Review run '+ico("arrow")+'</button></div></section>':"")+
  (state.guest?"":state.projects.length?
  '<label class="run-search agent-search">'+ico("search")+'<input type="search" id="agentQuery" aria-label="Search agents" placeholder="Search repositories or runtimes"></label>'+
@@ -292,13 +301,13 @@ async function agents(){
  state.projects.map(p=>'<tr data-agent-row><td><button class="link-btn" data-action="project" data-id="'+safe(p.id)+'">'+safe(p.repository||"Uploaded ZIP")+'</button><div class="small muted mono">'+safe(p.revision||p.id)+'</div></td><td>'+safe([p.discovery?.framework,p.discovery?.runtime].filter(Boolean).join(" · ")||"Unknown")+'</td><td>'+
  safe(p.discovery?.service_entries?.length?"Service connector required":p.discovery?.entry?"Managed · confirm checks":"Configuration required")+
  '</td><td>'+safe(p.discovery?.provider||"Unconfirmed")+'</td><td><button type="button" data-action="project" data-id="'+safe(p.id)+'" class="btn compact">Inspect source</button> <a data-nav class="btn compact" href="/app/runs?agent='+encodeURIComponent(p.id)+'">Runs</a> <button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table><p id="agentNoMatches" class="run-filter-empty" hidden>No matching agents.</p></div>':
- empty("No agents imported","Import a pinned GitHub revision or a ZIP. Refit will inspect the source before any paid execution.",importButton));
+ empty("No agents imported","Import a pinned GitHub revision or a ZIP. Refit will inspect the source before any paid execution.",importButton()));
 }
 async function runs(){
  header("Runs");
  await refreshWorkspace();
  page.innerHTML=lead("Runs","Inspect executions, outcomes and model evidence.")+
- runFilters(state.guest?"":importButton)+'<section class="records" id="runRecords">'+runIndexRows()+'</section>'+
+ runFilters(state.guest?"":importButton())+'<section class="records" id="runRecords">'+runIndexRows()+'</section>'+
  (state.guest?'<p class="section-footnote">Public example only. <a href="/signup">Bring an agent</a> to evaluate your own source.</p>':"");
 }
 async function evidenceIndex(){
@@ -313,13 +322,13 @@ async function evidenceIndex(){
   modelIdentity(r.source)+'<span class="model-pair-sep" aria-hidden="true">→</span>'+modelIdentity(r.target)+
   '</span></span><span class="evidence-collection-status">'+compactStatus(r.status)+'</span>'+
   '<span class="evidence-collection-arrow">'+ico("arrow")+'</span></button>').join("")+
- '</section>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
+ '</section>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton()));
 }
 async function settings(){
  header("Settings");
  if(state.guest){
    page.innerHTML=guestNote+lead("Settings","Guest browsing does not create an account or consume inference credits.")+
-   '<section class="card inner" style="max-width:780px"><h3>Guest access</h3><p style="margin:10px 0 22px">You can inspect published migration evidence without signing in. Source uploads, project history, paid migration execution, and private artifact downloads remain account-scoped.</p><a class="btn primary" href="/login?next=/app/settings">Sign in '+ico("arrow")+'</a></section>';
+   '<section class="card inner" style="max-width:780px"><h3>Try Refit without an account</h3><p style="margin:10px 0 22px">Start one real, bounded sample migration and inspect the original model behavior, the replacement, and isolated execution evidence. A private workspace is optional for your own source.</p><button type="button" class="btn primary" data-action="try-live">Run live sample '+ico("arrow")+'</button></section>';
    return;
  }
  const config=await req("");
@@ -407,13 +416,21 @@ async function flow(){
  if(!step)header("Import agent",1);
  if(step===1)header("Inspect your agent",1);
  if(step===2)header("Configure migration",2);
+ if(step===0 && state.trial){
+   page.innerHTML='<div class="import-shell">'+wizardIntro()+
+   '<section class="import-panel"><div class="import-panel-header"><div><h2>Live visitor session</h2><p>Your pinned Python-agent migration is saved in Runs.</p></div></div>'+
+   '<div class="import-actions"><a class="btn primary" href="/app/runs">Inspect your live run '+ico("arrow")+'</a>'+
+   '<a class="btn" href="/signup">Import a different agent</a></div></section></div>';
+   return;
+ }
  if(step===0 && state.guest){
    page.innerHTML='<div class="import-shell">'+wizardIntro()+
+   '<section class="import-panel" aria-label="Try a live migration"><div class="import-panel-header"><div><h2>Try Refit live</h2><p>A vetted, real Python-agent migration on Vultr. No registration, no upload and no simulated execution.</p></div></div><div class="import-actions"><button type="button" class="btn primary" data-action="try-live">'+ico("pulse")+' Run live migration '+ico("arrow")+'</button><span class="small sub">One trial per visitor per day.</span></div></section>'+
    '<section class="import-panel"><div class="import-panel-header"><div><h2>See a real migration</h2><p>Explore the evidence before bringing your own agent.</p></div><span class="import-privacy">'+ico("eye")+' Public example</span></div>'+
    '<div class="import-example"><div class="import-example-heading"><strong>Python knowledge-base agent</strong>'+compactStatus(state.demo.run.status)+'</div>'+ 
    '<div class="import-example-route"><div><span>Original</span>'+modelIdentity(state.demo.run.source)+'</div><span class="sample-connector" aria-hidden="true">'+ico("arrow")+'</span><div><span>Replacement</span>'+modelIdentity(state.demo.run.target)+'</div></div></div>'+
    '<div class="import-actions"><p>Recorded execution from November 7. No inference is used to browse.</p><button class="btn primary" data-action="example-agent">Inspect this agent '+ico("arrow")+'</button></div></section>'+
-   '<div class="import-signin">Want to bring your own agent? <a href="/signup">Create an account</a> or <a href="/login?next=/app/agents/new">sign in</a>.</div>'+
+
    importPathSteps+'</div>';
    return;
  }
@@ -1119,7 +1136,27 @@ document.addEventListener("click",async event=>{
  const button=event.target.closest("[data-action]");if(!button)return;
  const action=button.dataset.action,id=button.dataset.id;
  try{
-  if(action==="overview-trace"){
+  if(action==="try-live"){
+   button.disabled=true;
+   const previous=button.innerHTML;
+   button.innerHTML=ico("clock")+" Starting live migration…";
+   try{
+     const started=await req("/try",{});
+     if(!/^app-[0-9a-f]{16}$/.test(started.id))throw Error("Run identity was not returned.");
+     state.username="Live visitor";state.trial=true;state.guest=false;
+     document.body.classList.remove("guest-session");
+     el("avatar").textContent="V";
+     el("workspaceIdentity").textContent="Live visitor";
+     document.querySelector("[data-trial-start]")?.remove();
+     state.wizard=null;
+     await refreshWorkspace();
+     navigate("/app/runs/"+started.id);
+   }catch(error){
+     button.disabled=false;button.innerHTML=previous;
+     throw error;
+   }
+  }
+  else if(action==="overview-trace"){
    navigate("/app/runs/"+id+"?view=traces&event="+encodeURIComponent(button.dataset.seq));
   }
   else if(action==="new-agent"){state.wizard=null;navigate("/app/agents/new");}
@@ -1367,11 +1404,13 @@ window.addEventListener("popstate",()=>show().catch(pageFailure));
   const session=await req("/session");
   if(session.mode!=="account"){throw Error("Account session endpoint unavailable.");}
   state.username=session.username||null;
+  state.trial=session.trial===true;
   state.guest=!state.username;
   if(state.guest){
     el("avatar").textContent="G";document.body.classList.add("guest-session");
-    const button=document.createElement("a");button.href="/login?next="+encodeURIComponent(location.pathname);
-    button.className="btn compact";button.textContent="Sign in";
+    const button=document.createElement("button");button.type="button";
+    button.dataset.action="try-live";button.dataset.trialStart="1";
+    button.className="btn compact";button.textContent="Try live";
     el("avatar").closest("details").before(button);
     await refreshWorkspace();
   }else {

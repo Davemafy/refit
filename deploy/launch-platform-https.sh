@@ -46,12 +46,15 @@ proxy_pass http://127.0.0.1:8098;
 proxy_http_version 1.1;
 proxy_set_header Host $host;
 proxy_set_header X-Refit-Public 1;
+# Never trust browser-supplied X-Forwarded-For; overwrite with ingress peer IP.
+proxy_set_header X-Refit-Client-IP $remote_addr;
 proxy_set_header Authorization "";
 proxy_buffering off;
 proxy_hide_header Server;
 NGINX
 cat > /etc/nginx/sites-available/refit-platform <<NGINX
 limit_req_zone \$binary_remote_addr zone=refit_login:1m rate=5r/m;
+limit_req_zone \$binary_remote_addr zone=refit_trial:1m rate=2r/m;
 limit_conn_zone \$binary_remote_addr zone=refit_connections:1m;
 server {
     listen 443 ssl;
@@ -79,6 +82,12 @@ server {
         limit_req zone=refit_login burst=6 nodelay;
         limit_req_status 429;
         client_max_body_size 2k;
+        include snippets/refit-platform-proxy.conf;
+    }
+    location = /api/application/try {
+        limit_req zone=refit_trial burst=2 nodelay;
+        limit_req_status 429;
+        client_max_body_size 256;
         include snippets/refit-platform-proxy.conf;
     }
     location = /api/application/imports/zip {

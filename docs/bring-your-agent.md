@@ -1,44 +1,54 @@
 # Bring your agent
 
-Refit has two separate services on the same Vultr VM: the public **HTTP
-read-only evidence site** and the **public HTTPS application** at
-https://80.240.30.92/app. Anyone can open the workspace, inspect a previously
-verified public Python migration and download its published model-only export.
-Guest mode never reads private user data or runs paid inference.
-Authenticated developers can import source and execute it with the
-original program against two Vultr models in gVisor, verifies the generated
-configuration in a fresh native process and enforces account ownership.
+Refit's HTTPS application is at https://80.240.30.92/app. The public workspace
+now offers a **real, one-click migration without signup**. Anonymous browsing
+of explicitly published evidence uses no inference; the visitor-initiated
+**Try live migration** action does make actual Vultr inference requests and
+runs the vetted pinned Python agent in isolated gVisor workers. This is a
+genuine run, distinct from the clearly labeled recorded examples.
+
+## No-signup live trial
+
+Open https://80.240.30.92/app/agents/new and select **Run live migration**.
+No password, invite, repository token, ZIP upload or infrastructure setup
+is required. Refit creates an HttpOnly, Secure, SameSite=Strict temporary
+visitor session; imports a pre-reviewed fixed source snapshot of
+[simonw/llm](https://github.com/simonw/llm) at commit
+\`b9786a2daa44a995ff7719c655c5338bf685d551\`, runs it against
+DeepSeek and GLM through Vultr inference, and opens that visitor's live run.
+The user can inspect its observed evaluations, traces, verification,
+generated diagnostic and sandbox cleanup evidence in the normal workspace.
+The result is **not** claimed compatible until independent checks finish.
+
+A public trial is restricted to one invocation per client IP per UTC day,
+up to 32 admitted trials across anonymous visitors per UTC day (subject to shared global capacity), and a maximum
+of 12 reserved Vultr requests per trial. A further 16 requests are
+reserved from the shared daily pool for other work, and the judge's
+separate single-use reviewer allowance remains untouched. Request limits
+are enforced by Nginx, a persistent SQLite ledger of HMAC-hashed client
+addresses, an owner-scoped temporary session, and the existing server
+inference budget and queue. The trial accepts no model choice, prompts,
+upload, arbitrary repository URL, additional migrations or uploaded code.
+The temporary visitor session expires after 12 hours; private run evidence
+remains owner-scoped, not exposed by a public GET. Set
+\`REFIT_PUBLIC_TRIAL_ENABLED=0\` in the root-controlled application
+environment and restart the service to disable paid trials immediately.
+
+## Bring your own source (optional account)
+
+Developers who want to import their *own* pinned GitHub repository or ZIP
+can create a private account at https://80.240.30.92/signup.
+Refit detects the supported runtime, accepts an independent evaluation
+contract, runs the original source in gVisor, and enforces per-account
+ownership. Registration is not required to experience a working
+migration, but it remains required for arbitrary submitted source and
+long-lived private projects.
+
+Both the global and per-account daily inference limits are
+root-configured and bounded (1–2048 and 1–512, respectively). These are
+service request budgets, not entitlements to unlimited anonymous execution.
 The original loopback operator mode is retained for administration.
-
-## Public HTTPS account access
-
-**For any visitor or judge:** open https://80.240.30.92/app to browse a
-read-only workspace with an archived, real Python migration. Navigate to
-Runs or Evidence, compare the original and replacement cases, and inspect
-the published export without creating an account. This is a recorded run,
-not a fresh execution or a claim of unrestricted compatibility.
-
-**For any developer wishing to execute a new migration:** open
-https://80.240.30.92/signup in a normal browser, choose a username and
-password, and sign in. **No invitation is required.** Paste a GitHub
-repository URL; Refit resolves and pins the default branch's current commit SHA.
-An exact 40-character SHA and private repository read token are optional advanced
-settings. ZIP import remains supported. Confirm independent evaluation cases
-and the original entry point, select models, and authorize a bounded migration.
-
-New accounts are subject to the same authentication, project isolation,
-per-account daily inference allowance (16 reserved requests by default) and
-global daily ceiling (operator-configured). The live VM was separately
-reported configured at 72 requests/day; this source change does not itself
-update its running service. Both limits are now explicitly configurable
-(1–512 per account; 1–2048 across accounts). The per-migration limit is
-64, while per-case model completions permit up to eight original agent
-steps rather than the previous four. These values are safety and capacity
-bounds, not claims of successful model compatibility. Public signup is open,
-so keep global budgets and ingress rate limits enabled even with funded
-Vultr credits. Anonymous visitors can inspect
-only the explicitly published example; they cannot view private runs,
-evidence, credentials, or exports.
+The archived public examples remain read-only, with explicit provenance.
 
 The HTTPS TLS certificate is a short-lived Let's Encrypt IP-address
 certificate with an automatic renewal timer.

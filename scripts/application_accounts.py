@@ -42,6 +42,12 @@ class Accounts:
                     id TEXT PRIMARY KEY, owner TEXT NOT NULL REFERENCES users(id),
                     summary TEXT NOT NULL, snapshot TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS public_trials (
+                    day TEXT NOT NULL,
+                    client_digest TEXT NOT NULL,
+                    owner TEXT NOT NULL,
+                    PRIMARY KEY (day, client_digest)
+                );
             """)
 
     @contextmanager
@@ -53,6 +59,35 @@ class Accounts:
                 yield db
         finally:
             db.close()
+
+    def claim_public_trial(self, day, client_digest, owner, daily_limit):
+        """Atomically reserve one anonymous trial per client and UTC day.
+
+        Never store client IP addresses. Claims survive service restarts and
+        cannot be multiplied by clearing session cookies.
+        """
+        if (not isinstance(day, str) or len(day) != 10 or
+                not isinstance(client_digest, str) or len(client_digest) != 64 or
+                not owner.startswith("guest-") or not 1 <= daily_limit <= 64):
+            raise ValueError("Invalid public trial reservation")
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM public_trials WHERE day < ?", (day,))
+            if db.execute("SELECT 1 FROM public_trials WHERE day=? AND client_digest=?",
+                          (day, client_digest)).fetchone():
+                return "already_used"
+            count = db.execute("SELECT COUNT(*) FROM public_trials WHERE day=?", (day,)).fetchone()[0]
+            if count >= daily_limit:
+                return "daily_limit"
+            db.execute("INSERT INTO public_trials (day, client_digest, owner) VALUES (?,?,?)",
+                       (day, client_digest, owner))
+        return "reserved"
+
+    def release_public_trial(self, day, client_digest, owner):
+        """Undo only a reservation that never launched an inference run."""
+        with self.db() as db:
+            db.execute("DELETE FROM public_trials WHERE day=? AND client_digest=? AND owner=?",
+                       (day, client_digest, owner))
 
     def invite(self, ttl=86400):
         token = secrets.token_urlsafe(32)

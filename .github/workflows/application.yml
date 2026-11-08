@@ -7,6 +7,8 @@ on:
       - 'scripts/sandbox_diagnostics.py'
       - 'scripts/sandbox_runner.py'
       - 'tests/test_refit_diagnostic_http.py'
+      - 'tests/test_refit_public_trial.py'
+      - 'data/trial/**'
       - 'scripts/smoke_application.py'
       - 'integrations/application/**'
       - 'integrations/openai-compatible/**'
@@ -23,6 +25,7 @@ on:
       - 'tests/fixtures/workbench-components.html'
       - 'tests/browser_console_density.mjs'
       - 'tests/browser_guest_agents.mjs'
+      - 'tests/browser_public_trial.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - 'tests/saas_fixture_server.py'
@@ -43,6 +46,7 @@ on:
       - 'tests/fixtures/workbench-components.html'
       - 'tests/browser_console_density.mjs'
       - 'tests/browser_guest_agents.mjs'
+      - 'tests/browser_public_trial.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - '.github/workflows/application.yml'
@@ -100,8 +104,10 @@ jobs:
         run: node tests/browser_mobile_release.mjs
       - name: Verify console density, real-event deep links and run filtering in Firefox
         run: node tests/browser_console_density.mjs
-      - name: Verify guest agent page has one import action and neutral theme
+      - name: Verify guest agent page has a live trial action and neutral theme
         run: node tests/browser_guest_agents.mjs
+      - name: Verify one-click visitor migration route without paid inference
+        run: node tests/browser_public_trial.mjs
       - name: Verify workspace themes, command palette and trace navigation
         run: node tests/browser_workbench.mjs
       - name: Verify component density, themes and keyboard focus in Firefox

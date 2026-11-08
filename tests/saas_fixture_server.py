@@ -6,6 +6,9 @@ comes from an archived real run, only for testing the review UI.
 import gzip
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+import os
 import secrets
 import ssl
 import subprocess
@@ -31,6 +34,14 @@ class FixtureHandler(ApplicationHandler):
         return True  # This isolated HTTPS fixture stands in for Nginx ingress.
 
     def do_POST(self):
+        if urlsplit(self.path).path == "/api/application/try":
+            # Zero-inference browser acceptance of the guest session and
+            # navigation only. This fixture never performs a paid migration.
+            with patch.dict(os.environ, {"REFIT_PUBLIC_TRIAL_ENABLED": "1"}), \
+                 patch.object(self.service, "broker",
+                              return_value=SimpleNamespace(requests=0)), \
+                 patch.object(self.service, "launch", return_value=True):
+                return super().do_POST()
         if urlsplit(self.path).path == "/api/application/runs":
             return self._problem(ApiProblem(429, "test_inference_disabled", "Live inference is disabled in UI tests."))
         return super().do_POST()
@@ -81,7 +92,7 @@ def main():
                         "-subj", "/CN=localhost"], stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, check=True)
         service = ApplicationService(Path(temp), "fixture-operator-token-32characters", "disabled",
-                                     public_origin="https://localhost:8873")
+                                     public_origin="https://localhost:8873", daily_budget=192, account_budget=32)
         handler = type("Handler", (FixtureHandler,), {"service": service})
         server = ThreadingHTTPServer(("127.0.0.1", 8873), handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

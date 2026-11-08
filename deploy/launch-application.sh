@@ -104,6 +104,7 @@ EnvironmentFile=/etc/refit/application.env
 EnvironmentFile=-/etc/refit/application-public.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
+Environment=REFIT_PUBLIC_TRIAL_ENABLED=1
 Environment=REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1
 Environment=REFIT_SANDBOX_RUNTIME=runsc
 Environment=REFIT_DIAGNOSTIC_IMAGE_ID=$DIAGNOSTIC_IMAGE_ID
