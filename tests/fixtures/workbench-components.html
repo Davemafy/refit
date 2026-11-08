@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refit component quality bench</title>
+<link href="../../web/application/ui.css" rel="stylesheet"><link href="../../web/application/workbench.css" rel="stylesheet">
+<style>
+.preview-layout{max-width:1120px;margin-inline:auto;padding:28px;display:grid;gap:24px}
+.preview-title{font-size:22px;line-height:1.3}
+.preview-section{border:1px solid var(--line);border-radius:6px;background:var(--bg);overflow:hidden}
+.preview-heading{padding:12px 16px;border-bottom:1px solid var(--line2);display:flex;align-items:center;justify-content:space-between}
+.preview-body{padding:18px;display:grid;gap:16px}
+.preview-row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.preview-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.preview-mini{max-width:330px}
+@media(max-width:760px){.preview-layout{padding:14px}.preview-controls{grid-template-columns:1fr}}
+</style>
+</head>
+<body class="workbench">
+<main class="preview-layout">
+<header class="between"><div><h1 class="preview-title">Refit / Component bench</h1><p class="small sub">Static fixtures for state, density, text length and theme inspection</p></div><label class="field">Theme<select class="control" id="theme"><option>light</option><option>dark</option></select></label></header>
+<section class="preview-section"><div class="preview-heading"><h2>Actions</h2><span class="small muted">Normal / hover / focus / disabled / busy</span></div><div class="preview-body">
+<div class="preview-row"><button class="btn primary">Run migration</button><button class="btn">Download evidence</button><button class="btn danger">Remove source</button><button class="btn" disabled>Unavailable</button><button class="btn" aria-busy="true">Running…</button><a href="#fields" class="btn">Linked control</a></div>
+<div class="preview-row"><span class="chip good"><span class="dot"></span>Compatible</span><span class="chip bad"><span class="dot"></span>Baseline failed</span><span class="chip warn"><span class="dot"></span>Running</span><span class="chip bordered">Not verified</span><span class="chip good">Compatible on evaluated cases with a deliberately long status label</span></div></div></section>
+<section class="preview-section" id="fields"><div class="preview-heading"><h2>Inputs and validation</h2></div><div class="preview-body preview-controls">
+<label class="field">Repository URL<input class="control" placeholder="https://github.com/owner/repository"></label>
+<label class="field">Source model<select class="control"><option>deepseek-v4.1-flash-1017</option><option>glm-5.2</option></select></label>
+<label class="field">Commit SHA<input class="control mono" value="e3094be4c2a69d0e18b3b5f47b3a20b2d02350e7"></label>
+<label class="field">Input error<input class="control" aria-invalid="true" value="github.com/not-an-importable-runtime"><span class="hint error">Supported source runtime was not detected.</span></label>
+<label class="field">Disabled<input class="control" disabled placeholder="Not available"></label>
+<label class="field">Tool arguments<textarea class="control" rows="2" spellcheck="false">{"search_query": "deliberately long string with a provider-specific identifier"}</textarea></label>
+</div></section>
+<section class="preview-section"><div class="preview-heading"><h2>Operational table</h2><span class="small muted">Realistic identifiers and multiple outcomes</span></div>
+<div class="agent-list"><table class="table"><thead><tr><th scope="col">Run</th><th scope="col">Status</th><th scope="col">Models</th><th scope="col" class="numeric">Duration</th></tr></thead><tbody>
+<tr><td><button class="link-btn">app-1bc92344e97a71d3</button></td><td><span class="chip good">Verified repair</span></td><td class="mono">DeepSeek → GLM-5.2</td><td class="numeric">18.9 s</td></tr>
+<tr><td><button class="link-btn">app-8ce394ed7d99f911</button></td><td><span class="chip bad">Source baseline failed</span></td><td class="mono">GPT-4.1 → DeepSeek V4.1</td><td class="numeric">53.6 s</td></tr>
+<tr><td><button class="link-btn">app-7366f890a307ebb2</button></td><td><span class="chip warn">Executing</span></td><td class="mono">Qwen → GLM</td><td class="numeric">—</td></tr>
+<tr><td><button class="link-btn">app-7366f890a307eaaa</button></td><td><span class="chip bordered">Not recorded</span></td><td class="mono">long_identifier_requiring_wrap_breakpoint → model-name</td><td class="numeric">0.0 s</td></tr>
+</tbody></table></div></section>
+<section class="preview-section"><div class="preview-heading"><h2>Investigation selection</h2></div><div class="preview-body">
+<div class="trace-explorer"><div class="trace-events">
+<details class="trace-branch" open><summary>Validation <small class="mono">glm-5.2</small></summary><div class="trace-children">
+<button class="trace-entry selected" aria-pressed="true"><span class="trace-event-dot passed"></span><span class="trace-entry-copy"><strong>Model request completed</strong><small>Case: lookup-order</small></span><time class="mono">09:24:36</time><span class="mono trace-duration">1.8 s</span></button>
+<button class="trace-entry" aria-pressed="false"><span class="trace-event-dot failed"></span><span class="trace-entry-copy"><strong>Required tool result missing</strong><small>An extra long case name that must not overlap metrics</small></span><time class="mono">09:24:38</time><span class="mono trace-duration">2.1 s</span></button>
+</div></details></div><section class="trace-inspector"><h3>Model request completed</h3><p class="small sub">Recorded event · selected from the event tree</p><dl class="evidence-fields"><div class="evidence-field"><dt>Model</dt><dd>glm-5.2</dd></div><div class="evidence-field"><dt>Provider key</dt><dd>provider_service_long_identifier/example/test-path?query=very-long</dd></div></dl></section></div>
+</div></section>
+<section class="preview-section"><div class="preview-heading"><h2>Empty and failed states</h2></div><div class="preview-body">
+<div class="empty"><h2>No runs yet</h2><p>Import an agent and configure evaluation cases. Refit will record real observations when the run completes.</p><button class="btn primary">Import agent</button></div>
+<div class="import-recovery"><h3>This source needs another entry point</h3><p>A service boundary was detected but no supported managed entry was identified. Preserve this snapshot and adjust the source scope.</p><div class="button-row"><button class="btn primary">Adjust source and retry</button><a href="#fields" class="btn">Supported runtimes</a></div></div>
+</div></section>
+</main>
+<script>
+document.getElementById('theme').value=new URLSearchParams(location.search).get('theme')==='dark'?'dark':'light';
+document.documentElement.dataset.theme=document.getElementById('theme').value;
+document.getElementById('theme').addEventListener('change',e=>document.documentElement.dataset.theme=e.target.value);
+</script>
+</body></html>

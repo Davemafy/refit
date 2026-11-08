@@ -25,7 +25,7 @@ try {
  const page = await browser.newPage({ignoreHTTPSErrors:!production, viewport:{width:1366,height:768}, acceptDownloads:true, reducedMotion:"reduce"});
  page.on("pageerror", error=>errors.push(error.message));
  await page.goto(origin+"/app");
- await page.getByRole("button",{name:"Try a migration"}).waitFor();
+ await page.getByRole("button",{name:"Inspect recorded run"}).waitFor();
  assert.equal(await page.locator(".topbar").evaluate(e=>e.getBoundingClientRect().height),48);
  assert.equal(await page.locator(".sidebar").evaluate(e=>e.getBoundingClientRect().width),220);
  async function theme(value) {
@@ -40,7 +40,7 @@ try {
  for (const mode of ["dark","light"]) {
   await theme(mode);
   await page.goto(origin+"/app");
-  const action=page.getByRole("button",{name:"Try a migration"});
+  const action=page.getByRole("button",{name:"Inspect recorded run"});
   await action.waitFor();
   const ratios=await action.evaluate(button=>{
    const value=color=>color.match(/[0-9.]+/g).slice(0,3).map(Number).map(n=>{
@@ -60,7 +60,7 @@ try {
    await page.screenshot({path:output+"/"+mode+"-"+name+".jpg",type:"jpeg",quality:66});
   }
   await page.goto(origin+"/app");
-  await page.getByRole("button",{name:"Try a migration"}).click();
+  await page.getByRole("button",{name:"Inspect recorded run"}).click();
   await page.getByRole("heading",{name:"Review migration results"}).waitFor();
   assert.ok(await page.getByRole("button",{name:"Export verified configuration"}).isVisible());
   await page.screenshot({path:output+"/"+mode+"-comparison.jpg",type:"jpeg",quality:66});

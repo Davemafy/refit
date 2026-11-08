@@ -149,7 +149,7 @@ async function overview(){
    '<div class="guest-feature-caption"><span class="status-light"></span> Recorded execution</div>'+
    '<h2>Python knowledge-base migration</h2>'+
    '<p>Inspect case results, model requests and cleanup receipts from the isolated verification run.</p>'+
-   '<button class="btn primary" data-action="run" data-id="'+safe(r.id)+'">Try a migration '+ico("arrow")+'</button></div>'+
+   '<button class="btn primary" data-action="run" data-id="'+safe(r.id)+'">Inspect recorded run '+ico("arrow")+'</button></div>'+
    '<div class="guest-feature-facts"><div><span>Original model</span><strong>'+safe(r.source||"—")+'</strong></div>'+
    '<div><span>Replacement model</span><strong>'+safe(r.target||"—")+'</strong></div>'+
    '<div><span>Result</span>'+statusChip(r.status)+'</div></div></section>'+
@@ -238,7 +238,7 @@ async function agents(){
  '<div class="card agent-list"><table class="table"><thead><tr><th>Source</th><th>Runtime</th><th>Integration</th><th>Provider boundary</th><th></th></tr></thead><tbody>'+
  state.projects.map(p=>'<tr data-agent-row><td><button class="link-btn" data-action="project" data-id="'+safe(p.id)+'">'+safe(p.repository||"Uploaded ZIP")+'</button><div class="small muted mono">'+safe(p.revision||p.id)+'</div></td><td>'+safe([p.discovery?.framework,p.discovery?.runtime].filter(Boolean).join(" · ")||"Unknown")+'</td><td>'+
  safe(p.discovery?.service_entries?.length?"Service connector required":p.discovery?.entry?"Managed · confirm checks":"Configuration required")+
- '</td><td>'+safe(p.discovery?.provider||"Unconfirmed")+'</td><td><a data-nav class="btn compact" href="/app/runs?agent='+encodeURIComponent(p.id)+'">Runs</a> <button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table><p id="agentNoMatches" class="run-filter-empty" hidden>No matching agents.</p></div>':
+ '</td><td>'+safe(p.discovery?.provider||"Unconfirmed")+'</td><td><button type="button" data-action="project" data-id="'+safe(p.id)+'" class="btn compact">Inspect source</button> <a data-nav class="btn compact" href="/app/runs?agent='+encodeURIComponent(p.id)+'">Runs</a> <button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table><p id="agentNoMatches" class="run-filter-empty" hidden>No matching agents.</p></div>':
  empty("No agents imported","Import a pinned GitHub revision or a ZIP. Refit will inspect the source before any paid execution.",importButton));
 }
 async function runs(){
@@ -268,7 +268,7 @@ async function settings(){
 function wizardIntro(){
  return '<div class="import-header"><div><h1>Bring your agent</h1><p>Start with the code you already have. We’ll inspect the agent before changing anything.</p></div></div>';
 }
-const importPathSteps='<div class="import-next"><div><span>'+ico("code")+'</span><strong>Inspect</strong><p>Identify the original runtime and model boundary.</p></div><div><span>'+ico("layers")+'</span><strong>Configure</strong><p>Choose models and independent evaluation cases.</p></div><div><span>'+ico("shield")+'</span><strong>Verify</strong><p>Compare real execution before exporting.</p></div></div>';
+const importPathSteps="";
 function caseFields(item={},split="train",removable=false,open=false){
  const value=key=>safe(item[key]||"");
  return '<details class="setup-case" '+(open?"open":"")+'><summary>'+safe(item.split||split)+(item.name?" · "+safe(item.name):"")+'</summary><div class="setup-case-body">'+
@@ -403,7 +403,12 @@ async function flow(){
      '</div><div id="sourceReport" aria-live="polite"></div>'+
      '<details class="case-options" style="margin-top:12px"><summary>Detected source signals</summary>'+[["Entry candidates",d.entry_candidates],["Imports",d.imports],["Configuration",d.configuration_files]].map(([label,items])=>
        '<p class="small"><strong>'+label+'</strong> '+safe(items?.join(", ")||"None detected")+'</p>').join("")+'</details></section>':'')+
-   (serviceOnly?"":d.runnable===false?'<div class="notice" style="margin-top:18px">'+safe(d.setup||"Unsupported runtime")+'</div>':d.setup?'<p style="margin-top:16px;font-size:13px">'+safe(d.setup)+'</p>':'')+
+   (d.runnable===false?'<section class="import-recovery" role="note"><h3>This source needs another entry point</h3><p>'+
+     safe(d.setup||"Refit could not execute this entry using the supported managed runtimes.")+
+     ' Your imported snapshot and recorded runs are preserved. Adjust the source selection or import a different boundary—no deletion required.</p>'+
+     '<div class="button-row"><button class="btn primary" type="button" data-action="adjust-source">Adjust source and retry '+ico("arrow")+
+     '</button><a class="btn" href="/docs">Supported runtimes</a></div></section>':
+     d.setup?'<p class="small sub" style="margin-top:16px">'+safe(d.setup)+'</p>':'')+
    entryGuidance+
    '<div class="flow-footer"><button class="btn" data-action="flow-back">'+ico("back")+' Back</button><button class="btn primary" data-action="flow-config" '+(d.runnable===false?"disabled":"")+'>Continue to configuration '+ico("arrow")+'</button></div>';
    return;
@@ -504,8 +509,8 @@ function renderComparison(cases,source,target,report){
    (Number.isInteger(d.model_requests)?'<li class="sub">'+safe(d.model_requests)+' model requests</li>':"")+
    (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul><button type="button" class="evidence-jump" data-action="inspect-evidence" data-key="case-'+safe(observation.seq)+'">Open this observation '+ico("arrow")+'</button></details>';
  };
- return '<div class="comparison-scroll"><table class="table comparison-table"><thead><tr><th>Case</th><th>Original · '+safe(source)+'</th><th>Replacement · '+safe(target)+'</th>'+
- (repair?'<th>Adapted replacement</th>':'')+'<th>Observed result</th></tr></thead><tbody>'+
+ return '<div class="comparison-scroll"><table class="table comparison-table"><thead><tr><th scope="col">Case</th><th scope="col">Original · '+safe(source)+'</th><th scope="col">Replacement · '+safe(target)+'</th>'+
+ (repair?'<th scope="col">Adapted replacement</th>':'')+'<th scope="col">Observed result</th></tr></thead><tbody>'+
  rows.map(row=>{
   const original=row.source?.details,replacement=row.target?.details,adapted=row.adapted?.details;
   const inspection=row.status==="source_failed"?row.source:row.target||row.source;
@@ -718,6 +723,9 @@ function snapshotRunView(){
  document.querySelectorAll(".comparison-checks").forEach((d,i)=>{if(d.open)details[i]=true});
  const entry=document.querySelector(".evidence-index"),inspector=document.querySelector(".evidence-inspector"),log=document.querySelector(".log");
  return {scrollX:window.scrollX,scrollY:window.scrollY,details,
+  mainScroll:document.querySelector(".main")?.scrollTop||0,
+  traceScroll:document.querySelector(".trace-events")?.scrollTop||0,
+  traceInspectorScroll:document.querySelector(".trace-inspector")?.scrollTop||0,
   evidenceScroll:entry?.scrollTop||0,inspectorScroll:inspector?.scrollTop||0,logScroll:log?.scrollTop||0,
   activeId:document.activeElement?.id||null};
 }
@@ -728,6 +736,11 @@ function restoreRunView(view){
  if(entry)entry.scrollTop=view.evidenceScroll;
  if(inspector)inspector.scrollTop=view.inspectorScroll;
  if(log)log.scrollTop=view.logScroll;
+ const main=document.querySelector(".main"),trace=document.querySelector(".trace-events"),
+  traceInspector=document.querySelector(".trace-inspector");
+ if(main)main.scrollTop=view.mainScroll||0;
+ if(trace)trace.scrollTop=view.traceScroll||0;
+ if(traceInspector)traceInspector.scrollTop=view.traceInspectorScroll||0;
  window.scrollTo(view.scrollX,view.scrollY);
 }
 
@@ -964,7 +977,7 @@ function searchOverlay(event){
   items:()=>[
    ...[["Overview",""],["Agents","/agents"],["Runs","/runs"],["Evidence","/evidence"],["Settings","/settings"]]
     .map(([title,path])=>({title,sub:"Go to page",group:"Navigation",action:"navigate",id:"/app"+path})),
-   {title:state.guest?"Try a migration":"Import agent",sub:state.guest?"Recorded example":"GitHub or ZIP",group:"Actions",action:"navigate",
+   {title:state.guest?"Inspect recorded run":"Import agent",sub:state.guest?"Recorded example":"GitHub or ZIP",group:"Actions",action:"navigate",
     id:state.guest?"/app/runs/demo-python-2026-11-07":"/app/agents/new"},
    ...state.projects.map(p=>({title:p.repository||"Uploaded ZIP",sub:p.id,group:"Agents",action:"project",id:p.id})),
    ...state.runs.map(r=>({title:r.id,sub:[r.source,r.target,statusText[r.status]].filter(Boolean).join(" · "),
@@ -1039,10 +1052,18 @@ document.addEventListener("click",async event=>{
   }
   else if(action==="adjust-source"){
    const project=state.wizard.project;
+   history.replaceState(history.state,"","/app/agents/new");
    state.wizard=null;
    await flow();
-   el("repository").value="https://github.com/"+project.repository;
-   el("revision").value=project.revision;
+   const repository=String(project.repository||"");
+   if(!repository||repository==="Uploaded ZIP"){
+     page.querySelector('[data-import-mode="zip"]')?.click();
+     el("zip").focus();
+     notify("Choose a revised ZIP archive. The existing imported snapshot and its run evidence are retained.");
+     return;
+   }
+   el("repository").value=/^https?:\/\//.test(repository)?repository:"https://github.com/"+repository;
+   el("revision").value=project.revision||"";
    el("sourceDirectory").value=project.directory||"";
    el("advancedImport").open=true;
    el("sourceDirectory").focus();
@@ -1064,7 +1085,7 @@ document.addEventListener("click",async event=>{
   else if(action==="remove"){
    if(!confirm("Delete this imported source snapshot from your workspace? Existing run evidence is retained."))return;
    await req("/projects/"+id+"/remove",{});await agents();
-  }else if(action==="flow-back"){state.wizard=null;await flow();}
+  }else if(action==="flow-back"){history.replaceState(history.state,"","/app/agents/new");state.wizard=null;await flow();}
   else if(action==="flow-config"){
    const picked=el("applicationBoundary")?.value;
    const d=state.wizard.project.discovery;
@@ -1180,6 +1201,7 @@ document.addEventListener("keydown",event=>{
   Math.max(0,Math.min(rows.length-1,current+(event.key==="ArrowDown"?1:-1)));
  event.preventDefault();
  rows[next]?.focus();
+ rows[next]?.click();
 });
 document.addEventListener("change",event=>{
  const field=event.target.id;

@@ -333,7 +333,7 @@ h2{font-weight:580;letter-spacing:-.04em}
 .finding-reason{color:#d5aaa5}
 .finding svg{width:15px;height:15px;color:#aeb5b8}
 .decision-note{padding:2px 3px 18px;max-width:950px;color:#9fa5aa;font-size:12.5px;line-height:1.6}
-.comparison-card{padding:25px!important}
+.comparison-card{padding:25px}
 .run-layout > *{min-width:0}
 .comparison-scroll{max-width:100%;overflow-x:auto;scrollbar-color:#484c52 #181a1d;scrollbar-width:thin}
 .comparison-table{min-width:740px}
@@ -384,7 +384,7 @@ h2{font-weight:580;letter-spacing:-.04em}
  .finding{grid-template-columns:8px 1fr 16px;gap:8px 10px;padding:13px 15px}
  .finding-name,.finding-phase,.finding-reason{grid-column:2}
  .finding>svg{grid-column:3;grid-row:1/4}
- .comparison-card{padding:17px!important}
+ .comparison-card{padding:17px}
  .comparison-card>.between{align-items:start;flex-wrap:wrap}
 }
 @media(prefers-reduced-motion:reduce){.decision-cta,.finding{transition:none}.decision-cta:hover{transform:none}}

@@ -19,6 +19,8 @@ on:
       - 'tests/browser_mobile_release.mjs'
       - 'tests/browser_ui_polish.mjs'
       - 'tests/browser_workbench.mjs'
+      - 'tests/browser_component_bench.mjs'
+      - 'tests/fixtures/workbench-components.html'
       - 'tests/browser_console_density.mjs'
       - 'tests/browser_guest_agents.mjs'
       - 'tests/evidence_ui.test.mjs'
@@ -37,6 +39,8 @@ on:
       - 'tests/browser_mobile_release.mjs'
       - 'tests/browser_ui_polish.mjs'
       - 'tests/browser_workbench.mjs'
+      - 'tests/browser_component_bench.mjs'
+      - 'tests/fixtures/workbench-components.html'
       - 'tests/browser_console_density.mjs'
       - 'tests/browser_guest_agents.mjs'
       - 'tests/evidence_ui.test.mjs'
@@ -100,6 +104,8 @@ jobs:
         run: node tests/browser_guest_agents.mjs
       - name: Verify workspace themes, command palette and trace navigation
         run: node tests/browser_workbench.mjs
+      - name: Verify component density, themes and keyboard focus in Firefox
+        run: node tests/browser_component_bench.mjs
       - name: Archive zero-inference SaaS browser captures
         if: always()
         uses: actions/upload-artifact@v4
