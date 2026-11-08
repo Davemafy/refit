@@ -88,8 +88,13 @@ def check(origin: str, expected_revision: str | None = None) -> dict:
     assert "max-age=" in headers.get("Strict-Transport-Security", "")
     status, _, response = get("/api/application/session")
     session = json.loads(response)
-    assert status == 200 and session == {"mode": "account", "username": None}
-    observations.append({"check": "anonymous_session", "status": status, "mode": session["mode"]})
+    assert status == 200 and session.get("mode") == "account", session
+    assert session.get("username") is None and session.get("trial", False) is False, session
+    assert set(session) <= {"mode", "username", "trial"}, session
+    if expected_revision is not None:
+        assert "trial" in session, "The deployed visitor-session contract is missing"
+    observations.append({"check": "anonymous_session", "status": status, "mode": session["mode"],
+                         "trial": session.get("trial", False)})
 
     for path, extra_headers, label in (
         ("/api/application/projects", None, "projects_blocked"),

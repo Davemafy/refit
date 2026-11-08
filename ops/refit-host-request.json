@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Promote account-free real Vultr migration trial, fixed verified source and bounded guest quotas"
+  "reason": "Validate no-login migration release with updated session-contract HTTPS acceptance"
 }
