@@ -1421,10 +1421,6 @@ window.addEventListener("popstate",()=>show().catch(pageFailure));
   state.guest=!state.username;
   if(state.guest){
     el("avatar").textContent="G";document.body.classList.add("guest-session");
-    const button=document.createElement("button");button.type="button";
-    button.dataset.action="new-agent";button.dataset.trialStart="1";
-    button.className="btn compact";button.textContent="Import agent";
-    el("avatar").closest("details").before(button);
     await refreshWorkspace();
   }else {
    el("avatar").textContent=state.username.charAt(0).toUpperCase();
