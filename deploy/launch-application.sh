@@ -153,8 +153,8 @@ if id -nG refit-application | tr ' ' '\n' | grep -qx docker; then
   exit 1
 fi
 runuser -u refit-application -- env PATH=/usr/local/libexec/refit-cli:/usr/bin:/bin \
-  /usr/local/libexec/refit-cli/docker info --format '{{json .ID}}' |
-  python3 -c 'import json,sys; assert len(json.load(sys.stdin)) >= 1'
+  /usr/local/libexec/refit-cli/docker info --format '{{json .Runtimes}}' |
+  python3 -c 'import json,sys; runtimes=json.load(sys.stdin); assert isinstance(runtimes,dict) and "runsc" in runtimes'
 SERVICE_DIRECTORY="$(systemctl show refit-application --property=WorkingDirectory --value)"
 if [[ "$SERVICE_DIRECTORY" != "$REPO" ]]; then
   printf 'Refit service checkout mismatch: expected %s, got %s.\n' "$REPO" "$SERVICE_DIRECTORY" >&2
