@@ -65,7 +65,9 @@ try {
     await page.locator("#zip").setInputFiles({ name: "agent.zip", mimeType: "application/zip", buffer });
     const received = page.waitForResponse(r => r.url().endsWith("/api/application/imports/zip"));
     await page.getByRole("button", { name: "Inspect source" }).click();
-    assert.equal((await received).status(), 201);
+    const response = await received;
+    assert.equal(response.status(), 201);
+    return response.json();
   }
 
   await inspect(unsupported);
@@ -119,7 +121,7 @@ try {
   // Capacity is now exposed BEFORE submission. Browser validation rejects
   // a request above the remaining zero quota; the server must still enforce
   // the same limit when bypassing the form.
-  await inspect(zip);
+  const imported = await inspect(zip);
   await page.getByRole("button", { name: "Run migration" }).waitFor();
   const cap = await page.request.get(origin + "/api/application", {
     headers: {Authorization: "Bearer " + token}
@@ -133,7 +135,7 @@ try {
   assert.equal(await budgetField.evaluate(el => el.checkValidity()), false);
   const quotaResponse = await page.request.post(origin + "/api/application/runs", {
     headers: {Authorization: "Bearer " + token},
-    data: {import_id: "import-0000000000000000", source: "deepseek-v4.1-flash-1017",
+    data: {import_id: imported.id, source: "deepseek-v4.1-flash-1017",
       target: "glm-5.2", budget: 2, authorize: true, setup}
   });
   assert.equal(quotaResponse.status(), 429);
