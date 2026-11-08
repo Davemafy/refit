@@ -101,6 +101,15 @@ class AnonymousTrialHttpTests(unittest.TestCase):
         self.assertEqual(other[0], 202, other)
         self.assertNotEqual(other[2], header)
 
+    def test_public_sample_uses_available_guest_allowance(self):
+        # The stock 16-request guest allowance must not make the 20-request
+        # sample permanently fail before performing any work.
+        self.service.account_budget = 16
+        status, response, _ = self.try_run(ip="203.0.113.78")
+        self.assertEqual(status, 202, response)
+        run = self.service.runs[response["id"]][0]
+        self.assertEqual(run["budget"], 16)
+
     def test_origin_and_arbitrary_parameters_rejected_without_spending(self):
         self.assertEqual(self.http("POST", "/try", {}, origin="https://evil.example")[0], 403)
         self.assertEqual(self.http("POST", "/try", {"code": "print(1)"})[0], 422)
