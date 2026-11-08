@@ -666,3 +666,10 @@ h2{font-weight:580;letter-spacing:-.04em}
 .entry-guidance h3{font-size:13px;font-weight:580}
 .entry-guidance p{font-size:12px;line-height:1.65;margin:7px 0 0;max-width:880px}
 @media(max-width:760px){.entry-guidance{padding:15px 16px}.entry-guidance p{font-size:12px}}
+
+/* Use navigation label once on small screens; retain workflow progress. */
+@media(max-width:760px){
+ .subheader:has(.steps[hidden]){display:none}
+ .subheader:has(.steps:not([hidden])) .path{display:none}
+ .subheader:has(.steps:not([hidden])){min-height:54px;padding:10px 16px}
+}
