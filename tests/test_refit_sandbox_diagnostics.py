@@ -48,8 +48,24 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(expected, {
             "training_regression_delta": 2,
             "target_failed_cases": ["ineligible", "timeout_after_commit"],
+            "newly_failed_cases": ["ineligible", "timeout_after_commit"],
+            "recovered_cases": [],
             "holdout_improvement": 1,
         })
+
+    def test_case_level_deltas_are_actionable_and_independent_of_aggregate_score(self):
+        record = {"domain": "application", "report": {
+            "source_training": {"passed": 3, "total": 5,
+                                "failed": ["old_failure", "persisted_failure"]},
+            "target_training": {"passed": 3, "total": 5,
+                                "failed": ["new_failure", "persisted_failure"]},
+        }}
+        actual = expected_diagnostic(diagnostics_input(record))
+        self.assertEqual(actual["newly_failed_cases"], ["new_failure"])
+        self.assertEqual(actual["recovered_cases"], ["old_failure"])
+        self.assertEqual(actual["target_failed_cases"], ["new_failure", "persisted_failure"])
+        self.assertEqual(actual["training_regression_delta"], 0)
+        self.assertIsNone(actual["holdout_improvement"])
 
     def test_compatible_deployment_does_not_invent_regression(self):
         expected = expected_diagnostic(diagnostics_input(self.record("deployment")))
