@@ -54,8 +54,9 @@ try{
  await page.locator("#runQuery").fill("glm-5.2");
  assert.equal(await page.locator(".run-table-desktop tbody tr").count(),2);
  const toolbarGap=await page.evaluate(()=>document.querySelector(".run-controls").getBoundingClientRect().top-
-  document.querySelector("#contextBar").getBoundingClientRect().bottom);
- assert.ok(toolbarGap>=0&&toolbarGap<=12, String(toolbarGap));
+  document.querySelector(".page-lead").getBoundingClientRect().bottom);
+ assert.ok(toolbarGap>=0&&toolbarGap<=24, "Runs toolbar must follow the visible page heading: "+toolbarGap);
+ assert.equal(await page.getByRole("heading",{name:"Runs",exact:true}).isVisible(),true);
  await page.locator("#runQuery").fill("");
  await page.locator("#runQuery").blur();
  await page.screenshot({path:"artifacts/console-release/03-runs-desktop.png",fullPage:true});
