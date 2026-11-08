@@ -36,9 +36,9 @@ try {
  await page.waitForFunction(()=>document.querySelector("#replayProgress")?.textContent.trim().startsWith("2 /"),null,{timeout:6000});
  await page.locator("[data-replay-index='7']").click();
  assert.equal(await page.locator("#replayProgress").textContent(),"8 / "+expected);
- await page.locator("#replayScrub").fill(String(expected-1));
+ await page.locator("#replayScrub").evaluate((el,v)=>{el.value=String(v);el.dispatchEvent(new Event("input",{bubbles:true}));},expected-1);
  assert.ok((await page.locator("#replayProgress").textContent()).startsWith(expected+" /"));
- await page.locator("#replayScrub").fill("0");
+ await page.locator("#replayScrub").evaluate(el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
  await page.locator("#replaySpeed").selectOption("4");
  await page.locator("#replayPlay").click();
  await page.waitForFunction(()=>document.querySelector("#replayProgress")?.textContent.trim().startsWith("2 /"),null,{timeout:4000});
