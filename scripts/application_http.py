@@ -193,6 +193,12 @@ class ApplicationService:
         fcntl.flock(self.process_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.token = token
         self.public_origin = public_origin
+        # Trust explicit HTTPS origins only; the Vultr IP and branded domain
+        # may be served by the same authenticated reverse proxy.
+        aliases = [value.strip() for value in os.getenv("REFIT_PUBLIC_ORIGIN_ALIASES", "").split(",") if value.strip()]
+        if any(not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::[0-9]+)?", value) for value in aliases):
+            raise ValueError("Public origin aliases must be exact HTTPS origins.")
+        self.allowed_origins = {public_origin, *aliases} if public_origin else set()
         self.accounts = Accounts(directory) if public_origin else None
         self.review_passes = {REVIEW_PREFIX + key: expires for key, expires in (review_passes or {}).items()}
         self.account_slots = threading.BoundedSemaphore(2)
@@ -398,11 +404,17 @@ class ApplicationService:
         else:
             raise ApiProblem(422, "invalid_trial_request", "Choose a reviewed public agent.")
         day = now()[:10]
+        # A public sample must not silently require a larger account allowance
+        # than the same guest receives when importing their own application.
+        trial_budget = min(PUBLIC_TRIAL_BUDGET, self.account_budget)
+        if trial_budget < 7:
+            raise ApiProblem(503, "trial_budget_unavailable",
+                             "The current inference allowance cannot finish independent verification.")
         with self.lock:
             if self.quarantined:
                 raise ApiProblem(503, "operator_review_required",
                                  "Sandbox containment requires review before new work.")
-            if self.reserved(day) + PUBLIC_TRIAL_BUDGET + PUBLIC_TRIAL_GLOBAL_RESERVE > self.daily_budget:
+            if self.reserved(day) + trial_budget + PUBLIC_TRIAL_GLOBAL_RESERVE > self.daily_budget:
                 raise ApiProblem(429, "trial_capacity_full",
                                  "Today's live sample capacity is full; recorded evidence remains available.")
             if sum(run["status"] in ACTIVE for run, _ in self.runs.values()) >= QUEUE_LIMIT:
@@ -410,7 +422,7 @@ class ApplicationService:
             try:
                 # Validate host inference configuration *before* claiming a
                 # visitor's scarce, persistent one-shot slot.
-                self.broker(PUBLIC_TRIAL_BUDGET)
+                self.broker(trial_budget)
             except (OSError, ValueError, RuntimeError) as exc:
                 raise ApiProblem(503, "inference_unavailable", "Vultr inference is unavailable.") from exc
             owner = "guest-" + secrets.token_hex(16)
@@ -430,7 +442,7 @@ class ApplicationService:
                     "import_id": summary["id"],
                     "source": MODELS[0],
                     "target": MODELS[1],
-                    "budget": PUBLIC_TRIAL_BUDGET,
+                    "budget": trial_budget,
                     "authorize": True,
                     "setup": prepared_setup,
                 }, owner, trusted_trial=True)
@@ -787,7 +799,7 @@ class ApplicationHandler(RefitHandler):
         try:
             path = urlsplit(self.path).path
             if self.public():
-                if self.headers.get("Origin") != self.service.public_origin:
+                if self.headers.get("Origin") not in self.service.allowed_origins:
                     raise ApiProblem(403, "origin_rejected", "Open the HTTPS Refit workspace to make changes.")
                 if path == "/api/application/guest-session":
                     if self.body(limit=64) != {}:
