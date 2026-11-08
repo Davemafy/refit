@@ -372,19 +372,31 @@ class ApplicationService:
             self.imports[ident] = (time.monotonic(), snapshot, summary)
         return summary
 
-    def public_trial(self, client_digest):
-        """One original-agent migration, no login and no arbitrary inputs."""
+    def public_trial(self, client_digest, sample="knowledge"):
+        """One real bounded original-agent run, no login and no arbitrary inputs."""
         if os.getenv("REFIT_PUBLIC_TRIAL_ENABLED") != "1":
             raise ApiProblem(503, "public_trial_disabled", "Live public trials are temporarily unavailable.")
-        # The source is a reviewed subset of immutable upstream commit; it is
-        # *not* a dynamic GitHub download or a user-provided archive.
-        try:
-            snapshot = source_snapshot(PUBLIC_TRIAL_ARCHIVE.read_bytes())
-            if snapshot["discovery"]["preset"] != "llm-0.37.1":
-                raise ValueError("Trial sample no longer matches reviewed runtime")
-        except (OSError, ValueError) as exc:
-            raise ApiProblem(503, "trial_sample_unavailable", "The reviewed sample is unavailable.") from exc
-        snapshot.update(repository=PUBLIC_TRIAL_REPOSITORY, revision=PUBLIC_TRIAL_REVISION)
+        if sample == "refund":
+            # The refund CLI is executed by the SAME managed gVisor runner,
+            # model broker, sealed case oracle, and fresh export gate.
+            from .refund_trial import sample as refund_sample
+            try:
+                snapshot, prepared_setup = refund_sample()
+            except (OSError, ValueError, KeyError) as exc:
+                raise ApiProblem(503, "trial_sample_unavailable",
+                                 "The reviewed refund agent source is unavailable.") from exc
+        elif sample == "knowledge":
+            # Preserve the pinned upstream LLM example for API compatibility.
+            try:
+                snapshot = source_snapshot(PUBLIC_TRIAL_ARCHIVE.read_bytes())
+                if snapshot["discovery"]["preset"] != "llm-0.37.1":
+                    raise ValueError("Trial sample no longer matches reviewed runtime")
+            except (OSError, ValueError) as exc:
+                raise ApiProblem(503, "trial_sample_unavailable", "The reviewed sample is unavailable.") from exc
+            snapshot.update(repository=PUBLIC_TRIAL_REPOSITORY, revision=PUBLIC_TRIAL_REVISION)
+            prepared_setup = None
+        else:
+            raise ApiProblem(422, "invalid_trial_request", "Choose a reviewed public agent.")
         day = now()[:10]
         with self.lock:
             if self.quarantined:
@@ -420,6 +432,7 @@ class ApplicationService:
                     "target": MODELS[1],
                     "budget": PUBLIC_TRIAL_BUDGET,
                     "authorize": True,
+                    "setup": prepared_setup,
                 }, owner, trusted_trial=True)
                 # Cookie is issued only after a durable run is established.
                 # Guest identifiers remain unguessable and owner-scoped.
@@ -791,11 +804,12 @@ class ApplicationHandler(RefitHandler):
                     self._session_cookie = (f"{COOKIE}={secret}; Path=/; Secure; HttpOnly; SameSite=Strict; "
                                             f"Max-Age={SESSION_TTL}")
                     return self._send(201, {"username": "Visitor", "guest": True})
-                if path == "/api/application/try":
+                if path in ("/api/application/try", "/api/application/try-refund"):
                     if self.body(limit=64) != {}:
                         raise ApiProblem(422, "invalid_trial_request",
                                          "The public sample accepts no prompts, URLs or user code.")
-                    run, secret = self.service.public_trial(self.public_client_digest())
+                    chosen = "refund" if path.endswith("/try-refund") else "knowledge"
+                    run, secret = self.service.public_trial(self.public_client_digest(), sample=chosen)
                     self._session_cookie = (f"{COOKIE}={secret}; Path=/; Secure; HttpOnly; SameSite=Strict; "
                                             f"Max-Age={SESSION_TTL}")
                     return self._send(202, {"id": run["id"], "status": run["status"],
