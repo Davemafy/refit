@@ -118,3 +118,17 @@ body.replay-film .replay-provenance{display:none}
  body.replay-film .replay-head-actions{margin:0}
  body.replay-film .replay-evidence-footer{display:none}
 }
+
+
+/* Keep the real first action above the fold on narrow guest screens. */
+@media(max-width:760px){
+ .workbench.guest-session .workspace-start--visual{display:block;min-height:0;padding:15px 17px;gap:0}
+ .workbench.guest-session .workspace-start--visual .context-art{display:none}
+ .workbench.guest-session .workspace-start--visual h2{font-size:21px;line-height:1.2}
+ .workbench.guest-session .workspace-start--visual p{font-size:12px;line-height:1.42;margin:7px 0 11px}
+ .workbench.guest-session .workspace-start--visual .workspace-start-actions{gap:6px}
+ .workbench.guest-session .workspace-start--visual .workspace-start-actions .btn{min-height:34px;padding:8px 10px;font-size:11px}
+ .workbench.guest-session .page-lead{margin-bottom:10px}
+ .workbench.guest-session .overview-activity{margin-top:10px}
+ .workbench.guest-session .overview-recent-heading{padding-block:10px}
+}
