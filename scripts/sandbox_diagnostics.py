@@ -48,9 +48,13 @@ def expected_diagnostic(inputs: dict) -> dict:
     target = phases["target_training"]["passed"]
     before = phases.get("original_holdout")
     after = phases.get("repaired_holdout")
+    failed_before = set(phases["source_training"]["failed"])
+    failed_after = set(phases["target_training"]["failed"])
     return {
         "training_regression_delta": max(0, source - target),
-        "target_failed_cases": sorted(set(phases["target_training"]["failed"])),
+        "target_failed_cases": sorted(failed_after),
+        "newly_failed_cases": sorted(failed_after - failed_before),
+        "recovered_cases": sorted(failed_before - failed_after),
         "holdout_improvement": (
             after["passed"] - before["passed"]
             if before is not None and after is not None else None
@@ -64,6 +68,8 @@ Your program reads JSON from /refit-input/input.json and computes exactly
 one JSON object printed on stdout. Required fields:
 training_regression_delta: max(0, source_training.passed - target_training.passed);
 target_failed_cases: sorted unique target_training.failed strings;
+newly_failed_cases: sorted unique target_failed minus source_failed;
+recovered_cases: sorted unique source_failed minus target_failed;
 holdout_improvement: repaired_holdout.passed - original_holdout.passed,
 or null if either holdout phase is missing.
 Input JSON schema: {"domain":"refund|deployment|application","phases":{phase_name:
