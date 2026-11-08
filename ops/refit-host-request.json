@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Verify broker staging-only write permission and unprivileged gVisor execution"
+  "reason": "Verify real agent migration after interactive Docker broker input fix and seven-case host acceptance"
 }
