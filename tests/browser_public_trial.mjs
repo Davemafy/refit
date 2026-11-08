@@ -45,12 +45,15 @@ try {
   headers:{"Origin":origin},
   data:{},
  });
- assert.equal(duplicate.status(),429,"One anonymous paid trial per client/day");
- assert.equal((await duplicate.json()).error.code,"trial_already_used");
+ assert.equal(duplicate.status(),202,"An authenticated visitor may repeat a bounded live sample");
+ const additional=await duplicate.json();
+ assert.match(additional.id,/^app-[0-9a-f]{16}$/);
+ const history=await (await context.request.get(origin+"/api/application/runs")).json();
+ assert.ok(history.runs.some(r=>r.id===additional.id),"Repeated sample remains visible to the original guest");
  assert.deepEqual(clientErrors,[]);
  await page.screenshot({path:"artifacts/saas-ui/18-public-trial-after.png",fullPage:true});
  console.log(JSON.stringify({status:"pass",mode:"zero-inference fixture",guest:true,
-  requires_signup:false,live_api_route:"/api/application/try",duplicate_blocked:true,
+  requires_signup:false,live_api_route:"/api/application/try",repeat_sample_allowed:true,
   http_only_guest_session:true,owner_scoped_run:true}));
 } finally {
  await browser?.close();
