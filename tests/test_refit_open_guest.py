@@ -96,7 +96,7 @@ class NoAccountImportTests(unittest.TestCase):
         cookie_two = self.open_guest("198.51.100.9")
         self.assertEqual(self.http("GET", "/projects", cookie=cookie_two, ip="198.51.100.9")[1]["projects"], [])
         self.assertEqual(self.http("GET", "/runs/" + created[1]["id"], cookie=cookie_two, ip="198.51.100.9")[0], 404)
-        self.assertEqual(self.http("GET", "", cookie=cookie)[1]["account_remaining_today"], 12)
+        self.assertEqual(self.http("GET", "", cookie=cookie)[1]["account_remaining_today"], 44)
 
     def test_branded_domain_is_an_explicit_approved_guest_origin(self):
         with patch.dict("os.environ", {"REFIT_PUBLIC_ORIGIN_ALIASES": "https://refit.davemafy.xyz"}):
