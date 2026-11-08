@@ -1,1 +1,98 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Refit — Change the model. Keep the behavior.</title><meta name="description" content="Migrate existing application agents between language models, execute them in isolation, and verify behavior before exporting."><link rel="stylesheet" href="/assets/ui.css"></head><body><header class="public-head"><a href="/" class="hstack"><span class="logo">R</span><span class="brand">Refit</span></a><nav class="public-nav"><a href="/docs">Documentation</a><a href="/login">Sign in</a><a href="/app" class="btn primary">Open workspace</a></nav></header><main class="public-main"><div class="hero"><h1>Change the model.<br>Keep the behavior.</h1><p>Bring an existing application agent. Run it against a replacement language model inside an isolated environment. Compare real outcomes and export only what passes independent verification.</p><div class="button-row"><a href="/app" class="btn primary" style="min-height:45px">Open Refit workspace</a><a href="/docs" class="btn" style="min-height:45px">How it works</a></div><p class="small" style="margin-top:19px">Create an account to run a migration. The workspace includes a recorded example you can explore without signing in.</p></div><div class="product-steps"><div class="card"><strong>Import the original application</strong><p>Inspect a pinned GitHub revision or source ZIP. Refit reports the entry point and runtime boundary before execution.</p></div><div class="card"><strong>Compare real execution</strong><p>Run original cases with source and replacement models inside disposable gVisor containers. Examine case and tool evidence.</p></div><div class="card"><strong>Verify before exporting</strong><p>Export model configuration only after the original application passes fresh verification. Failed migrations keep their evidence, not a fake success.</p></div></div><div class="card inner compatibility-panel" style="margin-top:26px"><div class="between"><div><h3>Current compatibility</h3><p style="margin-top:7px">Verified Python 3.11 non-streaming OpenAI-compatible applications. A curated Node / AI SDK runtime is in testing; successful live TypeScript migration is not yet established.</p></div><a href="/docs" class="btn">Supported runtimes</a></div></div></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101112">
+  <meta name="description" content="Refit migrates existing AI agents between language models, replays real behavioral tests in isolated workers, and exports only independently verified configurations.">
+  <title>Refit — Change the model. Keep the behavior.</title>
+  <link rel="stylesheet" href="/assets/ui.css">
+  <link rel="stylesheet" href="/assets/marketing.css">
+</head>
+<body class="marketing">
+  <a href="#main" class="m-skip">Skip to content</a>
+  <div class="marketing-shell">
+    <header class="marketing-header">
+      <a href="/" class="m-brand" aria-label="Refit homepage"><span class="m-brand-mark">R<span></span></span><span>Refit</span></a>
+      <nav class="m-nav" aria-label="Primary navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="/docs">Documentation</a>
+        <a href="https://github.com/Davemafy/refit" rel="noopener noreferrer">GitHub</a>
+      </nav>
+      <a class="m-header-action" href="/app">Open workspace <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main id="main">
+      <section class="m-hero" aria-labelledby="m-title">
+        <div class="m-hero-copy">
+          <div class="m-availability"><span class="m-indicator"></span> Verified execution, not a simulated migration</div>
+          <h1 id="m-title">Change the model.<span>Keep the behavior.</span></h1>
+          <p>Bring the agent you already built. Refit runs it against a replacement model, checks its real behavior inside isolated workers, and gives you the evidence before you ship.</p>
+          <div class="m-hero-actions">
+            <a class="m-button m-button--primary" href="/app/agents/new">Bring your agent <span aria-hidden="true">↗</span></a>
+            <a class="m-button m-button--secondary" href="/app/runs/demo-python-2026-11-07">Explore recorded results <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="m-hero-proof">
+            <div><span class="m-proof-icon" aria-hidden="true">◇</span><span>Original-runtime testing</span></div>
+            <div><span class="m-proof-icon" aria-hidden="true">◎</span><span>Independent evaluation</span></div>
+            <div><span class="m-proof-icon" aria-hidden="true">✓</span><span>Export gated by evidence</span></div>
+          </div>
+        </div>
+        <div class="m-product-preview" aria-label="Recorded migration evidence preview">
+          <div class="m-preview-chrome"><div class="m-preview-path"><span class="m-app-mini-mark">R</span><span>Migration / Evidence</span></div><span class="m-preview-type"><span></span> Recorded sample</span></div>
+          <div class="m-preview-body">
+            <div class="m-preview-title"><div><span class="m-preview-context">Python knowledge-base agent</span><h2>Behavior comparison</h2></div><span class="m-preview-state" id="previewState">Recorded evaluation</span></div>
+            <div class="m-models" aria-label="Model comparison">
+              <div class="m-model"><span>Original model</span><div><img src="/assets/model-deepseek.svg" alt="" width="26" height="26"><strong id="previewSource">DeepSeek</strong></div></div>
+              <span class="m-model-connector" aria-hidden="true"><span></span>→<span></span></span>
+              <div class="m-model"><span>Replacement model</span><div><img src="/assets/model-zai.svg" alt="" width="26" height="26"><strong id="previewTarget">GLM</strong></div></div>
+            </div>
+            <div class="m-preview-analysis">
+              <div class="m-analysis-main">
+                <div class="m-analysis-head"><span>Observed case outcomes</span><span class="m-analysis-key"><i></i> Passed <i></i> Failed</span></div>
+                <div id="previewTicks" class="m-observation-ticks" aria-label="Case outcomes loading">
+                  <span class="m-tick"></span><span class="m-tick"></span><span class="m-tick"></span><span class="m-tick"></span><span class="m-tick"></span><span class="m-tick"></span><span class="m-tick"></span>
+                </div>
+                <div class="m-analysis-totals"><strong id="previewPassed">—</strong><span>case observations passed</span><span class="m-analysis-failures" id="previewFailed"></span></div>
+                <div class="m-analysis-separator"></div>
+                <div class="m-verification-steps">
+                  <div><span class="m-step-symbol">01</span><span>Original behavior</span><span class="m-step-end">Measured</span></div>
+                  <div><span class="m-step-symbol">02</span><span>Replacement behavior</span><span class="m-step-end">Compared</span></div>
+                  <div><span class="m-step-symbol">03</span><span>Fresh export check</span><span class="m-step-end">Required</span></div>
+                </div>
+              </div>
+              <div class="m-analysis-worker"><div class="m-worker-art">
+                <img class="m-art-dark" src="/assets/illustrations/servers-dark.svg" alt="" width="170" height="145" decoding="async">
+                <img class="m-art-light" src="/assets/illustrations/servers.svg" alt="" width="170" height="145" decoding="async">
+              </div><div class="m-worker-label"><span class="m-worker-dot"></span><strong>Isolated worker</strong></div><span>gVisor · Vultr</span></div>
+            </div>
+            <div class="m-preview-footer"><span id="previewProvenance">A published, read-only example — no model calls while browsing</span><a href="/app/runs/demo-python-2026-11-07">Inspect evidence <span aria-hidden="true">↗</span></a></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="m-beneath" id="how-it-works" aria-labelledby="m-how-title">
+        <div class="m-section-title"><div><h2 id="m-how-title">One controlled path from source to proof.</h2><p>No prompt-only claims. Every export has an execution trail.</p></div><a href="/docs">Read the technical documentation <span aria-hidden="true">↗</span></a></div>
+        <div class="m-feature-grid">
+          <article class="m-feature">
+            <div class="m-feature-visual m-feature-visual--files"><img src="/assets/illustrations/folders-dark.svg" alt="" width="140" height="132" loading="lazy"><span class="m-feature-ghost">Source snapshot</span></div>
+            <div class="m-feature-copy"><span>01 / Import</span><h3>Start with real source.</h3><p>Inspect the entry point, runtime, and repository revision before running a single model request.</p></div>
+          </article>
+          <article class="m-feature">
+            <div class="m-feature-visual m-feature-visual--execution"><img src="/assets/illustrations/programs-dark.svg" alt="" width="140" height="132" loading="lazy"><span class="m-feature-ghost">Observed execution</span></div>
+            <div class="m-feature-copy"><span>02 / Evaluate</span><h3>See what actually changed.</h3><p>Compare case results, tool activity, and sandbox events from the original application.</p></div>
+          </article>
+          <article class="m-feature">
+            <div class="m-feature-visual m-feature-visual--security"><img src="/assets/illustrations/lock-dark.svg" alt="" width="140" height="132" loading="lazy"><span class="m-feature-ghost">Verified boundary</span></div>
+            <div class="m-feature-copy"><span>03 / Verify</span><h3>Export only with proof.</h3><p>Fresh verification gates the result. Unverified runs keep their evidence and withhold the export.</p></div>
+          </article>
+        </div>
+      </section>
+      <section class="m-final-cta"><div><h2>Bring an agent. See the difference.</h2><p>Explore the real recorded investigation first, or import a project to run your own.</p></div><a class="m-button m-button--primary" href="/app">Open Refit workspace <span aria-hidden="true">↗</span></a></section>
+    </main>
+
+    <footer class="m-footer"><span class="m-footer-brand">Refit</span><span>Built for verifiable model migrations on Vultr.</span><a href="/docs">Documentation</a><a href="https://github.com/Davemafy/refit">Source</a><span>Illustrations: <a href="https://flowbite.com/illustrations/">Flowbite</a> · MIT</span></footer>
+  </div>
+  <script defer src="/assets/marketing.js"></script>
+</body>
+</html>

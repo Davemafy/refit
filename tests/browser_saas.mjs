@@ -32,17 +32,41 @@ try{
  const {url}=await waitReady();
  browser=await firefox.launch();
  const context=await browser.newContext({ignoreHTTPSErrors:true,acceptDownloads:true,viewport:{width:1440,height:900}});
- const page=await context.newPage();page.setDefaultTimeout(12_000);
+ const page=await context.newPage();page.setDefaultTimeout(12_000);page.setDefaultNavigationTimeout(30_000);
  page.on("pageerror",error=>errors.push(error.message));
  page.on("request",request=>{if(request.url().endsWith("/api/application/runs")&&request.method()==="POST")runRequests.push(request.url());});
  await page.goto(url+"/");
  await page.getByRole("heading",{name:/Change the model/}).waitFor();
+ await page.waitForFunction(()=>document.querySelector("#previewPassed")?.textContent!=="—");
+ const visual = await page.evaluate(()=>{
+   const art=[...document.querySelectorAll(".m-feature-visual img, .m-worker-art .m-art-dark")];
+   return {
+     artCount:art.length,loaded:art.every(image=>image.complete&&image.naturalWidth>0),
+     cases:document.querySelectorAll("#previewTicks .m-tick").length,
+     observed:document.querySelector("#previewPassed")?.textContent,
+     recorded:document.querySelector("#previewProvenance")?.textContent,
+     overflow:document.documentElement.scrollWidth>innerWidth
+   };
+ });
+ assert.equal(visual.artCount,4,"Homepage must have four distinct sourced illustrations");
+ assert.ok(visual.loaded,"Licenced static illustrations must actually load");
+ assert.equal(visual.cases,7,"Hero observation marks must come from published case events");
+ assert.equal(visual.observed,"7");
+ assert.match(visual.recorded,/verified cleanups/);
+ assert.equal(visual.overflow,false,"Desktop marketing must not scroll horizontally");
  await page.screenshot({path:"artifacts/saas-ui/01-landing.png",fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ await page.reload();
+ await page.getByRole("heading",{name:/Change the model/}).waitFor();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,
+  "Marketing art must fit a narrow phone without sideways overflow");
+ await page.screenshot({path:"artifacts/saas-ui/01-landing-mobile.png",fullPage:true});
+ await page.setViewportSize({width:1440,height:900});
  await page.goto(url+"/app");
  await page.getByRole("heading",{name:"Overview"}).waitFor();
  await page.locator(".overview-recent").waitFor();
  await page.screenshot({path:"artifacts/saas-ui/00-guest-workspace.png",fullPage:true});
- await page.goto(url+"/app/agents/new");
+ await page.goto(url+"/app/agents/new",{waitUntil:"domcontentloaded"});
  await page.getByRole("button",{name:/Inspect this agent/}).click();
  await page.getByRole("heading",{name:"Inspect your agent"}).waitFor();
  await page.getByText("python -m src.qa").waitFor();
@@ -70,6 +94,10 @@ try{
  await page.getByRole("button",{name:/Continue/}).click();
  await page.waitForURL(url+"/app");
  await page.getByRole("heading",{name:"Your workspace"}).waitFor();
+ const startupArt=page.locator(".workspace-start--visual .context-art img:visible");
+ await startupArt.waitFor();
+ assert.ok(await startupArt.evaluate(image=>image.complete&&image.naturalWidth>0),
+  "Signed-in first-run screen should display local illustration");
  const secure=(await context.cookies()).find(x=>x.name==="__Host-refit-session");
  assert.ok(secure?.httpOnly&&secure?.secure&&secure?.sameSite==="Strict");
 

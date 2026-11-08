@@ -90,9 +90,9 @@ function header(label,step=0,crumb){
 }
 function pageFailure(error){
  const message=error instanceof Error?error.message:"The request did not complete.";
- page.innerHTML='<section class="request-failure" role="alert"><h2>Unable to load this view</h2>'+
+ page.innerHTML='<section class="request-failure request-failure--illustrated" role="alert">'+illustratedAsset("error")+'<div class="request-failure-copy"><h2>Unable to load this view</h2>'+
   '<p>'+safe(message)+'</p><button type="button" class="btn primary" data-action="retry-page">'+
-  'Retry loading</button></section>';
+  'Retry loading</button></div></section>';
 }
 function stopStream(){
  if(state.stream){state.stream.close();state.stream=null;}
@@ -125,11 +125,17 @@ async function refreshWorkspace(){
  state.runs=runs.runs||[];
 }
 const lead=(title,subtitle,right="")=>'<div class="page-lead"><div class="page-heading"><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
-const empty=(title,desc,button)=>'<div class="empty">'+
- (/^(No agents|No runs|No evidence)/.test(title)?emptyDiagram:"")+
- '<h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
-// Model branding is mapped from model identifiers, never inferred from output text.
-// The marks are locally hosted SVGs licensed under LobeHub's MIT terms.
+// Source artwork is licensed MIT and loaded from our static allowlist. Each
+// empty state gets its own subject instead of repeating a generic line icon.
+const illustratedAsset=(name,alt="")=>'<span class="context-art" aria-hidden="true">'+
+ '<img class="context-art-dark" src="/assets/illustrations/'+name+'-dark.svg" alt="'+safe(alt)+'" loading="lazy" decoding="async">'+
+ '<img class="context-art-light" src="/assets/illustrations/'+name+'.svg" alt="'+safe(alt)+'" loading="lazy" decoding="async"></span>';
+const empty=(title,desc,button)=>{
+ const subject=/^No agents/.test(title)?"folders":/^No runs/.test(title)?"programs":/^No evidence/.test(title)?"lock":null;
+ return '<section class="empty empty--editorial" aria-label="'+safe(title)+'">'+
+  (subject?illustratedAsset(subject):'<span class="empty-default-icon">'+ico("box")+'</span>')+
+  '<div class="empty-editorial-copy"><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p><div class="empty-editorial-action">'+button+'</div></div></section>';
+};
 const modelBrand=value=>{
  const id=String(value||"").trim().toLowerCase();
  if(/^(deepseek|deep-seek)/.test(id))return "deepseek";
@@ -145,15 +151,6 @@ const modelBrand=value=>{
 const modelMark=value=>'<span class="model-mark model-mark--'+modelBrand(value)+'" aria-hidden="true"></span>';
 const modelIdentity=value=>'<span class="model-identity" title="'+safe(value||"Unknown model")+'">'+modelMark(value)+
  '<span class="model-identity-name">'+safe(value||"Unknown model")+'</span></span>';
-const emptyDiagram='<svg class="empty-diagram" viewBox="0 0 280 108" fill="none" aria-hidden="true">'+
- '<path d="M45 54H235" stroke="currentColor" stroke-dasharray="3 5" opacity=".27"/>'+
- '<rect x="8" y="21" width="76" height="66" rx="10" stroke="currentColor" opacity=".45"/>'+
- '<path d="M25 42l19-10 19 10v22L44 75 25 64V42Zm0 0 19 11 19-11M44 53v22" stroke="currentColor" stroke-width="1.8"/>'+
- '<rect x="102" y="21" width="76" height="66" rx="10" stroke="currentColor" opacity=".45"/>'+
- '<path d="M117 55h17m-8-8 8 8-8 8m20-8h17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'+
- '<rect x="196" y="21" width="76" height="66" rx="10" stroke="currentColor" opacity=".45"/>'+
- '<path d="m216 56 12 12 23-27" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'+
- '</svg>';
 const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
 const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Recorded results only; no model calls while browsing.</span><a href="/login?next=/app/agents/new">Sign in</a></div>';
 async function overview(){
@@ -214,8 +211,11 @@ async function overview(){
  const capacity=await req("");
  if(!state.projects.length&&!state.runs.length){
   page.innerHTML=lead("Your workspace","Connect an existing agent to begin.")+
-   '<section class="workspace-start"><h2>Import your first agent</h2><p>Start with a GitHub repository or ZIP. Refit inspects the source before you authorize any execution.</p>'+
-   importButton+' <a class="btn" href="/docs">Read the setup guide</a></section>';
+   '<section class="workspace-start workspace-start--visual">'+
+   '<div class="workspace-start-copy"><h2>Your first migration starts with the source.</h2><p>Connect a GitHub repository or ZIP. Refit detects the runtime before any model request, then gives you a controlled path to evaluation and verified export.</p>'+
+   '<div class="workspace-start-actions">'+importButton+' <a class="btn" href="/docs">Read setup guide '+ico("arrow")+'</a></div>'+
+   '<div class="workspace-start-process"><span>Inspect source</span><span aria-hidden="true">→</span><span>Compare models</span><span aria-hidden="true">→</span><span>Review evidence</span></div></div>'+
+   illustratedAsset("folders")+'</section>';
   return;
  }
  page.innerHTML=lead("Your workspace","Your agent migrations and recorded outcomes.",importButton)+
@@ -327,7 +327,7 @@ async function settings(){
  '<div class="card inner" style="max-width:800px"><h3>Account</h3><div class="fact"><span>'+ico("lock")+'</span><span class="sub">Signed in as</span><strong>'+safe(state.username)+'</strong></div><div class="fact"><span>'+ico("shield")+'</span><span class="sub">Isolation</span><strong>Owner-scoped projects and runs</strong></div><div class="fact"><span>'+ico("clock")+'</span><span class="sub">Per-run limit</span><strong>'+safe(config.max_requests)+' requests</strong></div><div class="fact"><span>'+ico("clock")+'</span><span class="sub">Daily allowance</span><strong>'+safe(config.account_reserved_today)+' / '+safe(config.account_daily_allowance)+' reserved</strong></div><div class="fact"><span>'+ico("box")+'</span><span class="sub">Worker</span><strong>Isolated gVisor execution</strong></div><p class="small" style="margin:18px 0">Releases, limits and supported runtimes are documented publicly. Live execution requires explicit authorization and is subject to a shared global ceiling.</p><button class="btn" data-action="signout">Sign out</button></div>';
 }
 function wizardIntro(){
- return '<div class="import-header"><div><h1>Bring your agent</h1><p>Start with the code you already have. We’ll inspect the agent before changing anything.</p></div></div>';
+ return '<div class="import-header import-header--illustrated"><div><h1>Bring your agent</h1><p>Start with the code you already have. We’ll inspect the agent before changing anything.</p></div>'+illustratedAsset("programs")+'</div>';
 }
 const importPathSteps="";
 function caseFields(item={},split="train",removable=false,open=false){

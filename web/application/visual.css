@@ -1,0 +1,32 @@
+/* Visual content surfaces — deliberate illustrations, not status icons. */
+/* Artwork: Flowbite Illustrations, MIT; see illustrations/LICENSE-MIT.txt. */
+.context-art{position:relative;display:flex;align-items:center;justify-content:center;width:200px;height:180px;flex:none;isolation:isolate}
+.context-art:before{position:absolute;inset:9% 6%;border-radius:50%;content:"";background:radial-gradient(ellipse,#a1bfa528 0%,#b6d5b600 70%);pointer-events:none}
+.context-art img{position:relative;display:block;max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 13px 15px #00000020)}
+.context-art-light{display:none!important}
+:root[data-theme="light"] .context-art-dark{display:none!important}
+:root[data-theme="light"] .context-art-light{display:block!important}
+:root[data-theme="light"] .context-art:before{background:radial-gradient(ellipse,#9ab9d242,#d1e1d100 70%)}
+.workbench .empty--editorial{position:relative;display:grid;grid-template-columns:minmax(170px,34%) minmax(0,1fr);align-items:center;text-align:left;justify-content:center;gap:clamp(22px,5vw,74px);min-height:300px;padding:35px clamp(22px,5vw,70px);overflow:hidden;border:1px solid var(--line);border-radius:8px;background:radial-gradient(ellipse at 18% 54%,#a3b7a514,transparent 46%),var(--panel)}
+.workbench .empty--editorial .context-art{width:min(100%,240px);height:205px;justify-self:center}
+.empty-editorial-copy{display:flex;flex-direction:column;align-items:flex-start;gap:13px;max-width:510px}
+.workbench .empty-editorial-copy h2{font-size:clamp(23px,2vw,30px);font-weight:590;letter-spacing:-.048em;line-height:1.17}
+.empty-editorial-copy p{font-size:13px;line-height:1.72;max-width:400px;color:var(--sub)}
+.empty-editorial-action{margin-top:10px}
+.empty-default-icon{display:flex;align-items:center;justify-content:center;border:1px solid var(--line);width:70px;height:70px;border-radius:12px;color:var(--sub)}
+.workbench .workspace-start--visual{display:grid;grid-template-columns:minmax(0,1fr) minmax(165px,.46fr);align-items:center;gap:clamp(22px,4vw,62px);padding:clamp(28px,4.2vw,55px);min-height:325px;border:1px solid var(--line);border-radius:8px;background:radial-gradient(ellipse at 79% 44%,#889e8515,transparent 40%),var(--panel)}
+.workbench .workspace-start--visual .context-art{width:100%;height:min(240px,27vw);min-height:164px}
+.workbench .workspace-start--visual .workspace-start-copy{max-width:660px}
+.workbench .workspace-start--visual h2{font-size:clamp(23px,2.25vw,34px);font-weight:580;line-height:1.2;letter-spacing:-.05em;max-width:490px}
+.workbench .workspace-start--visual p{font-size:13px;color:var(--sub);max-width:500px;line-height:1.73;margin:14px 0 22px}
+.workspace-start-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.workspace-start-process{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:38px;color:var(--muted);font:10.5px/1.5 "Geist Mono",monospace}
+.workspace-start-process>span:nth-child(even){color:var(--work-accent)}
+:root[data-theme="light"] .workbench .empty--editorial{background:radial-gradient(ellipse at 18% 54%,#9ebdaf22,transparent 46%),var(--panel)}
+:root[data-theme="light"] .workbench .workspace-start--visual{background:radial-gradient(ellipse at 79% 44%,#95b5a32e,transparent 45%),var(--panel)}
+@media(max-width:780px){.workbench .empty--editorial{grid-template-columns:150px minmax(0,1fr);padding:28px;gap:20px}.workbench .empty--editorial .context-art{height:155px}.workbench .workspace-start--visual{grid-template-columns:minmax(0,1fr) 170px}.workbench .workspace-start--visual .context-art{height:170px}}
+@media(max-width:600px){.workbench .empty--editorial{grid-template-columns:1fr;gap:6px;padding:25px}.workbench .empty--editorial .context-art{justify-self:start;width:168px;height:148px}.empty-editorial-copy{gap:10px}.workbench .workspace-start--visual{display:flex;flex-direction:column-reverse;align-items:stretch;gap:0;padding:25px 22px}.workbench .workspace-start--visual .context-art{width:170px;height:140px;min-height:140px;margin:0 0 18px}.workbench .workspace-start--visual h2{font-size:27px}.workspace-start-process{margin-top:26px;font-size:10px}}
+@media(prefers-reduced-motion:reduce){.workbench .context-art *{transition:none!important;animation:none!important}}
+.workbench .import-header--illustrated{display:flex;justify-content:space-between;align-items:center;gap:20px;min-height:88px;margin-bottom:20px}.workbench .import-header--illustrated .context-art{width:122px;height:85px}.workbench .import-header--illustrated .context-art:before{inset:5%;background:radial-gradient(ellipse,#bdc7b51b,transparent 70%)}
+.workbench .request-failure--illustrated{display:flex;align-items:center;gap:26px;max-width:720px;padding:28px}.workbench .request-failure--illustrated .context-art{width:155px;height:132px}.request-failure-copy{min-width:0}.request-failure-copy p{margin:10px 0 17px;max-width:450px}
+@media(max-width:540px){.workbench .import-header--illustrated .context-art{display:none}.workbench .request-failure--illustrated{flex-direction:column;align-items:flex-start;gap:14px}.workbench .request-failure--illustrated .context-art{width:120px;height:100px}}
