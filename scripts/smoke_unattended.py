@@ -39,15 +39,21 @@ def inspect(origin: str) -> dict:
         raise AssertionError("Readiness and deployed revision disagree")
     if readiness.get("online") is not True:
         raise AssertionError("Live service reports unavailable")
-    if status != 200 or readiness.get("can_start_complete_migration") is not True:
-        return {"ok": False, "reason": readiness.get("reason") or "not_ready",
+    public_ready = readiness.get("can_start_complete_migration") is True
+    reviewer_ready = readiness.get("reviewer_migration_ready") is True
+    if status != 200 or not (public_ready or reviewer_ready):
+        return {"ok": False, "reason": readiness.get("reason") or "no_migration_capacity",
                 "revision": revision,
                 "capacity_resets_at": readiness.get("capacity_resets_at")}
     if readiness.get("minimum_inference_requests") != 7:
         raise AssertionError("Unexpected complete migration request requirement")
-    if readiness.get("capacity_state") != "ready":
+    if public_ready and readiness.get("capacity_state") != "ready":
         raise AssertionError("Inconsistent production capacity")
     return {"ok": True, "reason": None, "revision": revision,
+            "readiness_mode": "public_and_review" if public_ready and reviewer_ready else
+                              "public_only" if public_ready else "review_only",
+            "public_migration_ready": public_ready,
+            "reviewer_migration_ready": reviewer_ready,
             "capacity_resets_at": readiness.get("capacity_resets_at")}
 
 
@@ -61,6 +67,7 @@ def probe(origin: str, attempts=3, delay=10, check=inspect, sleeper=time.sleep):
             if item["ok"]:
                 return {"status": "ready", "attempts": attempt + 1,
                         "reason": None, "revision": item["revision"],
+                        "readiness_mode": item.get("readiness_mode", "test_ready"),
                         "checked_at": datetime.now(timezone.utc).isoformat()}
             history.append(item["reason"])
         except (OSError, TimeoutError, HTTPError, ValueError, AssertionError, KeyError) as exc:
