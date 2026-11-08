@@ -1,7 +1,8 @@
 name: Verify public Vultr service
 
-# Read-only external acceptance on every main commit. The SHA below is
-# deliberately the deployed service release, not the latest source HEAD.
+# Push checks verify the actual HTTPS deployment, which may lag the source.
+# Exact SHA promotion is asserted separately by the authorized host deploy.
+# Operators may request an exact revision check via workflow_dispatch.
 on:
   push:
     branches: [main]
@@ -37,11 +38,20 @@ jobs:
             --output /tmp/refit-public-smoke.json
       - name: Verify the deployed HTTPS application without inference
         env:
-          EXPECTED_APPLICATION_REVISION: ${{ inputs.expected_application_revision || '609e957d645501b5f99d93027deb2bf9e399cb95' }}
+          EXPECTED_APPLICATION_REVISION: ${{ inputs.expected_application_revision || '' }}
         run: |
+          set -euo pipefail
+          args=()
+          if [[ -n "$EXPECTED_APPLICATION_REVISION" ]]; then
+            [[ "$EXPECTED_APPLICATION_REVISION" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "Expected deployment revision must be a full Git SHA" >&2
+              exit 1
+            }
+            args+=(--expected-revision "$EXPECTED_APPLICATION_REVISION")
+          fi
           python -m scripts.smoke_platform_https \
             --url https://80.240.30.92 \
-            --expected-revision "$EXPECTED_APPLICATION_REVISION" \
+            "${args[@]}" \
             --output /tmp/refit-https-smoke.json
       - name: Preserve external observations
         if: always()
