@@ -1,4 +1,5 @@
-name: Record Challenge 1 evidence on production
+name: Record native 4K Challenge 1 evidence film
+
 on:
   workflow_dispatch:
   push:
@@ -10,80 +11,84 @@ permissions:
   contents: read
 
 concurrency:
-  group: c1-production-video
+  group: c1-production-4k-film
   cancel-in-progress: true
 
 jobs:
   evidence-film:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: '22'
-      - name: Confirm deployed revision and actual Vultr host containment
-        env:
-          REFIT_EXPECTED_REVISION: ${{ github.sha }}
+          python-version: '3.12'
+      - name: Install 4K image renderer and local typeface compiler
         run: |
-          python3 - <<'PY'
-          import json,os,time,urllib.request
-          base="https://80.240.30.92"
-          expected=os.environ["REFIT_EXPECTED_REVISION"]
-          for attempt in range(36):
-              try:
-                  with urllib.request.urlopen(base+"/api/application/release",timeout=8) as stream:
-                      release=json.load(stream)
-                  with urllib.request.urlopen(base+"/api/application/containment-proof",timeout=8) as stream:
-                      proof=json.load(stream)
-                  if (release.get("revision")==expected and
-                      proof.get("revision")==expected and proof.get("verified") is True and
-                      len(proof.get("attempts",[]))==5 and
-                      all(v["blocked"] is True for v in proof["attempts"])):
-                      print("Verified production release and all host prohibitions:",expected)
-                      break
-              except (OSError, ValueError, KeyError):
-                  pass
-              if attempt==35:
-                  raise SystemExit("Matching production revision and host containment receipt unavailable")
-              time.sleep(5)
-          PY
-      - name: Install Chromium for production film
-        run: |
-          npm install --no-save --no-package-lock playwright@1.56.1
-          npx playwright install --with-deps chromium
-      - name: Record genuine public production evidence at 1440p
+          python -m pip install --disable-pip-version-check pillow==11.3.0 fonttools==4.60.1 brotli==1.1.0
+      - name: Verify exact Vultr release, model diagnostic and hostile host probe; render native 4K
         env:
           REFIT_URL: https://80.240.30.92
           REFIT_EXPECTED_REVISION: ${{ github.sha }}
-        run: node scripts/c1_demo_capture.mjs
-      - name: Encode readable 1080p submission MP4
+        run: |
+          python -m scripts.c1_film_4k
+          test -s artifacts/challenge1-4k/storyboard.ffconcat
+          test -s artifacts/challenge1-4k/evidence.json
+          python - <<'PY'
+          from PIL import Image
+          import glob,json,os
+          paths=sorted(glob.glob('artifacts/challenge1-4k/frames/*.jpg'))
+          assert len(paths)==20
+          assert all(Image.open(p).size==(3840,2160) for p in paths)
+          evidence=json.load(open('artifacts/challenge1-4k/evidence.json'))
+          assert evidence['production_revision']==os.environ['REFIT_EXPECTED_REVISION']
+          assert evidence['vultr_host_proof_revision']==os.environ['REFIT_EXPECTED_REVISION']
+          assert evidence['total_duration']==160
+          assert evidence['host_containment_verified'] is True
+          assert evidence['independent_oracle_agreed'] is True
+          assert evidence['unseen_oracle_agreed'] is True
+          print('Native 4K frames, 2:40 story, real Vultr proof, oracle and cleanup verified')
+          PY
+      - name: Install FFmpeg encoder
         run: |
           command -v ffmpeg >/dev/null || { sudo apt-get update -qq; sudo apt-get install -y ffmpeg; }
-          test -s artifacts/challenge1-video/frames.ffconcat
-          ffmpeg -hide_banner -loglevel error -y -safe 0 -f concat \
-            -i artifacts/challenge1-video/frames.ffconcat \
-            -vf "fps=30,scale=1920:1080:flags=lanczos,format=yuv420p" \
-            -c:v libx264 -preset medium -crf 15 -maxrate 18M -bufsize 32M \
-            -movflags +faststart -an \
-            artifacts/challenge1-video/refit-vultr-containment-1080p.mp4
-          test "$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 artifacts/challenge1-video/refit-vultr-containment-1080p.mp4)" = "1920"
-          test "$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 artifacts/challenge1-video/refit-vultr-containment-1080p.mp4)" = "1080"
-          test "$(stat -c %s artifacts/challenge1-video/refit-vultr-containment-1080p.mp4)" -gt 80000
-          python3 -c 'import subprocess; p="artifacts/challenge1-video/refit-vultr-containment-1080p.mp4"; d=float(subprocess.check_output(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",p])); assert d>=30, f"Video truncated: {d} seconds"'
-          ffprobe -v error -show_entries format=duration,size,bit_rate -of default=nw=1 artifacts/challenge1-video/refit-vultr-containment-1080p.mp4
-      - name: Preserve recorded evidence and quality frame
+      - name: Encode true 3840x2160 24fps MP4 with subtle cinematic camera drift
+        timeout-minutes: 25
+        run: |
+          ffmpeg -hide_banner -nostdin -loglevel error -threads 2 -y \
+            -safe 0 -f concat -i artifacts/challenge1-4k/storyboard.ffconcat \
+            -vf "fps=24,zoompan=z='1.025':x='(iw-iw/zoom)*(0.5+0.34*sin(on/130))':y='(ih-ih/zoom)*(0.5+0.30*cos(on/167))':d=1:s=3840x2160:fps=24,format=yuv420p" \
+            -c:v libx264 -preset veryfast -crf 16 -profile:v high -level 5.2 \
+            -pix_fmt yuv420p -movflags +faststart -an \
+            artifacts/challenge1-4k/refit-vultr-challenge1-4k.mp4
+          python - <<'PY'
+          import json,subprocess
+          p='artifacts/challenge1-4k/refit-vultr-challenge1-4k.mp4'
+          meta=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams',
+                                                    '-show_format','-of','json',p]))
+          s=meta['streams'][0]
+          dur=float(meta['format']['duration'])
+          assert s['codec_name']=='h264'
+          assert (s['width'],s['height'])==(3840,2160)
+          assert s['avg_frame_rate']=='24/1'
+          assert 158.5 <= dur <= 162, f'wrong duration: {dur}'
+          assert int(meta['format']['size'])>1_000_000
+          print('REAL 4K MASTER',json.dumps({'resolution':'3840x2160','fps':24,
+                                            'duration_seconds':dur,
+                                            'size_bytes':int(meta['format']['size'])}))
+          PY
+      - name: Upload finished judge-facing 4K master and visual proof
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: refit-challenge1-evidence-film
+          name: refit-challenge1-4k-evidence
           path: |
-            artifacts/challenge1-video/refit-vultr-containment-1080p.mp4
-            artifacts/challenge1-video/proof-frame.png
-            artifacts/challenge1-video/timeline.json
-            artifacts/challenge1-video/evidence.json
-            artifacts/challenge1-video/failure-frame.png
+            artifacts/challenge1-4k/refit-vultr-challenge1-4k.mp4
+            artifacts/challenge1-4k/cover-frame.jpg
+            artifacts/challenge1-4k/denial-frame.jpg
+            artifacts/challenge1-4k/timeline.json
+            artifacts/challenge1-4k/evidence.json
           if-no-files-found: warn
           retention-days: 14
