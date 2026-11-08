@@ -12,20 +12,20 @@ const origin='https://80.240.30.92';
 const output=path.resolve('artifacts/audio-first-capture');
 fs.mkdirSync(output,{recursive:true});
 const scenes=[
-  {at:0,    end:9.56,   id:'01-regression',       target:'/app/runs/recorded-refund-2026-11-06?view=evidence', action:'inspect', note:'Original vs replacement: show recorded refund evidence; overlay tau2 totals only with report source'},
-  {at:9.56, end:15.82,  id:'02-divergence',       target:'/app/runs/recorded-refund-2026-11-06?view=evidence', action:'inspect-middle', note:'Tight readable look at execution trace'},
+  {at:0,    end:9.56,   id:'01-regression',       target:'/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=diagnostic', action:'inspect', note:'Original vs replacement: show recorded refund evidence; overlay tau2 totals only with report source'},
+  {at:9.56, end:15.82,  id:'02-divergence',       target:'/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=diagnostic', action:'inspect-middle', note:'Tight readable look at execution trace'},
   {at:15.82,end:25.20,  id:'03-introduce-refit',  target:'/app', action:'overview', note:'Actual Refit overview'},
   {at:25.20,end:31.25,  id:'04-agent',            target:'/app/agents', action:'overview', note:'Read-only agent/workflow interface'},
   {at:31.25,end:39.50,  id:'05-baseline',         target:'https://github.com/Davemafy/refit/blob/main/docs/framework-evidence-2026-11-06.md', action:'doc-top', note:'Actual 24/24 source result from separate upstream tau2 evaluation'},
-  {at:39.50,end:49.43,  id:'06-regression-detail',target:'/app/runs/recorded-refund-2026-11-06?view=evidence', action:'inspect-middle', note:'Recorded refund comparison; do not imply identical to separate tau2 report'},
-  {at:49.43,end:61.42,  id:'07-diagnosis',        target:'/app/runs/recorded-refund-2026-11-06?view=evidence', action:'inspect-bottom', note:'Genuine recorded patch and comparison'},
-  {at:61.42,end:71.23,  id:'08-patch',            target:'/app/runs/recorded-refund-2026-11-06?view=evidence', action:'inspect', note:'Review existing exported compatibility artifact'},
+  {at:39.50,end:49.43,  id:'06-regression-detail',target:'https://github.com/Davemafy/refit/blob/main/docs/framework-evidence-2026-11-06.md', action:'inspect-middle', note:'Recorded refund comparison; do not imply identical to separate tau2 report'},
+  {at:49.43,end:61.42,  id:'07-diagnosis',        target:'https://github.com/Davemafy/refit/blob/main/docs/live-evidence-2026-11-06.md', action:'inspect-bottom', note:'Genuine recorded patch and comparison'},
+  {at:61.42,end:71.23,  id:'08-patch',            target:'/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=diagnostic', action:'inspect', note:'Review existing exported compatibility artifact'},
   {at:71.23,end:78.67,  id:'09-boundary-bridge', target:'/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=diagnostic', action:'diagnostic', note:'Actual published Challenge 1 diagnostic'},
   {at:78.67,end:91.18,  id:'10-host-evidence',    target:'/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=containment', action:'containment', note:'Actual Vultr-host containment evidence'},
   {at:91.18,end:107.53, id:'11-denials-cleanup', target:'/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=containment', action:'containment-scroll', note:'Real prohibited actions/cleanup; this is separate from tau2 evaluation'},
   {at:107.53,end:121.13,id:'12-independent',    target:'https://github.com/Davemafy/refit/blob/main/docs/framework-evidence-2026-11-06.md', action:'doc-top', note:'Original tau2 runner and predeclared seeds'},
   {at:121.13,end:132.70,id:'13-score-payoff',   target:'https://github.com/Davemafy/refit/blob/main/docs/framework-evidence-2026-11-06.md', action:'doc-top', note:'Actual source 24/24, unchanged 13/24, patched 24/24 table'},
-  {at:132.70,end:146.60,id:'14-rejection',      target:'/app/runs/live-8faad4e25db3a36d?view=evidence', action:'inspect', note:'Separate on-host auto repair candidate rejected at validation'},
+  {at:132.70,end:146.60,id:'14-rejection',      target:'https://github.com/Davemafy/refit/blob/main/docs/vultr-frozen-patch-recovery-2026-11-06.md', action:'inspect', note:'Separate on-host auto repair candidate rejected at validation'},
   {at:146.60,end:160,   id:'15-refit-outro',     target:'/app', action:'overview', note:'Actual Refit interface before editorial end title'}
 ];
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
@@ -103,8 +103,9 @@ try {
   assert.equal(proof.verified,true,'Do not film an unverified containment claim');
   const diagnostic=await page.request.get(origin+'/api/application/challenge1-demo');
   assert.equal(diagnostic.status(),200,'Live diagnostic evidence unavailable');
+  await goto('/app'); // Establish read-only guest workspace before recording.
   const original=await goto(scenes[0].target);
-  assert.equal(original,200,'Opening live Refit UI unavailable');
+  assert.equal(original,200,'Opening published Refit diagnostic unavailable');
   await sleep(5000); // intentional preroll; trimmed to t=0 in final MP4
   const started=Date.now();
   emit({event:'recording_started',revision:release.revision,host_containment_verified:proof.verified});
