@@ -1,10 +1,6 @@
 name: Live end-to-end agent migration acceptance
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ops/production-live-check.json
 
 permissions:
   contents: read
