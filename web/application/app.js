@@ -109,24 +109,54 @@ async function refreshWorkspace(){
 const lead=(title,subtitle,right="")=>'<div class="page-lead"><div><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
 const empty=(title,desc,button)=>'<div class="empty"><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
 const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
-const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Explore a recorded, verified November 7 Vultr migration. No inference runs while browsing.</span><a href="/login?next=/app/agents/new">Sign in to import your own agent</a></div>';
+const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Recorded results only; no model calls while browsing.</span><a href="/login?next=/app/agents/new">Sign in</a></div>';
 async function overview(){
  header("Overview");
  await refreshWorkspace();
- page.innerHTML=(state.guest?guestNote:"")+lead(state.guest?"Explore Refit":"Your workspace",state.guest?"Inspect a recorded migration without signing in.":"Manage application agents and review real migration evidence.",importButton)+
- '<div class="metrics" style="margin-bottom:25px"><div class="metric"><strong>'+state.projects.length+'</strong><span>Imported agents</span></div><div class="metric"><strong>'+state.runs.length+'</strong><span>Recent runs</span></div><div class="metric"><strong>'+state.runs.filter(r=>r.status==="compatible_on_sample"||r.status==="verified_adaptation").length+'</strong><span>Verified results</span></div><div class="metric"><strong>'+state.runs.filter(r=>!ended(r.status)).length+'</strong><span>Active migrations</span></div></div>'+
- '<section class="card inner"><div class="between"><h3>Recent migrations</h3><a href="/app/runs" data-nav class="btn compact">View all '+ico("arrow")+'</a></div><div style="margin-top:16px">'+runTable(state.runs.slice(0,5))+'</div></section>'+
- '<section class="card inner" style="margin-top:18px"><h3>'+(state.guest?"Try the migration workflow":"Get started")+'</h3><p style="margin:8px 0 18px">'+(state.guest?"Explore the import and verification steps with a published example. Running your own code requires an account.":"Import a pinned repository or ZIP, confirm its original entry point and evaluation cases, then choose a replacement model.")+'</p>'+(state.guest?'<div class="button-row"><button data-action="example-agent" class="btn primary">Inspect the example '+ico("arrow")+'</button><a href="/login?next=/app/agents/new" class="btn">Sign in to import</a></div>':importButton)+'</section>';
+ if(state.guest){
+  page.innerHTML=lead("Explore a migration","See how an existing agent behaves when its model changes.")+
+   '<section class="guest-feature"><div class="guest-feature-copy"><span class="guest-feature-caption">'+ico("shield")+' Recorded migration · read only</span>'+
+   '<h2>From model change to verified result</h2><p>Inspect the actual execution, case comparisons and export verification from a published Python agent.</p>'+
+   '<div class="button-row"><button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">Review recorded migration '+ico("arrow")+'</button>'+
+   '<a href="/signup" class="btn">Bring your own agent</a></div></div>'+
+   '<div class="guest-feature-facts"><div><span>Original</span><strong>'+safe(state.demo?.run?.source||"—")+'</strong></div>'+
+   '<div><span>Replacement</span><strong>'+safe(state.demo?.run?.target||"—")+'</strong></div>'+
+   '<div><span>Observed outcome</span>'+statusChip(state.demo?.run?.status)+'</div></div></section>';
+  return;
+ }
+ page.innerHTML=lead("Your workspace","Your agent migrations and recorded outcomes.",importButton)+
+ '<div class="metrics"><div class="metric"><strong>'+state.projects.length+'</strong><span>Agents</span></div>'+
+ '<div class="metric"><strong>'+state.runs.length+'</strong><span>Runs</span></div>'+
+ '<div class="metric"><strong>'+state.runs.filter(r=>r.status==="compatible_on_sample"||r.status==="verified_adaptation").length+'</strong><span>Verified results</span></div>'+
+ '<div class="metric"><strong>'+state.runs.filter(r=>!ended(r.status)).length+'</strong><span>In progress</span></div></div>'+
+ '<section class="card inner dashboard-runs"><div class="between"><h3>Recent migrations</h3><a href="/app/runs" data-nav class="btn compact">View all '+ico("arrow")+'</a></div>'+
+ '<div class="run-history">'+runTable(state.runs.slice(0,5))+'</div></section>'+
+ (state.projects.length||state.runs.length?"":'<section class="workspace-start"><h3>Start with an agent</h3>'+
+ '<p>Import a GitHub repository or ZIP, confirm its runtime, then define the outcomes that must survive a model change.</p>'+importButton+'</section>');
 }
 const runTable=runs=>runs.length?
- '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Run</th><th>Models</th><th>Status</th><th>Started</th></tr></thead><tbody>'+
- runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td>'+safe(r.source||"—")+' → '+safe(r.target||"—")+'</td><td>'+statusChip(r.status)+'</td><td>'+safe(formatTime(r.started_at))+'</td></tr>').join("")+'</tbody></table></div>':
+ '<div class="run-table-desktop"><table class="table"><thead><tr><th>Run</th><th>Models</th><th>Status</th><th>Started</th></tr></thead><tbody>'+
+ runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td>'+safe(r.source||"—")+' → '+safe(r.target||"—")+'</td><td>'+statusChip(r.status)+'</td><td>'+safe(formatTime(r.started_at))+'</td></tr>').join("")+'</tbody></table></div>'+
+ '<div class="run-list-mobile" role="list" aria-label="Migration runs">'+runs.map(r=>{
+  const label=({compatible_on_sample:"Compatible",verified_adaptation:"Verified repair",
+   source_baseline_insufficient:"Baseline failed",export_failed_original_runner_verification:"Export failed",
+   inference_budget_exhausted:"Budget exhausted",cancelled:"Cancelled",running:"Running",
+   cancelling:"Cancelling",queued:"Queued",interrupted:"Interrupted",failed:"Failed"})[r.status]||"Unverified";
+  const kind=["compatible_on_sample","verified_adaptation"].includes(r.status)?"good":
+   ended(r.status)?"bad":"warn";
+  return '<article class="run-mobile-item" role="listitem"><div class="run-mobile-head">'+
+   '<button type="button" class="run-mobile-link mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button>'+
+   '<span class="run-mobile-status '+kind+'" title="'+safe(statusText[r.status]||r.status||"Unknown")+'">'+safe(label)+'</span></div>'+
+   '<div class="run-mobile-models"><span class="mono">'+safe(r.source||"—")+'</span>'+ico("arrow")+
+    '<span class="mono">'+safe(r.target||"—")+'</span></div>'+
+   '<time class="run-mobile-time">'+safe(formatTime(r.started_at))+'</time></article>';
+ }).join("")+'</div>':
  empty("No runs yet","Your migrations will appear here. Import an agent to start.",importButton);
 async function agents(){
  header("Agents");
  await refreshWorkspace();
- page.innerHTML=(state.guest?guestNote:"")+lead("Agents",state.guest?"Inspect the recorded sample or sign in to import your own agent.":"Your imported application source snapshots and detected runtimes.",importButton)+
- (state.guest?'<section class="card inner" style="margin-bottom:20px"><h3>Recorded Python application</h3><p style="margin:10px 0 16px">An independent knowledge-base application ran in Vultr gVisor. The source and replacement models passed the recorded cases and fresh export check.</p><div class="button-row"><button class="btn primary" data-action="example-agent">Inspect example '+ico("arrow")+'</button><button class="btn" data-action="run" data-id="demo-python-2026-11-07">View verified migration</button></div></section>':"")+
+ page.innerHTML=(state.guest?"":guestNote)+lead("Agents",state.guest?"A recorded example to explore before importing your own source.":"Your imported application source snapshots and detected runtimes.",state.guest?'<a href="/signup" class="btn primary">Bring your own agent</a>':importButton)+
+ (state.guest?'<section class="card inner" style="margin-bottom:20px"><h3>Recorded Python agent</h3><p style="margin:10px 0 16px">An independent knowledge-base application ran in Vultr gVisor. The source and replacement models passed the recorded cases and fresh export check.</p><div class="button-row"><button class="btn primary" data-action="example-agent">Inspect example '+ico("arrow")+'</button><button class="btn" data-action="run" data-id="demo-python-2026-11-07">View verified migration</button></div></section>':"")+
  (state.projects.length?
  '<div class="card" style="overflow-x:auto"><table class="table"><thead><tr><th>Source</th><th>Runtime</th><th>Entry point</th><th>Files</th><th></th></tr></thead><tbody>'+
  state.projects.map(p=>'<tr><td><button class="link-btn" data-action="project" data-id="'+safe(p.id)+'">'+safe(p.repository||"Uploaded ZIP")+'</button><div class="small muted mono">'+safe(p.id)+'</div></td><td>'+safe(p.discovery?.runtime||"Unknown")+'</td><td>'+safe(p.discovery?.entry||"Configuration required")+'</td><td>'+safe(p.file_count||0)+'</td><td><button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table></div>':
@@ -259,6 +289,13 @@ async function flow(){
  if(step===1){
    const features=[["Agent entry point",d.entry||"Not confidently detected"],["Runtime",d.runtime||"Unknown"],["Provider",d.provider||"Not detected"],["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],["Tools",d.tool||"Not independently enumerated"],["Provider signals",d.provider_signals?.join(", ")||"Not detected"]];
    const files=d.evaluation_files||[];
+   const needsEntry=!d.entry&&d.runnable!==false;
+   const entryGuidance=needsEntry?
+     '<div class="entry-guidance"><h3>Confirm the agent entry point</h3><p>Refit detected '+
+     safe(d.runtime||"a source runtime")+' but could not identify an executable entry. Continue to configuration and provide '+
+     (d.runtime==="typescript"?"the Node entry file":"the Python module or original entry point")+
+     ' relative to the selected source. '+(d.provider?"":"The model provider is also unconfirmed. ")+
+     'Define independent checks before authorizing execution.</p></div>':"";
    page.innerHTML=lead("Inspect your agent","Review the detected runtime and confirm the original entry point.")+
    '<section class="card"><div class="repo-card-head"><div class="repo-mark">'+ico("git")+'</div><div style="flex:1"><h3>'+safe(p.repository||"Uploaded ZIP")+'</h3><p class="small mono">'+safe(p.revision||p.id)+'</p></div><span class="chip bordered">'+safe(p.file_count)+' files inspected</span></div>'+
    '<div class="split-panel"><div>'+features.map(f=>'<div class="fact"><span class="muted">'+ico(f[0]==="Runtime"?"code":f[0]==="Tools"?"layers":"box")+'</span><strong>'+safe(f[0])+'</strong><span class="value">'+safe(f[1])+'</span></div>').join("")+'</div>'+
@@ -277,6 +314,7 @@ async function flow(){
      '<details class="case-options" style="margin-top:12px"><summary>Detected source signals</summary>'+[["Entry candidates",d.entry_candidates],["Imports",d.imports],["Configuration",d.configuration_files]].map(([label,items])=>
        '<p class="small"><strong>'+label+'</strong> '+safe(items?.join(", ")||"None detected")+'</p>').join("")+'</details></section>':'')+
    (d.runnable===false?'<div class="notice" style="margin-top:18px">'+safe(d.setup||"Unsupported runtime")+'</div>':d.setup?'<p style="margin-top:16px;font-size:13px">'+safe(d.setup)+'</p>':'')+
+   entryGuidance+
    '<div class="flow-footer"><button class="btn" data-action="flow-back">'+ico("back")+' Back</button><button class="btn primary" data-action="flow-config" '+(d.runnable===false?"disabled":"")+'>Continue to configuration '+ico("arrow")+'</button></div>';
    return;
  }
@@ -983,7 +1021,7 @@ window.addEventListener("popstate",()=>show().catch(pageFailure));
   state.username=session.username||null;
   state.guest=!state.username;
   if(state.guest){
-    el("avatar").textContent="G";el("avatar").title="Guest · read-only";
+    el("avatar").hidden=true;document.body.classList.add("guest-session");
     const button=document.createElement("a");button.href="/login?next="+encodeURIComponent(location.pathname);
     button.className="btn compact";button.textContent="Sign in";
     el("avatar").before(button);
