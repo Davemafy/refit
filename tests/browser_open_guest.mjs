@@ -26,27 +26,26 @@ try{
  await page.locator("#repository").waitFor();
  assert.equal(await page.getByRole("button",{name:/Inspect agent/}).isVisible(),true);
  assert.equal(await page.locator("#zip").count(),1);
+ const before=(await context.request.get(origin+"/api/application/session"));
+ assert.equal((await before.json()).username,null,"Source form opens without sign-in or session");
+ assert.equal(await page.getByRole("link",{name:/Sign in|Sign up|Create account/}).count(),0);
+ const archive=await readFile("data/trial/llm-0.37.1-b9786a2.zip");
+ await page.getByRole("button",{name:"Upload ZIP"}).click();
+ await page.locator("#zip").setInputFiles({
+  name:"llm-agent.zip",mimeType:"application/zip",buffer:archive,
+ });
+ await page.getByRole("button",{name:/Inspect agent/}).click();
+ await page.getByRole("heading",{name:"Inspect your agent"}).waitFor();
  const cookies=await context.cookies();
  const session=cookies.find(cookie=>cookie.name==="__Host-refit-session");
  assert.ok(session?.secure&&session?.httpOnly&&session?.sameSite==="Strict",
-   "Guest session must be cookie-secured and no form registration");
- const status=await (await context.request.get(origin+"/api/application/session")).json();
- assert.equal(status.username,"Visitor");
- assert.equal(status.trial,true);
- assert.equal(await page.getByRole("link",{name:/Sign in|Sign up|Create account/}).count(),0);
- const archive=await readFile("data/trial/llm-0.37.1-b9786a2.zip");
- const imported=await context.request.post(origin+"/api/application/imports",{
-  headers:{"Origin":origin,"Content-Type":"application/json"},
-  data:{method:"zip",archive:archive.toString("base64")},
- });
- assert.equal(imported.status(),201,JSON.stringify(await imported.json()));
- const project=await imported.json();
- assert.equal(project.discovery.preset,"llm-0.37.1");
- await page.goto(origin+"/app/agents");
- const source=page.getByRole("button",{name:/Uploaded ZIP/});
- await source.waitFor();
- await source.click();
- await page.getByRole("heading",{name:"Inspect your agent"}).waitFor();
+   "Import creates private visitor session without registration");
+ const after=await (await context.request.get(origin+"/api/application/session")).json();
+ assert.equal(after.username,"Visitor");
+ assert.equal(after.trial,true);
+ const projects=await (await context.request.get(origin+"/api/application/projects")).json();
+ assert.equal(projects.projects.length,1);
+ assert.equal(projects.projects[0].discovery.preset,"llm-0.37.1");
  await page.getByRole("button",{name:/Continue to configuration/}).click();
  await page.getByRole("heading",{name:"Configure migration"}).waitFor();
  assert.equal(await page.getByRole("button",{name:/Run migration/}).isVisible(),true);
