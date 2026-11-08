@@ -25,6 +25,8 @@ jobs:
         env:
           REFIT_URL: https://80.240.30.92
         run: node scripts/demo_capture.mjs
+      - name: Install FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - name: Encode MP4
         if: always()
         run: |
