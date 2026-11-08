@@ -115,19 +115,14 @@ try {
  for (const width of widths) {
   await page.setViewportSize({width,height:844});
   await page.goto(origin+"/app");
-  await page.locator(".overview-recent,.guest-feature").first().waitFor();
-  if(await page.locator(".overview-recent").count()){
-   if(await page.locator(".migration-route").count()){
-    assert.equal(await page.locator(".migration-route .model-mark").count(),2,"Model pair contains branded identities");
-    assert.ok(await page.locator(".verification-tick").count()>0,"Recorded outcomes have visible markers");
-   }else assert.equal(await page.locator(".overview-metric").count(),3);
-   if(width<=760){
+  await page.locator(".refund-start").waitFor();
+  assert.equal(await page.getByRole("button",{name:"Run refund agent"}).count(),1);
+  assert.equal(await page.locator('a[href="/app/replay"]').count(),0);
+  if(width<=760){
     assert.equal(await page.locator(".subheader").isVisible(),false,"No redundant mobile breadcrumb");
-    const summary=await page.locator(".overview-recent").boundingBox();
-    const activity=await page.locator(".overview-activity").boundingBox();
-    assert.ok(summary.height<470,"Mobile migration summary must not dominate viewport");
-    assert.ok(activity.y<700,"Recorded activity must be reachable early without excessive scrolling");
-   }
+    const hero=await page.locator(".refund-start").boundingBox();
+    assert.ok(hero&&hero.height<450,"Mobile live action must not dominate the viewport");
+    assert.ok(hero.y<220,"Actual refund action must be reachable immediately");
   }
   for (const [,path] of [...paths,["trace","/app/runs/demo-python-2026-11-07?view=traces"],
    ["comparison","/app/runs/demo-python-2026-11-07"]]) {
