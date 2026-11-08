@@ -79,7 +79,7 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertTrue(ready["can_start_complete_migration"])
                     self.assertEqual(ready["minimum_inference_requests"], 7)
                     self.assertEqual(ready["capacity_state"], "ready")
-                    self.assertRegex(ready["capacity_resets_at"], r"^\\d{4}-\\d{2}-\\d{2}T00:00:00Z$")
+                    self.assertRegex(ready["capacity_resets_at"], r"^\d{4}-\d{2}-\d{2}T00:00:00Z$")
                     status, capability, _ = request("GET", "", cookie=alice)
                     self.assertEqual(status, 200)
                     self.assertEqual(capability["max_requests"], 16)
