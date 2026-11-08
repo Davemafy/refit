@@ -184,6 +184,15 @@ for attempt in {1..15}; do
         REFIT_DIAGNOSTIC_IMAGE_ID="$DIAGNOSTIC_IMAGE_ID" \
         python3 -c 'from pathlib import Path; from scripts.sandbox_runner import DockerSandbox; r=DockerSandbox(runtime="runsc",staging_root=Path("/var/lib/refit-application/sandbox-staging")).run("print(\"REFIT-UNPRIVILEGED-EXECUTION\")",{},label="broker_acceptance"); import json; print("Unprivileged broker receipt",json.dumps({k:r.get(k) for k in ("status","exit_code","timed_out","container_created","container_removed_verified","ledger_valid","startup_error","runtime_identity","stderr")})[:1500],flush=True); assert r["status"]=="passed" and "REFIT-UNPRIVILEGED-EXECUTION" in r["stdout"] and r["container_removed_verified"] and r["ledger_valid"]; print("Unprivileged broker gVisor execution and cleanup verified")'
     )
+    # Seven actual agent workers, real imported application, two model
+    # identities, validation and fresh export using a NO-INFERENCE test broker.
+    # This catches interactive pipe deadlocks hidden by diagnostic-only probes.
+    (
+      cd "$REPO"
+      runuser -u refit-application -- env \
+        PATH=/usr/local/libexec/refit-cli:/usr/local/bin:/usr/bin:/bin \
+        python3 -m scripts.host_application_acceptance --image "$IMAGE_ID"
+    )
     # Non-destructive real-host gVisor containment acceptance. Full synthetic
     # receipts remain in a root-owned file on this Vultr VM.
     install -d -o root -g root -m 0700 /var/lib/refit-application/c1-acceptance
