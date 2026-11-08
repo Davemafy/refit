@@ -15,6 +15,7 @@ on:
       - 'tests/browser_saas.mjs'
       - 'tests/browser_mobile_release.mjs'
       - 'tests/browser_ui_polish.mjs'
+      - 'tests/browser_console_density.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - 'tests/saas_fixture_server.py'
@@ -30,6 +31,7 @@ on:
       - 'tests/browser_saas.mjs'
       - 'tests/browser_mobile_release.mjs'
       - 'tests/browser_ui_polish.mjs'
+      - 'tests/browser_console_density.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - '.github/workflows/application.yml'
@@ -85,11 +87,15 @@ jobs:
         run: node tests/browser_ui_polish.mjs
       - name: Verify screenshot-reproduced mobile release blockers in Firefox
         run: node tests/browser_mobile_release.mjs
+      - name: Verify console density, real-event deep links and run filtering in Firefox
+        run: node tests/browser_console_density.mjs
       - name: Archive zero-inference SaaS browser captures
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: refit-saas-browser-views
-          path: artifacts/saas-ui/
+          path: |
+            artifacts/saas-ui/
+            artifacts/console-release/
           retention-days: 3
           if-no-files-found: ignore

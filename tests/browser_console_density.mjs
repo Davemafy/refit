@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import {spawn} from "node:child_process";
+import {mkdir} from "node:fs/promises";
+import {firefox} from "playwright";
+const server=spawn("python3",["-m","tests.saas_fixture_server"],{stdio:["ignore","pipe","pipe"]});
+let fixture,err=""; server.stdout.on("data",v=>{const m=v.toString().match(/REFIT_FIXTURE_READY=(\{[^\n]+\})/);if(m)fixture=JSON.parse(m[1])});
+server.stderr.on("data",v=>err+=v.toString().slice(-400));
+let browser;
+const errors=[];
+try{
+ for(let i=0;i<100&&!fixture;i++)await new Promise(r=>setTimeout(r,100));
+ assert.ok(fixture,err);
+ browser=await firefox.launch();
+ const ctx=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:900}});
+ const page=await ctx.newPage();page.setDefaultTimeout(10000);
+ page.on("pageerror",e=>errors.push(e.message));
+ await mkdir("artifacts/console-release",{recursive:true});
+ await page.goto(fixture.url+"/app",{waitUntil:"domcontentloaded"});
+ await page.getByRole("heading",{name:"Overview"}).waitFor();
+ const geom=await page.evaluate(()=>{
+  const a=document.querySelector(".sidebar").getBoundingClientRect();
+  const t=document.querySelector(".topbar").getBoundingClientRect();
+  const p=document.querySelector("#page").getBoundingClientRect();
+  const h=document.querySelector("#page h1");
+  return {side:a.width,header:t.height,main:p.x,headline:parseFloat(getComputedStyle(h).fontSize),doc:document.documentElement.scrollWidth};
+ });
+ assert.ok(geom.side>=190&&geom.side<=220,JSON.stringify(geom));
+ assert.ok(geom.header<=56,JSON.stringify(geom));
+ assert.ok(geom.headline<=26,JSON.stringify(geom));
+ assert.equal(geom.doc,1440);
+ const activity=page.locator(".overview-event");
+ const activityCount=await activity.count();
+ assert.ok(activityCount>=5);
+ await page.screenshot({path:"artifacts/console-release/01-overview-desktop.png",fullPage:true});
+ await activity.nth(2).click();
+ await page.getByRole("heading",{name:"Review migration results"}).waitFor();
+ await page.locator(".trace-explorer").waitFor();
+ assert.equal(await page.locator('.tab.active').innerText(),"Trace");
+ await page.screenshot({path:"artifacts/console-release/02-review-trace-desktop.png",fullPage:true});
+ await page.goto(fixture.url+"/app/runs");
+ await page.locator(".run-filter").first().waitFor();
+ assert.equal(await page.locator(".run-table-desktop tbody tr").count(),1);
+ await page.getByRole("button",{name:"Needs attention"}).click();
+ await page.getByText("No matching runs").waitFor();
+ await page.getByRole("button",{name:"All runs"}).click();
+ await page.locator("#runQuery").fill("nonexistent-revision");
+ await page.getByText("No matching runs").waitFor();
+ await page.locator("#runQuery").fill("glm-5.2");
+ assert.equal(await page.locator(".run-table-desktop tbody tr").count(),1);
+ await page.screenshot({path:"artifacts/console-release/03-runs-desktop.png",fullPage:true});
+ for(const width of [320,360,390]){
+  await page.setViewportSize({width,height:780});
+  await page.goto(fixture.url+"/app",{waitUntil:"domcontentloaded"});
+  await page.getByRole("heading",{name:"Overview"}).waitFor();
+  assert.ok(await page.locator(".overview-event").count()>=5);
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+  assert.equal(overflow,false);
+  await page.screenshot({path:"artifacts/console-release/04-overview-"+width+".png",fullPage:true});
+  await page.goto(fixture.url+"/app/runs");
+  await page.getByRole("heading",{name:"Runs"}).waitFor();
+  assert.equal(await page.locator(".run-list-mobile").isVisible(),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ }
+ assert.deepEqual(errors,[]);
+ console.log(JSON.stringify({status:"pass",desktop:geom,real_events:activityCount,filters:true,deep_links:true,mobile:[320,360,390],page_errors:0}));
+}finally{await browser?.close();server.kill("SIGKILL")}

@@ -32,7 +32,7 @@ const symbols={
 };
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
-const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[]};
+const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],runsFilter:"all",runsQuery:""};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -65,6 +65,7 @@ const formatTime=value=>{if(!value)return "—";const date=new Date(value);retur
 const formatDuration=value=>typeof value==="number"?value.toFixed(1)+" s":"—";
 function header(label,step=0,crumb){
  const node=el("crumb");node.textContent=crumb||label;
+ const topCurrent=el("topCurrent");if(topCurrent)topCurrent.textContent=label;
  const steps=el("steps");
  steps.hidden=!step;
  if(step){
@@ -106,7 +107,7 @@ async function refreshWorkspace(){
  state.projects=projects.projects||[];
  state.runs=runs.runs||[];
 }
-const lead=(title,subtitle,right="")=>'<div class="page-lead"><div><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
+const lead=(title,subtitle,right="")=>'<div class="page-lead"><div class="page-heading"><h1>'+safe(title)+'</h1><p>'+safe(subtitle)+'</p></div>'+right+'</div>';
 const empty=(title,desc,button)=>'<div class="empty"><h2>'+safe(title)+'</h2><p>'+safe(desc)+'</p>'+button+'</div>';
 const importButton='<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
 const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Public, read-only preview.</strong> Recorded results only; no model calls while browsing.</span><a href="/login?next=/app/agents/new">Sign in</a></div>';
@@ -114,14 +115,36 @@ async function overview(){
  header("Overview");
  await refreshWorkspace();
  if(state.guest){
-  page.innerHTML=lead("Explore a migration","See how an existing agent behaves when its model changes.")+
-   '<section class="guest-feature"><div class="guest-feature-copy"><span class="guest-feature-caption">'+ico("shield")+' Recorded migration · read only</span>'+
-   '<h2>From model change to verified result</h2><p>Inspect the actual execution, case comparisons and export verification from a published Python agent.</p>'+
-   '<div class="button-row"><button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">Review recorded migration '+ico("arrow")+'</button>'+
-   '<a href="/signup" class="btn">Bring your own agent</a></div></div>'+
-   '<div class="guest-feature-facts"><div><span>Original</span><strong>'+safe(state.demo?.run?.source||"—")+'</strong></div>'+
-   '<div><span>Replacement</span><strong>'+safe(state.demo?.run?.target||"—")+'</strong></div>'+
-   '<div><span>Observed outcome</span>'+statusChip(state.demo?.run?.status)+'</div></div></section>';
+  const r=state.demo.run;
+  const evidence=state.demo.events||[];
+  const completed=evidence.filter(e=>e.type==="case_completed");
+  const modelCalls=evidence.filter(e=>e.type==="inference_completed");
+  const cleanup=evidence.filter(e=>e.type==="sandbox_cleanup"&&e.details?.receipt?.verified===true);
+  const recent=evidence.slice(-8).reverse();
+  const activity=recent.length?
+   '<section class="overview-activity"><div class="overview-activity-head"><h3>Recorded activity</h3>'+
+   '<span>'+safe(evidence.length)+' events · '+safe(completed.length)+' case observations · '+safe(modelCalls.length)+' model responses · '+safe(cleanup.length)+' verified cleanups</span></div>'+
+   '<div class="overview-event-list">'+recent.map(e=>{
+    const d=e.details||{},verified=d.receipt?.verified===true||d.passed===true;
+    const failure=d.passed===false||d.receipt?.verified===false||!!d.error;
+    return '<button type="button" class="overview-event" data-action="overview-trace" data-id="'+safe(r.id)+'" data-seq="'+safe(e.seq)+'">'+
+     '<span class="overview-event-dot '+(failure?"failed":verified?"passed":"")+'"></span>'+
+     '<span class="overview-event-name">'+safe(RefitOutcomes.eventLabel(e.type))+'</span>'+
+     '<span class="overview-event-context">'+safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</span>'+
+     '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
+   }).join("")+'</div></section>':'';
+  page.innerHTML=lead("Overview","Execution history and migration evidence.")+
+   '<section class="guest-feature"><div class="guest-feature-copy">'+
+   '<div class="guest-feature-caption"><span class="status-light"></span> Recorded execution</div>'+
+   '<h2>Python knowledge-base migration</h2>'+
+   '<p>Inspect case results, model requests and cleanup receipts from the isolated verification run.</p>'+
+   '<button class="btn primary" data-action="run" data-id="'+safe(r.id)+'">Open run '+ico("arrow")+'</button></div>'+
+   '<div class="guest-feature-facts"><div><span>Original model</span><strong>'+safe(r.source||"—")+'</strong></div>'+
+   '<div><span>Replacement model</span><strong>'+safe(r.target||"—")+'</strong></div>'+
+   '<div><span>Result</span>'+statusChip(r.status)+'</div></div></section>'+
+   activity+
+   '<div class="section-footnote">Public example. <a href="/signup">Import your own agent</a> to start an independent evaluation.</div>';
+
   return;
  }
  page.innerHTML=lead("Your workspace","Your agent migrations and recorded outcomes.",importButton)+
@@ -134,29 +157,55 @@ async function overview(){
  (state.projects.length||state.runs.length?"":'<section class="workspace-start"><h3>Start with an agent</h3>'+
  '<p>Import a GitHub repository or ZIP, confirm its runtime, then define the outcomes that must survive a model change.</p>'+importButton+'</section>');
 }
+const shortStatus=status=>({
+ compatible_on_sample:"Compatible",verified_adaptation:"Verified repair",source_baseline_insufficient:"Baseline failed",
+ export_failed_original_runner_verification:"Export failed",inference_budget_exhausted:"Budget exhausted",
+ cancelled:"Cancelled",running:"Running",cancelling:"Cancelling",queued:"Queued",interrupted:"Interrupted",failed:"Failed"
+})[status]||statusText[status]||"Unverified";
+const compactStatus=status=>{
+ const kind=["compatible_on_sample","verified_adaptation"].includes(status)?"good":ended(status)?"bad":"warn";
+ return '<span class="run-status '+kind+'"><span class="status-light"></span>'+safe(shortStatus(status))+'</span>';
+};
 const runTable=runs=>runs.length?
  '<div class="run-table-desktop"><table class="table"><thead><tr><th>Run</th><th>Models</th><th>Status</th><th>Started</th></tr></thead><tbody>'+
- runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td>'+safe(r.source||"—")+' → '+safe(r.target||"—")+'</td><td>'+statusChip(r.status)+'</td><td>'+safe(formatTime(r.started_at))+'</td></tr>').join("")+'</tbody></table></div>'+
+ runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td><div class="model-pair"><span>'+safe(r.source||"—")+'</span><span class="model-pair-sep">→</span><span>'+safe(r.target||"—")+'</span></div></td><td>'+compactStatus(r.status)+'</td><td class="run-timestamp">'+safe(formatTime(r.started_at))+'</td></tr>').join("")+'</tbody></table></div>'+
  '<div class="run-list-mobile" role="list" aria-label="Migration runs">'+runs.map(r=>{
-  const label=({compatible_on_sample:"Compatible",verified_adaptation:"Verified repair",
-   source_baseline_insufficient:"Baseline failed",export_failed_original_runner_verification:"Export failed",
-   inference_budget_exhausted:"Budget exhausted",cancelled:"Cancelled",running:"Running",
-   cancelling:"Cancelling",queued:"Queued",interrupted:"Interrupted",failed:"Failed"})[r.status]||"Unverified";
-  const kind=["compatible_on_sample","verified_adaptation"].includes(r.status)?"good":
-   ended(r.status)?"bad":"warn";
+  const kind=["compatible_on_sample","verified_adaptation"].includes(r.status)?"good":ended(r.status)?"bad":"warn";
   return '<article class="run-mobile-item" role="listitem"><div class="run-mobile-head">'+
    '<button type="button" class="run-mobile-link mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button>'+
-   '<span class="run-mobile-status '+kind+'" title="'+safe(statusText[r.status]||r.status||"Unknown")+'">'+safe(label)+'</span></div>'+
+   '<span class="run-mobile-status '+kind+'" title="'+safe(statusText[r.status]||r.status||"Unknown")+'">'+safe(shortStatus(r.status))+'</span></div>'+
    '<div class="run-mobile-models"><span class="mono">'+safe(r.source||"—")+'</span>'+ico("arrow")+
     '<span class="mono">'+safe(r.target||"—")+'</span></div>'+
    '<time class="run-mobile-time">'+safe(formatTime(r.started_at))+'</time></article>';
  }).join("")+'</div>':
  empty("No runs yet","Your migrations will appear here. Import an agent to start.",importButton);
+function filteredRuns(){
+ const query=state.runsQuery.toLowerCase();
+ return state.runs.filter(r=>{
+  const matches=!query||[r.id,r.source,r.target,r.status,r.import?.repository].filter(Boolean).join(" ").toLowerCase().includes(query);
+  const ok=state.runsFilter==="all"||
+   (state.runsFilter==="verified"&&["compatible_on_sample","verified_adaptation"].includes(r.status))||
+   (state.runsFilter==="active"&&!ended(r.status))||
+   (state.runsFilter==="attention"&&ended(r.status)&&!["compatible_on_sample","verified_adaptation"].includes(r.status));
+  return matches&&ok;
+ });
+}
+function runIndexRows(){
+ const items=filteredRuns();
+ return items.length?runTable(items):'<div class="run-filter-empty"><strong>No matching runs</strong><p>Try another status or search term.</p></div>';
+}
+function runFilters(){
+ const filters=[["all","All runs"],["verified","Verified"],["active","In progress"],["attention","Needs attention"]];
+ return '<div class="run-controls"><div class="run-filter-group" role="group" aria-label="Filter migration runs">'+
+  filters.map(([id,title])=>'<button type="button" data-action="runs-filter" data-filter="'+id+
+   '" class="run-filter'+(state.runsFilter===id?" selected":"")+'" aria-pressed="'+(state.runsFilter===id)+'">'+title+'</button>').join("")+
+  '</div><label class="run-search">'+ico("search")+'<input type="search" id="runQuery" aria-label="Search migration runs" placeholder="Search runs or models" value="'+safe(state.runsQuery)+'"></label></div>';
+}
 async function agents(){
  header("Agents");
  await refreshWorkspace();
  page.innerHTML=(state.guest?"":guestNote)+lead("Agents",state.guest?"A recorded example to explore before importing your own source.":"Your imported application source snapshots and detected runtimes.",state.guest?'<a href="/signup" class="btn primary">Bring your own agent</a>':importButton)+
- (state.guest?'<section class="card inner" style="margin-bottom:20px"><h3>Recorded Python agent</h3><p style="margin:10px 0 16px">An independent knowledge-base application ran in Vultr gVisor. The source and replacement models passed the recorded cases and fresh export check.</p><div class="button-row"><button class="btn primary" data-action="example-agent">Inspect example '+ico("arrow")+'</button><button class="btn" data-action="run" data-id="demo-python-2026-11-07">View verified migration</button></div></section>':"")+
+ (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("code")+'</div><div class="agent-record-body"><strong>Recorded Python agent</strong><p>Knowledge-base application · Independently verified sample</p><div class="agent-record-meta"><span>Python</span><span>gVisor execution</span>'+compactStatus(state.demo.run.status)+'</div></div><div class="agent-record-actions"><button class="btn" data-action="example-agent">Inspect source</button><button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">Review run '+ico("arrow")+'</button></div></section>':"")+
  (state.projects.length?
  '<div class="card" style="overflow-x:auto"><table class="table"><thead><tr><th>Source</th><th>Runtime</th><th>Entry point</th><th>Files</th><th></th></tr></thead><tbody>'+
  state.projects.map(p=>'<tr><td><button class="link-btn" data-action="project" data-id="'+safe(p.id)+'">'+safe(p.repository||"Uploaded ZIP")+'</button><div class="small muted mono">'+safe(p.id)+'</div></td><td>'+safe(p.discovery?.runtime||"Unknown")+'</td><td>'+safe(p.discovery?.entry||"Configuration required")+'</td><td>'+safe(p.file_count||0)+'</td><td><button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table></div>':
@@ -165,13 +214,15 @@ async function agents(){
 async function runs(){
  header("Runs");
  await refreshWorkspace();
- page.innerHTML=(state.guest?guestNote:"")+lead("Runs",state.guest?"Published example run; private user runs are never listed here.":"Migration history with actual inference, evaluation and sandbox evidence.",state.guest?"":importButton)+'<section class="card">'+runTable(state.runs)+'</section>';
+ page.innerHTML=lead("Runs","Inspect executions, outcomes and model evidence.",state.guest?"":importButton)+
+ runFilters()+'<section class="records" id="runRecords">'+runIndexRows()+'</section>'+
+ (state.guest?'<p class="section-footnote">Public example only. <a href="/signup">Bring an agent</a> to evaluate your own source.</p>':"");
 }
 async function evidenceIndex(){
  header("Evidence");
  await refreshWorkspace();
- page.innerHTML=(state.guest?guestNote:"")+lead("Evidence","Open a migration to inspect its case results, model requests, tool events and sandbox cleanup.")+
- (state.runs.length?'<div class="card">'+runTable(state.runs)+'</div>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
+ page.innerHTML=lead("Evidence","Recorded observations from actual application execution.")+
+ (state.runs.length?'<section class="records"><div class="records-heading"><span>Runs with evidence</span><span>'+safe(state.runs.length)+' total</span></div>'+runTable(state.runs)+'</section>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
 }
 async function settings(){
  header("Settings");
@@ -874,7 +925,22 @@ document.addEventListener("click",async event=>{
  const button=event.target.closest("[data-action]");if(!button)return;
  const action=button.dataset.action,id=button.dataset.id;
  try{
-  if(action==="new-agent"){state.wizard=null;navigate("/app/agents/new");}
+  if(action==="overview-trace"){
+   state.tab="traces";
+   state.traceSelected=Number(button.dataset.seq);
+   navigate("/app/runs/"+id);
+  }
+  else if(action==="runs-filter"){
+   state.runsFilter=button.dataset.filter;
+   const rows=el("runRecords");
+   if(rows)rows.innerHTML=runIndexRows();
+   page.querySelectorAll(".run-filter").forEach(item=>{
+    const chosen=item.dataset.filter===state.runsFilter;
+    item.classList.toggle("selected",chosen);
+    item.setAttribute("aria-pressed",String(chosen));
+   });
+  }
+  else if(action==="new-agent"){state.wizard=null;navigate("/app/agents/new");}
   else if(action==="example-agent"){
    const demo=state.demo;
    const module=demo.artifact?.module;
@@ -992,6 +1058,12 @@ document.addEventListener("click",async event=>{
   else if(action==="tab"){state.tab=button.dataset.tab;const runId=location.pathname.split("/").pop();await showRun(runId);}
   else if(action==="signout"){await req("/logout",{});location.assign("/");}
  }catch(e){notify(e.message);}
+});
+document.addEventListener("input",event=>{
+ if(event.target.id!=="runQuery")return;
+ state.runsQuery=event.target.value;
+ const rows=el("runRecords");
+ if(rows)rows.innerHTML=runIndexRows();
 });
 document.addEventListener("click",event=>{
  const tab=event.target.closest("[data-import-mode]");
