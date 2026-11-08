@@ -6,13 +6,60 @@ const origin = process.env.REFIT_URL || 'https://80.240.30.92';
 const outdir = path.resolve('demo-output');
 fs.mkdirSync(outdir, { recursive: true });
 const story = [];
-const viewport = { width: 1600, height: 900 };
+// 2560x1440 source, rasterized at high resolution before 1920x1080 delivery.
+const viewport = { width: 2560, height: 1440 };
+const visualZoom = 4 / 3;
 const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 const context = await browser.newContext({ viewport, screen: viewport, deviceScaleFactor: 1,
   ignoreHTTPSErrors: true, reducedMotion: 'no-preference', colorScheme: 'dark',
-  recordVideo: { dir: outdir, size: viewport } });
+});
 const page = await context.newPage();
+
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const framesDir = path.join(outdir,'frames');
+fs.mkdirSync(framesDir,{recursive:true});
+let screencast = null, captureFrames = [], captureStarted = 0, captureEnd = 0;
+async function startRecording() {
+  const cdp = await context.newCDPSession(page);
+  screencast = cdp;
+  captureStarted = Date.now();
+  cdp.on('Page.screencastFrame', frame => {
+    const i = captureFrames.length;
+    const name = String(i).padStart(6,'0')+'.jpg';
+    const file = path.join(framesDir,name);
+    fs.writeFileSync(file,Buffer.from(frame.data,'base64'));
+    captureFrames.push({file:name, timestamp:frame.metadata.timestamp, receivedAt:Date.now()});
+    cdp.send('Page.screencastFrameAck',{sessionId:frame.sessionId}).catch(()=>{});
+  });
+  await cdp.send('Page.startScreencast',{format:'jpeg',quality:98,maxWidth:2560,maxHeight:1440,everyNthFrame:1});
+  mark('recording-start',{sourceWidth:2560,sourceHeight:1440,method:'CDP high-quality frame stream'});
+}
+async function stopRecording() {
+  if(!screencast) return;
+  await screencast.send('Page.stopScreencast');
+  captureEnd = Date.now();
+  await sleep(300);
+  if(captureFrames.length < 10)throw Error('High-quality capture produced too few frames');
+  const manifest = ['ffconcat version 1.0'];
+  for(let i=0;i<captureFrames.length;i++){
+    const current=captureFrames[i], next=captureFrames[i+1];
+    const duration=next?Math.max(.001,next.timestamp-current.timestamp):
+      Math.max(.3,(captureEnd-current.receivedAt)/1000);
+    manifest.push("file 'frames/"+current.file+"'");
+    manifest.push('duration '+duration.toFixed(6));
+  }
+  manifest.push("file 'frames/"+captureFrames.at(-1).file+"'");
+  fs.writeFileSync(path.join(outdir,'frames.ffconcat'),manifest.join('\n')+'\n');
+  fs.writeFileSync(path.join(outdir,'capture-summary.json'),JSON.stringify({
+    captureMethod:'Chrome DevTools screencast with high-quality JPEG frames',
+    sourceResolution:'2560x1440',outputResolution:'1920x1080',
+    jpegQuality:98,sourceFrames:captureFrames.length,
+    captureDurationSeconds:((captureEnd-captureStarted)/1000).toFixed(3),
+    firstTimestamp:captureFrames[0].timestamp,lastTimestamp:captureFrames.at(-1).timestamp
+  },null,2));
+  mark('recording-stop',{frames:captureFrames.length});
+}
+
 const started = Date.now();
 const at = () => (Date.now()-started)/1000;
 function mark(label, extra={}) {
@@ -27,10 +74,10 @@ async function cursorSetup() {
     const svg = '<svg width="30" height="38" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg"><path d="M3 2L3 29L10.5 22.7L16.5 35L22.7 31.9L16.6 20.3L26.5 20L3 2Z" fill="#f9fbff" stroke="#1a2028" stroke-width="2.1" stroke-linejoin="round"/></svg>';
     const pointer = document.createElement('div');
     pointer.id='refit-demo-pointer';
-    pointer.style.cssText='position:fixed;left:0;top:0;width:30px;height:38px;pointer-events:none;z-index:2147483646;transform:translate(800px,450px);filter:drop-shadow(0 2px 2px #0008)';
+    pointer.style.cssText='position:fixed;left:0;top:0;width:30px;height:38px;pointer-events:none;z-index:2147483646;transform:translate(1280px,720px);filter:drop-shadow(0 2px 2px #0008)';
     pointer.innerHTML=svg; document.body.appendChild(pointer);
     const ring=document.createElement('div');ring.id='refit-demo-ring';
-    ring.style.cssText='position:fixed;left:0;top:0;width:44px;height:44px;border:1px solid rgba(148,226,207,.85);background:rgba(80,215,185,.13);border-radius:50%;pointer-events:none;opacity:0;z-index:2147483645;transform:translate(785px,435px) scale(.35);transition:opacity 180ms,transform 380ms cubic-bezier(.19,1,.22,1)';
+    ring.style.cssText='position:fixed;left:0;top:0;width:44px;height:44px;border:1px solid rgba(148,226,207,.85);background:rgba(80,215,185,.13);border-radius:50%;pointer-events:none;opacity:0;z-index:2147483645;transform:translate(1258px,698px) scale(.35);transition:opacity 180ms,transform 380ms cubic-bezier(.19,1,.22,1)';
     document.body.appendChild(ring);
     const style=document.createElement('style');style.id='refit-demo-styles';
     style.textContent='html{scroll-behavior:smooth!important}.shell{will-change:transform;transition:transform 840ms cubic-bezier(.22,1,.36,1)!important}';
@@ -81,7 +128,7 @@ async function zoomOn(locator,label,scale=1.31) {
   const dy=Math.max(-110,Math.min(110,(viewport.height/2-y)*0.12));
   await page.evaluate(({x,y,dx,dy,scale})=>{
     const shell=document.querySelector('.shell');
-    if(shell){shell.style.transformOrigin=x+'px '+y+'px';shell.style.transform='translate('+dx+'px,'+dy+'px) scale('+scale+')';}
+    if(shell){const z=parseFloat(shell.style.zoom)||1;shell.style.transformOrigin=(x/z)+'px '+(y/z)+'px';shell.style.transform='translate('+(dx/z)+'px,'+(dy/z)+'px) scale('+scale+')';}
   },{x,y,dx,dy,scale});
   mark('zoom-in',{focus:label,scale,x,y}); await sleep(2300);
   await page.evaluate(()=>{
@@ -105,7 +152,11 @@ async function safeNav(href,label,hold=2700) {
 try{
   const response=await page.goto(origin+'/app',{waitUntil:'domcontentloaded',timeout:35000});
   if(!response||response.status()>=400)throw Error('Refit workspace HTTP '+response?.status());
-  await page.waitForTimeout(2400);await cursorSetup();
+  await page.waitForTimeout(2400);
+  // Scale the UI through browser layout/rasterization, not upscaling compressed video.
+  await page.evaluate(zoom => {const shell=document.querySelector('.shell');if(shell)shell.style.zoom=String(zoom);},visualZoom);
+  await cursorSetup();
+  await startRecording();
   mark('open',{url:page.url(),title:await page.title()});await sleep(3000);
   await zoomOn(page.locator('#page'),'workspace overview',1.13);
   await safeNav('/app/agents','Agents',3000);
@@ -141,8 +192,7 @@ try{
   mark('capture-error',{message:String(e),url:page.url()});
   try{await page.screenshot({path:path.join(outdir,'failure-frame.png')});}catch{}
 }finally{
-  const v=page.video();await context.close();
-  if(v)await v.saveAs(path.join(outdir,'raw-capture.webm'));
+  await stopRecording();await context.close();
   await browser.close();
   fs.writeFileSync(path.join(outdir,'timeline.json'),JSON.stringify(story,null,2));
   if(story.some(e=>e.label==='capture-error'))process.exitCode=1;
