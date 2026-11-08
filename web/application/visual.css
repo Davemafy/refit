@@ -30,3 +30,19 @@
 .workbench .import-header--illustrated{display:flex;justify-content:space-between;align-items:center;gap:20px;min-height:88px;margin-bottom:20px}.workbench .import-header--illustrated .context-art{width:122px;height:85px}.workbench .import-header--illustrated .context-art:before{inset:5%;background:radial-gradient(ellipse,#bdc7b51b,transparent 70%)}
 .workbench .request-failure--illustrated{display:flex;align-items:center;gap:26px;max-width:720px;padding:28px}.workbench .request-failure--illustrated .context-art{width:155px;height:132px}.request-failure-copy{min-width:0}.request-failure-copy p{margin:10px 0 17px;max-width:450px}
 @media(max-width:540px){.workbench .import-header--illustrated .context-art{display:none}.workbench .request-failure--illustrated{flex-direction:column;align-items:flex-start;gap:14px}.workbench .request-failure--illustrated .context-art{width:120px;height:100px}}
+
+
+/* Guest landing prioritizes actual execution; supporting archived evidence
+   stays available without pushing the live refund action below the fold. */
+@media(max-width:760px){
+ .workbench.guest-session .workspace-start--visual{
+   display:block;min-height:0;margin-top:8px;padding:17px 18px;
+ }
+ .workbench.guest-session .workspace-start--visual .context-art{display:none}
+ .workbench.guest-session .workspace-start--visual h2{font-size:22px;line-height:1.13}
+ .workbench.guest-session .workspace-start--visual p{font-size:12px;line-height:1.45;margin:8px 0 12px}
+ .workbench.guest-session .workspace-start-actions{gap:7px}
+ .workbench.guest-session .workspace-start-actions .btn{min-height:37px;padding:8px 11px}
+ .workbench.guest-session .overview-activity{margin-top:11px}
+ .workbench.guest-session .overview-recent-heading{padding:9px 0}
+}
