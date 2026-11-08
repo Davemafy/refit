@@ -75,8 +75,14 @@ def accept(image: str) -> dict:
         raise AssertionError(json.dumps({
             "status": result["status"],
             "export_present": result.get("export") is not None,
-            "cases": [(item["case"], item["passed"], item["error"])
-                      for item in evaluated],
+            "cases": [
+                {"name": item["case"], "passed": item["passed"],
+                 "error": item["error"], "runtime": item.get("runtime"),
+                 "transport_exit": item.get("worker_transport_exit_code"),
+                 "application_exit": item.get("exit_code"),
+                 "oom_killed": item.get("oom_killed")}
+                for item in evaluated
+            ],
             "cleanup_count": len(cleanup),
             "cleanup_verified": all(x["verified"] for x in cleanup),
             "requests": broker.requests,
