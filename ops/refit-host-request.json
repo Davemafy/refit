@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Deploy f07b PrivateTmp staging fix and verify live gVisor diagnostic"
+  "reason": "Promote host-visible private staging fix and rerun on-Vultr Challenge 1 containment acceptance"
 }
