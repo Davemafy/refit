@@ -115,6 +115,25 @@ class DockerGuardPolicyTests(unittest.TestCase):
                                               env=env, timeout=5)
                     self.assertEqual(streamed.returncode, 0, streamed.stderr)
                     self.assertIn(b"worker message", streamed.stdout)
+                    # A real agent expects a model response before its stdin
+                    # closes. A buffered .read(65536) deadlocks this handshake.
+                    import select
+                    interactive = subprocess.Popen(
+                        base + app_command(APP, NAME)[1:],
+                        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, env=env)
+                    try:
+                        interactive.stdin.write(b"first frame\\n")
+                        interactive.stdin.flush()
+                        ready, _, _ = select.select([interactive.stdout], [], [], 4)
+                        self.assertTrue(ready, "Worker frame stalled until stdin EOF")
+                        self.assertEqual(interactive.stdout.readline(), b"first frame\\n")
+                    finally:
+                        interactive.stdin.close()
+                        interactive.wait(timeout=5)
+                        interactive.stdout.close()
+                        interactive.stderr.close()
+                    self.assertEqual(interactive.returncode, 0)
                     rejected = subprocess.run(base + ["exec", NAME, "sh"], input=b"",
                                               capture_output=True, env=env, timeout=5)
                     self.assertEqual(rejected.returncode, 126)
