@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Rerun bounded anonymous Vultr migration with sufficient fresh verification budget"
+  "reason": "Deploy browser-tested recorded execution replay UI without changing model execution or guest authorization"
 }
