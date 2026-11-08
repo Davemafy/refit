@@ -178,7 +178,7 @@ async function overview(){
  }
  page.innerHTML=lead("Your workspace","Your agent migrations and recorded outcomes.",importButton)+
  '<div class="workspace-capacity"><span>Daily request capacity</span><strong>'+
- safe(capacity.account_reserved_today)+' / '+safe(capacity.account_daily_allowance)+' reserved</strong></div>'+
+ safe(capacity.account_reserved_today)+' / '+safe(capacity.account_daily_allowance)+' reserved</strong><span class="small sub">Shared capacity remaining: '+safe(capacity.global_remaining_today)+' requests</span></div>'+
  '<div class="metrics"><div class="metric"><strong>'+state.projects.length+'</strong><span>Agents</span></div>'+
  '<div class="metric"><strong>'+state.runs.length+'</strong><span>Runs</span></div>'+
  '<div class="metric"><strong>'+state.runs.filter(r=>r.status==="compatible_on_sample"||r.status==="verified_adaptation").length+'</strong><span>Verified results</span></div>'+
@@ -424,11 +424,11 @@ async function flow(){
    '<div class="flow-footer"><button class="btn" data-action="flow-back">'+ico("back")+' Back</button><button class="btn primary" data-action="flow-config" '+(d.runnable===false?"disabled":"")+'>Continue to configuration '+ico("arrow")+'</button></div>';
    return;
  }
- if(!state.capabilities){
-   state.capabilities=state.guest
-     ?{models:[state.demo.run.source,state.demo.run.target],max_requests:state.demo.run.budget}
-     :await req("");
- }
+ state.capabilities=state.guest
+   ?{models:[state.demo.run.source,state.demo.run.target],max_requests:state.demo.run.budget}
+   :await req("");
+ const remaining=state.capabilities.max_requests;
+ const budgetValue=remaining>0?Math.min(Number(state.wizard.budget)||remaining,remaining):0;
  const models=state.capabilities.models||[];
  const source=state.wizard.source||models[0]||"",target=state.wizard.target||models[1]||"";
  page.innerHTML=lead("Configure migration","Choose the source and replacement models, then supply independent evaluation cases.")+
@@ -436,10 +436,11 @@ async function flow(){
  '<label class="field">Replacement model <span class="hint">The model whose behavior will be verified.</span><select class="control" id="target">'+models.map(m=>'<option '+(target===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
  (d.preset?'<div class="hint-note">'+safe(d.evaluation||"Reviewed native evaluation preset will be used.")+'</div>':
   setupFields(d))+
- '<label class="field">Maximum Vultr requests<input type="number" id="budget" class="control" min="1" max="'+safe(state.capabilities.max_requests)+'" value="'+safe(state.wizard.budget||state.capabilities.max_requests)+'"></label>'+
+ '<label class="field">Maximum Vultr requests<input type="number" id="budget" class="control" min="1" max="'+safe(remaining)+'" value="'+safe(budgetValue)+'" '+(remaining===0?"disabled":"")+'></label>'+
+ (remaining===0?'<p class="hint-note" role="status">No live inference capacity remains today. Your imported agent is saved; live migrations will be available when the daily allowance resets.</p>':'<p class="small sub">Available now: '+safe(remaining)+' requests · shared pool remaining: '+safe(state.capabilities.global_remaining_today??remaining)+'</p>')+
  '<label class="hstack" style="font-size:13px"><input id="authorize" type="checkbox" style="width:17px;height:17px"> I authorize this bounded live inference run.</label></section>'+
  '<aside class="card inner side-facts"><h3>Migration summary</h3><hr><div class="pair-line"><span class="sub">Source</span><span>'+safe(p.repository||"Uploaded ZIP")+'</span></div><div class="pair-line"><span class="sub">Entry point</span><span>'+safe(d.entry||"Operator-configured")+'</span></div><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(d.runtime)+'</span></div><div class="pair-line"><span class="sub">Verification</span><span>Original-runtime fresh check</span></div><div class="hint-note">'+ico("shield")+' Untrusted source runs inside a bounded disposable gVisor container. No production services are enabled by default.</div></aside></div>'+
- '<div class="flow-footer"><button class="btn" data-action="flow-inspect">'+ico("back")+' Back to inspection</button>'+(state.guest?'<button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">View recorded results '+ico("arrow")+'</button><a class="btn" href="/login?next=/app/agents/new">Sign in to run your agent</a>':'<button id="start" class="btn primary" data-action="start-migration">Run migration '+ico("arrow")+'</button>')+'</div>';
+ '<div class="flow-footer"><button class="btn" data-action="flow-inspect">'+ico("back")+' Back to inspection</button>'+(state.guest?'<button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">View recorded results '+ico("arrow")+'</button><a class="btn" href="/login?next=/app/agents/new">Sign in to run your agent</a>':'<button id="start" class="btn primary" data-action="start-migration" '+(remaining===0?"disabled":"")+'>Run migration '+ico("arrow")+'</button>')+'</div>';
 }
 async function importProject(){
  if(state.guest){notify("Sign in before submitting a private source import.");return;}
@@ -487,6 +488,8 @@ async function startMigration(){
    const source=el("source").value,target=el("target").value;
    if(source===target)throw Error("Select two different models.");
    if(!el("authorize").checked)throw Error("Authorize the inference budget before starting.");
+   state.capabilities=await req("");
+   if(state.capabilities.max_requests===0)throw Error("Today's live inference capacity is exhausted. Your imported agent remains saved.");
    const budget=Number(el("budget").value);
    if(!Number.isInteger(budget)||budget<1||budget>state.capabilities.max_requests)throw Error("Choose a valid request budget.");
    const body={import_id:p.id,source,target,budget,authorize:true};
