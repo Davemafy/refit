@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Ship real anonymous migration fixes, temporary-workspace cleanup, model policy and branded-domain verification"
+  "reason": "Deploy production fixes with exact-commit GitHub status and branded anonymous acceptance"
 }
