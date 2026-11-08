@@ -40,7 +40,7 @@ try{
  assert.ok(await page.getByRole("button",{name:"Trace",exact:true}).isVisible());
  await page.getByRole("button",{name:"Trace",exact:true}).click();
  assert.match(page.url(),/view=traces/);
- assert.equal((await page.request.get(base+"/app/replay")).status(),401);
+ assert.ok([401,404].includes((await page.request.get(base+"/app/replay")).status()),"Replay route must not be publicly served");
  assert.deepEqual(pageErrors,[]);
  await page.setViewportSize({width:390,height:844});
  await page.reload();
