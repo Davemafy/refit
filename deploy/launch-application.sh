@@ -29,6 +29,11 @@ APP_COMMAND="/usr/bin/python3 -m scripts.application_http --state /var/lib/refit
 getent group docker >/dev/null
 id refit-application >/dev/null 2>&1 || useradd --system --home-dir /var/lib/refit-application --shell /usr/sbin/nologin refit-application
 install -d -m 0700 -o refit-application -g refit-application /var/lib/refit-application
+# Docker's daemon and systemd's PrivateTmp service must see the same
+# explicitly approved mount source. The generated worker gets only a
+# read-only subdirectory, never the staging root or host credentials.
+install -d -m 0700 -o refit-application -g refit-application \
+  /var/lib/refit-application/sandbox-staging
 if [[ ! -e /etc/refit/application.env ]]; then
   (umask 077; python3 -c 'import secrets; print("REFIT_APPLICATION_TOKEN="+secrets.token_urlsafe(36))' > /etc/refit/application.env)
 fi

@@ -56,6 +56,34 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertNotIn("-e", flags)
         self.assertNotIn("--publish", flags)
 
+    def test_private_host_visible_staging_supports_docker_mount(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory(prefix="refit-shared-stage-") as directory:
+            root = Path(directory)
+            runner = DockerSandbox(staging_root=root)
+            self.assertEqual(runner.staging_root, root)
+            # The Docker source must be visible to the host daemon, not a
+            # private /tmp namespace remapped by systemd.
+            with patch("scripts.sandbox_runner.secrets.token_hex", return_value="stage1"), \
+                 patch("scripts.sandbox_runner.shutil.which", return_value="/usr/bin/docker"), \
+                 patch("scripts.sandbox_runner.subprocess.run") as run:
+                run.side_effect = fake_commands([
+                    subprocess.CompletedProcess(args=["docker"], returncode=0),
+                    subprocess.CompletedProcess(args=["docker", "rm"], returncode=0, stdout="", stderr=""),
+                    subprocess.CompletedProcess(args=["docker", "inspect"], returncode=1,
+                                               stdout="[]\n", stderr="Error: No such container: refit-stage1\n"),
+                    subprocess.CompletedProcess(args=["docker", "info"], returncode=0,
+                                               stdout='"healthy-daemon"', stderr=""),
+                ])
+                result = runner.run("print(1)")
+                command = run.call_args_list[0].args[0]
+                mount = command[command.index("--mount") + 1]
+                self.assertIn("src=" + str(root) + "/", mount)
+                self.assertTrue(result["container_removed_verified"])
+            with self.assertRaises(ValueError):
+                DockerSandbox(staging_root=Path("relative-staging"))
+
     def test_payload_readable_under_private_operator_umask(self):
         previous = os.umask(0o077)
         try:

@@ -479,7 +479,9 @@ class ApplicationService:
     def _execute_diagnostic(self, ident, record, broker):
         try:
             result = generate_and_verify(
-                record, broker, DIAGNOSTIC_MODEL, DockerSandbox(runtime="runsc"))
+                record, broker, DIAGNOSTIC_MODEL,
+                DockerSandbox(runtime="runsc",
+                              staging_root=Path("/var/lib/refit-application/sandbox-staging")))
             sandbox = result["sandbox"]
             challenge = (result.get("cross_check") or {}).get("sandbox") or {}
             verified = (result["verified"] is True and

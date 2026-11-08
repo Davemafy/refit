@@ -102,7 +102,8 @@ class DiagnosticAccountTests(unittest.TestCase):
         with patch("scripts.application_http.DockerSandbox") as docker, \
              patch("scripts.application_http.generate_and_verify", return_value=evidence()) as generated:
             self.service._execute_diagnostic(RUN_ID, {"domain": "application", "report": REPORT}, broker)
-        docker.assert_called_once_with(runtime="runsc")
+        docker.assert_called_once_with(
+            runtime="runsc", staging_root=Path("/var/lib/refit-application/sandbox-staging"))
         self.assertEqual(generated.call_args.args[2], "deepseek-v4.1-flash-1017")
         completed, events = self.service.get(RUN_ID, self.owner)
         self.assertEqual(completed["diagnostic"]["status"], "verified")

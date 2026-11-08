@@ -73,7 +73,8 @@ class DockerSandbox:
     """
 
     def __init__(self, runtime: str = "runc", image: str = IMAGE,
-                 timeout_seconds: int = 12, docker: str = "docker"):
+                 timeout_seconds: int = 12, docker: str = "docker",
+                 staging_root: Path | None = None):
         if runtime not in ("runc", "runsc"):
             raise ValueError("runtime must be Docker runc or registered gVisor runsc")
         if image != IMAGE:
@@ -84,6 +85,21 @@ class DockerSandbox:
         self.image = image
         self.timeout_seconds = timeout_seconds
         self.docker = docker
+        # systemd PrivateTmp remaps /tmp in the controller's mount namespace,
+        # so Docker's host daemon cannot resolve a bind source staged there.
+        # A host-visible, owner-private directory is permitted explicitly.
+        self.staging_root = None
+        if staging_root is not None:
+            root = Path(staging_root)
+            if not root.is_absolute() or root.is_symlink():
+                raise ValueError("staging root must be a real absolute directory")
+            try:
+                stat_result = root.stat()
+            except OSError as exc:
+                raise SandboxUnavailable("configured Docker staging root unavailable") from exc
+            if not root.is_dir() or stat_result.st_uid != os.geteuid() or stat_result.st_mode & 0o077:
+                raise SandboxUnavailable("Docker staging root must be owned and private")
+            self.staging_root = root
 
     def _command(self, name: str, directory: Path, cidfile: Path) -> list[str]:
         return [
@@ -165,7 +181,7 @@ class DockerSandbox:
         events = [{"type": "launch_requested", "label": label,
                    "code_sha256": _sha(body), "input_sha256": _sha(data),
                    "runtime_identity": runtime_identity, "policy": policy}]
-        with tempfile.TemporaryDirectory(prefix="refit-sandbox-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="refit-sandbox-", dir=self.staging_root) as tmp:
             directory = Path(tmp) / "payload"
             directory.mkdir(mode=0o755)
             # Explicit permissions survive the trusted operator's umask 077.
