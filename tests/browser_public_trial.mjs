@@ -21,12 +21,14 @@ try {
  const clientErrors=[];
  page.on("pageerror",error=>clientErrors.push(error.message));
  await page.goto(origin+"/");
- assert.equal(await page.getByRole("link",{name:/Try live — no sign in/}).count(),1);
+ assert.equal(await page.getByRole("link",{name:/Import your agent/}).count(),1);
  await page.goto(origin+"/app/agents/new");
  await page.getByRole("heading",{name:"Bring your agent"}).waitFor();
- const run=page.getByRole("button",{name:/Run live migration/});
+ const inspect=page.getByRole("button",{name:/Inspect agent/});
+ assert.equal(await inspect.count(),1);
+ assert.ok(await page.getByText("GitHub repository").first().isVisible());
+ const run=page.getByRole("button",{name:/Run a live sample instead/});
  assert.equal(await run.count(),1);
- assert.equal(await page.getByRole("button",{name:/Run live migration/}).isVisible(),true);
  await mkdir("artifacts/saas-ui",{recursive:true});
  await page.screenshot({path:"artifacts/saas-ui/17-public-trial-before.png",fullPage:true});
  await run.click();
@@ -34,7 +36,7 @@ try {
  await page.getByRole("heading",{name:/simonw\/llm|Migration review/}).first().waitFor();
  const session=await (await context.request.get(origin+"/api/application/session")).json();
  assert.equal(session.trial,true);
- assert.equal(session.username,"Live visitor");
+ assert.equal(session.username,"Visitor");
  assert.ok(!page.url().includes("/login"),"The visitor must not enter the login flow");
  const cookies=await context.cookies();
  const sessionCookie=cookies.find(cookie=>cookie.name==="__Host-refit-session");

@@ -48,6 +48,19 @@ class Accounts:
                     owner TEXT NOT NULL,
                     PRIMARY KEY (day, client_digest)
                 );
+                CREATE TABLE IF NOT EXISTS guest_issues (
+                    day TEXT NOT NULL,
+                    client_digest TEXT NOT NULL,
+                    owner TEXT NOT NULL UNIQUE,
+                    PRIMARY KEY (day, client_digest, owner)
+                );
+                CREATE TABLE IF NOT EXISTS guest_migrations (
+                    day TEXT NOT NULL,
+                    client_digest TEXT NOT NULL,
+                    owner TEXT NOT NULL,
+                    reservation TEXT NOT NULL PRIMARY KEY,
+                    requests INTEGER NOT NULL
+                );
             """)
 
     @contextmanager
@@ -59,6 +72,48 @@ class Accounts:
                 yield db
         finally:
             db.close()
+
+    def open_guest(self, day, client_digest):
+        """Create an independent private visitor principal; never share one per IP.
+
+        The issuance ledger is persistent across restarts and cookie clearing.
+        The HMAC client digest is not the address itself.
+        """
+        if not (isinstance(client_digest, str) and len(client_digest) == 64):
+            raise ValueError("Invalid visitor identifier")
+        owner = "guest-" + secrets.token_hex(16)
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM guest_issues WHERE day<?", (day,))
+            count = db.execute("SELECT count(*) FROM guest_issues WHERE day=? AND client_digest=?",
+                               (day, client_digest)).fetchone()[0]
+            if count >= 12:
+                return None
+            db.execute("INSERT INTO guest_issues VALUES (?,?,?)", (day, client_digest, owner))
+        # Create the owner and its secure, scoped session, not a shared account.
+        return owner, self.review_session(owner, int(time.time()) + SESSION_TTL)
+
+    def claim_guest_run(self, day, client_digest, owner, budget, reservation):
+        """Atomic per-client daily control, independent of guest cookie rotation."""
+        if (not owner.startswith("guest-") or type(budget) is not int or
+                not 1 <= budget <= 32 or len(client_digest) != 64):
+            return False
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM guest_migrations WHERE day<?", (day,))
+            matching = db.execute(
+                "SELECT count(*), coalesce(sum(requests),0) FROM guest_migrations "
+                "WHERE day=? AND client_digest=?", (day, client_digest)).fetchone()
+            if matching[0] >= 3 or matching[1] + budget > 64:
+                return False
+            db.execute("INSERT INTO guest_migrations VALUES (?,?,?,?,?)",
+                       (day, client_digest, owner, reservation, budget))
+        return True
+
+    def release_guest_run(self, reservation, owner):
+        with self.db() as db:
+            db.execute("DELETE FROM guest_migrations WHERE reservation=? AND owner=?",
+                       (reservation, owner))
 
     def claim_public_trial(self, day, client_digest, owner, daily_limit):
         """Atomically reserve one anonymous trial per client and UTC day.

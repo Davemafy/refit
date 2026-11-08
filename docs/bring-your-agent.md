@@ -1,61 +1,54 @@
 # Bring your agent
 
-Refit's HTTPS application is at https://80.240.30.92/app. The public workspace
-now offers a **real, one-click migration without signup**. Anonymous browsing
-of explicitly published evidence uses no inference; the visitor-initiated
-**Try live migration** action does make actual Vultr inference requests and
-runs the vetted pinned Python agent in isolated gVisor workers. This is a
-genuine run, distinct from the clearly labeled recorded examples.
+**Refit's main workflow is open without signup:** open
+https://80.240.30.92/app/agents/new, paste the URL of a public GitHub agent
+or select a ZIP and inspect its original runtime. A temporary, private
+visitor workspace is created automatically, with a Secure, HttpOnly cookie.
+Choose original and replacement Vultr models, confirm independent tests
+and authorize a real isolated migration. Review model calls, gVisor sandbox
+evidence and fresh export verification from Runs. The public UI contains
+no account-registration step.
 
-## No-signup live trial
+Private repository imports can use an optional GitHub read token.
+Credentials are never delivered to untrusted containers. Uploaded sources
+and run evidence are scoped to the submitting visitor's session, not a
+shared anonymous dashboard. The temporary session lasts 12 hours; keep
+the same browser session to revisit its results.
 
-Open https://80.240.30.92/app/agents/new and select **Run live migration**.
-No password, invite, repository token, ZIP upload or infrastructure setup
-is required. Refit creates an HttpOnly, Secure, SameSite=Strict temporary
-visitor session; imports a pre-reviewed fixed source snapshot of
-[simonw/llm](https://github.com/simonw/llm) at commit
-\`b9786a2daa44a995ff7719c655c5338bf685d551\`, runs it against
-DeepSeek and GLM through Vultr inference, and opens that visitor's live run.
-The user can inspect its observed evaluations, traces, verification,
-generated diagnostic and sandbox cleanup evidence in the normal workspace.
-The result is **not** claimed compatible until independent checks finish.
+Visitor sessions and migrations are rate-limited in persistent SQLite
+by HMAC-hashed client address, independently of cookie rotation.
+No more than three visitor migrations and 64 reserved requests per
+client address per UTC day; individual visitor migration budgets must
+be 1–32 requests and the root-owned global daily limit also applies.
+Nginx limits request rate; the existing queue, gVisor isolation,
+credential separation and sandbox cleanup requirements remain active.
+Visitors can import up to three projects per temporary workspace.
+An already established account continues to function but is never
+required or promoted in the normal experience.
 
-A public trial is restricted to one invocation per client IP per UTC day,
-up to 32 admitted trials across anonymous visitors per UTC day (subject to shared global capacity), and a maximum
-of 20 reserved Vultr requests per trial. A further 16 requests are
-reserved from the shared daily pool for other work, and the judge's
-separate single-use reviewer allowance remains untouched. Request limits
-are enforced by Nginx, a persistent SQLite ledger of HMAC-hashed client
-addresses, an owner-scoped temporary session, and the existing server
-inference budget and queue. The trial accepts no model choice, prompts,
-upload, arbitrary repository URL, additional migrations or uploaded code.
-The temporary visitor session expires after 12 hours; private run evidence
-remains owner-scoped, not exposed by a public GET. Set
-\`REFIT_PUBLIC_TRIAL_ENABLED=0\` in the root-controlled application
-environment and restart the service to disable paid trials immediately.
+## One-click live sample (optional)
 
-## Bring your own source (optional account)
+On the import page, choose **Run a live sample instead** to test Refit
+without finding a repository. This runs a vetted pinned
+[simonw/llm](https://github.com/simonw/llm) snapshot at
+\`b9786a2daa44a995ff7719c655c5338bf685d551\`.
+Unlike the recorded public examples, it consumes real Vultr inference
+calls and executes the original application. A separate sample rate
+limit caps automatic, preselected trials. Its results are labeled live,
+then independently verified before export.
 
-Developers who want to import their *own* pinned GitHub repository or ZIP
-can create a private account at https://80.240.30.92/signup.
-Refit detects the supported runtime, accepts an independent evaluation
-contract, runs the original source in gVisor, and enforces per-account
-ownership. Registration is not required to experience a working
-migration, but it remains required for arbitrary submitted source and
-long-lived private projects.
-
-Both the global and per-account daily inference limits are
-root-configured and bounded (1–2048 and 1–512, respectively). These are
-service request budgets, not entitlements to unlimited anonymous execution.
-The original loopback operator mode is retained for administration.
-The archived public examples remain read-only, with explicit provenance.
+The Challenge 1 diagnostic can be triggered from a completed live
+migration. The Vultr model generates Python code that executes inside
+a disposable gVisor worker using sanitized migration evidence. Its
+independent cross-check and cleanup receipts are shown in the existing
+run inspector.
 
 The HTTPS TLS certificate is a short-lived Let's Encrypt IP-address
 certificate with an automatic renewal timer.
 
 The externally executed zero-inference check
 [`scripts/smoke_platform_https.py`](../scripts/smoke_platform_https.py)
-validates TLS, the public sign-in page, anonymous session mode and access rejection,
+validates TLS, public workspace pages, anonymous session mode and access rejection,
 operator-token bypass rejection and certificate freshness on each main push.
 After promotion, run it with `--expected-revision <full Git SHA>` to require
 that the external service reports the exact installed release.

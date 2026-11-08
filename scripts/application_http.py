@@ -430,9 +430,6 @@ class ApplicationService:
                 raise
 
     def start(self, data, owner="operator", *, trusted_trial=False):
-        if owner.startswith("guest-") and not trusted_trial:
-            raise ApiProblem(403, "trial_fixed_source_only",
-                             "This visitor session supports one vetted live sample. Use an account for custom imports.")
         if not isinstance(data, dict) or set(data) - {"import_id", "source", "target", "budget", "authorize", "setup"}:
             raise ApiProblem(422, "invalid_run", "Provide an import, two model identities, a budget and authorization.")
         source, target, budget = data.get("source"), data.get("target"), data.get("budget")
@@ -779,6 +776,21 @@ class ApplicationHandler(RefitHandler):
             if self.public():
                 if self.headers.get("Origin") != self.service.public_origin:
                     raise ApiProblem(403, "origin_rejected", "Open the HTTPS Refit workspace to make changes.")
+                if path == "/api/application/guest-session":
+                    if self.body(limit=64) != {}:
+                        raise ApiProblem(422, "invalid_guest_request", "Open Refit directly to use a visitor workspace.")
+                    existing = self.service.accounts.resolve(self.session_secret())
+                    if existing:
+                        return self._send(200, {"username": "Visitor" if existing[0].startswith("guest-")
+                                               else existing[1], "guest": existing[0].startswith("guest-")})
+                    issued = self.service.accounts.open_guest(now()[:10], self.public_client_digest())
+                    if issued is None:
+                        raise ApiProblem(429, "guest_session_rate_limited",
+                                         "Too many temporary workspaces were opened from this connection today.")
+                    owner, secret = issued
+                    self._session_cookie = (f"{COOKIE}={secret}; Path=/; Secure; HttpOnly; SameSite=Strict; "
+                                            f"Max-Age={SESSION_TTL}")
+                    return self._send(201, {"username": "Visitor", "guest": True})
                 if path == "/api/application/try":
                     if self.body(limit=64) != {}:
                         raise ApiProblem(422, "invalid_trial_request",
@@ -797,11 +809,9 @@ class ApplicationHandler(RefitHandler):
                 if path in ("/api/application/register", "/api/application/login", "/api/application/logout"):
                     return self.account_action(path)
             owner = self.authorize()
-            if owner.startswith("guest-") and path in {
-                    "/api/application/imports", "/api/application/imports/zip",
-                    "/api/application/runs"}:
-                raise ApiProblem(403, "trial_fixed_source_only",
-                                 "This live visitor trial uses a reviewed sample. Custom agents require a private workspace.")
+            # Temporary visitor principals are owner-scoped like registered
+            # accounts; they can import GitHub sources or ZIPs. Paid run
+            # authorization remains bounded by the persistent per-client ledger.
             if path in {"/api/application/imports", "/api/application/imports/zip"}:
                 if not self.service.import_slots.acquire(blocking=False):
                     raise ApiProblem(429, "operator_busy", "Try the import again when a connection closes.")
@@ -814,7 +824,25 @@ class ApplicationHandler(RefitHandler):
                 finally:
                     self.service.import_slots.release()
             if path == "/api/application/runs":
-                return self._send(202, self.service.start(self.body(), owner))
+                data = self.body()
+                if owner.startswith("guest-"):
+                    budget = data.get("budget") if isinstance(data, dict) else None
+                    if type(budget) is not int or not 1 <= budget <= 32:
+                        raise ApiProblem(422, "visitor_budget_limit",
+                                         "Choose an evaluation budget of 1–32 Vultr requests.")
+                    reservation = secrets.token_hex(16)
+                    claimed = self.service.accounts.claim_guest_run(
+                        now()[:10], self.public_client_digest(), owner, budget, reservation)
+                    if not claimed:
+                        raise ApiProblem(429, "visitor_budget_full",
+                                         "This connection's shared live evaluation capacity is full today.")
+                    try:
+                        result = self.service.start(data, owner)
+                    except Exception:
+                        self.service.accounts.release_guest_run(reservation, owner)
+                        raise
+                    return self._send(202, result)
+                return self._send(202, self.service.start(data, owner))
             diagnostic = re.fullmatch(r"/api/application/runs/(app-[0-9a-f]{16})/diagnose", path)
             if diagnostic:
                 data = self.body(limit=64)
@@ -973,7 +1001,7 @@ class ApplicationHandler(RefitHandler):
                     username = "Review workspace"
                 trial = bool(session and session[0].startswith("guest-"))
                 if trial:
-                    username = "Live visitor"
+                    username = "Visitor"
                 return self._send(200, {"mode": "account", "username": username,
                                         "trial": trial})
             owner = self.authorize()
@@ -996,8 +1024,7 @@ class ApplicationHandler(RefitHandler):
                 global_remaining = max(0, self.service.daily_budget - global_reserved)
                 # Completed reviewer sessions can still inspect saved runs and
                 # trigger their reserved diagnostic, but never a second migration.
-                guest_used = owner.startswith("guest-")
-                available = (0 if review_used or review_expired or guest_used else
+                available = (0 if review_used or review_expired else
                     min(BUDGET_LIMIT, account_remaining,
                         BUDGET_LIMIT if is_review else global_remaining))
                 return self._send(200, {

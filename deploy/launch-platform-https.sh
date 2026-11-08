@@ -55,6 +55,7 @@ NGINX
 cat > /etc/nginx/sites-available/refit-platform <<NGINX
 limit_req_zone \$binary_remote_addr zone=refit_login:1m rate=5r/m;
 limit_req_zone \$binary_remote_addr zone=refit_trial:1m rate=2r/m;
+limit_req_zone \$binary_remote_addr zone=refit_guests:1m rate=12r/m;
 limit_conn_zone \$binary_remote_addr zone=refit_connections:1m;
 server {
     listen 443 ssl;
@@ -82,6 +83,17 @@ server {
         limit_req zone=refit_login burst=6 nodelay;
         limit_req_status 429;
         client_max_body_size 2k;
+        include snippets/refit-platform-proxy.conf;
+    }
+    location = /api/application/guest-session {
+        limit_req zone=refit_guests burst=6 nodelay;
+        limit_req_status 429;
+        client_max_body_size 256;
+        include snippets/refit-platform-proxy.conf;
+    }
+    location = /api/application/runs {
+        limit_req zone=refit_guests burst=6 nodelay;
+        limit_req_status 429;
         include snippets/refit-platform-proxy.conf;
     }
     location = /api/application/try {

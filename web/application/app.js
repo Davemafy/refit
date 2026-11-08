@@ -55,10 +55,7 @@ async function req(suffix,body,signal){
  else if(body!==undefined)Object.assign(options,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
  const response=await fetch(API+suffix,options);
  const payload=await response.json().catch(()=>({}));
- if(response.status===401){
-   if(!state.guest)location.assign("/login?next="+encodeURIComponent(location.pathname));
-   throw Error("Sign in to access your private workspace or run a migration.");
- }
+ if(response.status===401)throw Error("Your visitor session has expired. Open Import agent to create a fresh workspace.");
  if(!response.ok)throw Error(payload.error?.message||"Request failed ("+response.status+").");
  return payload;
 }
@@ -103,6 +100,18 @@ function navigate(to,replace=false){
  if(!/^\/app(?:\/|$)/.test(to))return;
  if(replace)history.replaceState({},"",to);else history.pushState({},"",to);
  show().catch(pageFailure);
+}
+async function ensureGuestSession(){
+ if(!state.guest)return;
+ const session=await req("/guest-session",{});
+ state.username=session.username||"Visitor";
+ state.trial=session.guest===true;
+ state.guest=false;
+ document.body.classList.remove("guest-session");
+ el("avatar").textContent="V";
+ el("workspaceIdentity").textContent=state.username;
+ document.querySelector("[data-trial-start]")?.remove();
+ await refreshWorkspace();
 }
 async function refreshWorkspace(){
  if(state.guest){
@@ -151,10 +160,8 @@ const modelBrand=value=>{
 const modelMark=value=>'<span class="model-mark model-mark--'+modelBrand(value)+'" aria-hidden="true"></span>';
 const modelIdentity=value=>'<span class="model-identity" title="'+safe(value||"Unknown model")+'">'+modelMark(value)+
  '<span class="model-identity-name">'+safe(value||"Unknown model")+'</span></span>';
-const importButton=()=>state.trial?
- '<a class="btn" href="/signup">Use your own agent '+ico("arrow")+'</a>':
- '<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
-const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Explore real evidence.</strong> Browsing is free. A live, bounded sample is available without an account.</span><button type="button" class="btn compact" data-action="try-live">Try live</button></div>';
+const importButton=()=>'<button class="btn primary" data-action="new-agent">'+ico("plus")+' Import agent</button>';
+const guestNote='<div class="preview-strip">'+ico("eye")+'<span><strong>Recorded evidence.</strong> See an existing migration or import your own agent.</span><button type="button" class="btn compact" data-action="new-agent">Import agent</button></div>';
 async function overview(){
  header("Overview");
  await refreshWorkspace();
@@ -184,12 +191,12 @@ async function overview(){
    '<span class="verification-tick '+(e.details?.passed===true?"is-passed":e.details?.passed===false?"is-failed":"is-pending")+'"></span>').join("");
   page.innerHTML=lead("Overview","Inspect model migration outcomes and recorded execution.")+
    '<section class="workspace-start workspace-start--visual" aria-label="Try Refit live">'+
-   '<div class="workspace-start-copy"><h2>See your first migration happen.</h2>'+
-   '<p>Run a pinned Python agent on Vultr. Watch actual model calls and execution evidence. No account needed.</p>'+
-   '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-live">'+ico("pulse")+' Try a live migration '+ico("arrow")+'</button>'+
+   '<div class="workspace-start-copy"><h2>Bring your agent. Run a real migration.</h2>'+
+   '<p>No account required. Import a GitHub repository or ZIP, compare models, and inspect the resulting sandbox execution and verification evidence.</p>'+
+   '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="new-agent">'+ico("plus")+' Import your agent '+ico("arrow")+'</button>'+
    '<a class="btn" data-nav href="/app/replay">Watch agent execution '+ico("arrow")+'</a>'+ 
-   '</div>' +
-   '<p class="small sub">One sample per visitor per day. The sample is predetermined; no arbitrary code is accepted.</p></div>'+
+   '</div>'+
+   '<p class="small sub">Public repositories and ZIPs supported. Code executes in an isolated Vultr sandbox.</p></div>'+
    illustratedAsset("programs")+'</section>'+
    '<section class="overview-recent" aria-label="Recorded migration">'+
    '<div class="overview-recent-heading"><div class="overview-recent-heading-text"><span class="overview-recent-label">Python knowledge-base agent</span>'+
@@ -215,7 +222,7 @@ async function overview(){
      '<span class="overview-event-context">'+safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</span>'+
      '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
    }).join("")+'</div></section>'+
-   '<div class="section-footnote">Recorded example. To compare models yourself, use Try a live migration above. No login required.</div>';
+   '<div class="section-footnote">Recorded example. Import your own agent above to run a new migration.</div>';
   return;
  }
  const capacity=await req("");
@@ -294,7 +301,7 @@ function runFilters(action=""){
 async function agents(){
  header("Agents");
  await refreshWorkspace();
- page.innerHTML=(state.guest?guestNote:"")+lead("Agents",state.guest?"":"Your imported application source snapshots and detected runtimes.",state.guest?'<button type="button" data-action="try-live" class="btn primary">Try live migration '+ico("arrow")+'</button>':state.projects.length?importButton():"")+
+ page.innerHTML=(state.guest?guestNote:"")+lead("Agents",state.guest?"Inspect the existing example or bring your own agent.":"Your imported application source snapshots and detected runtimes.",importButton())+
  (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("code")+'</div><div class="agent-record-body"><button type="button" class="agent-record-title" data-action="example-agent">Recorded Python agent</button><p>Knowledge-base application · Verified on Vultr</p><div class="agent-record-meta"><span>Python</span><span>gVisor execution</span>'+compactStatus(state.demo.run.status)+'</div></div><div class="agent-record-actions"><button class="btn agent-record-review" data-action="run" data-id="demo-python-2026-11-07">Review run '+ico("arrow")+'</button></div></section>':"")+
  (state.guest?"":state.projects.length?
  '<label class="run-search agent-search">'+ico("search")+'<input type="search" id="agentQuery" aria-label="Search agents" placeholder="Search repositories or runtimes"></label>'+
@@ -309,7 +316,7 @@ async function runs(){
  await refreshWorkspace();
  page.innerHTML=lead("Runs","Inspect executions, outcomes and model evidence.")+
  runFilters(state.guest?"":importButton())+'<section class="records" id="runRecords">'+runIndexRows()+'</section>'+
- (state.guest?'<p class="section-footnote">Public example only. <a href="/signup">Bring an agent</a> to evaluate your own source.</p>':"");
+ (state.guest?'<p class="section-footnote"><button class="btn compact" data-action="new-agent">Import your agent</button> to run your own evaluation.</p>':"");
 }
 async function evidenceIndex(){
  header("Evidence");
@@ -328,8 +335,8 @@ async function evidenceIndex(){
 async function settings(){
  header("Settings");
  if(state.guest){
-   page.innerHTML=guestNote+lead("Settings","Guest browsing does not create an account or consume inference credits.")+
-   '<section class="card inner" style="max-width:780px"><h3>Try Refit without an account</h3><p style="margin:10px 0 22px">Start one real, bounded sample migration and inspect the original model behavior, the replacement, and isolated execution evidence. A private workspace is optional for your own source.</p><button type="button" class="btn primary" data-action="try-live">Run live sample '+ico("arrow")+'</button></section>';
+   page.innerHTML=guestNote+lead("Settings","Import a GitHub repository or ZIP without an account.")+
+   '<section class="card inner" style="max-width:780px"><h3>Open workspace</h3><p style="margin:10px 0 22px">Import a public GitHub project or ZIP and run a model migration in a private, temporary visitor workspace. No account or password.</p><button type="button" class="btn primary" data-action="new-agent">Import agent '+ico("arrow")+'</button></section>';
    return;
  }
  const config=await req("");
@@ -413,28 +420,11 @@ function readSetup(discovery){
  return setup;
 }
 async function flow(){
+ await ensureGuestSession();
  let step=state.wizard?.step||0;
  if(!step)header("Import agent",1);
  if(step===1)header("Inspect your agent",1);
  if(step===2)header("Configure migration",2);
- if(step===0 && state.trial){
-   page.innerHTML='<div class="import-shell">'+wizardIntro()+
-   '<section class="import-panel"><div class="import-panel-header"><div><h2>Live visitor session</h2><p>Your pinned Python-agent migration is saved in Runs.</p></div></div>'+
-   '<div class="import-actions"><a class="btn primary" href="/app/runs">Inspect your live run '+ico("arrow")+'</a>'+
-   '<a class="btn" href="/signup">Import a different agent</a></div></section></div>';
-   return;
- }
- if(step===0 && state.guest){
-   page.innerHTML='<div class="import-shell">'+wizardIntro()+
-   '<section class="import-panel" aria-label="Try a live migration"><div class="import-panel-header"><div><h2>Try Refit live</h2><p>A vetted, real Python-agent migration on Vultr. No registration, no upload and no simulated execution.</p></div></div><div class="import-actions"><button type="button" class="btn primary" data-action="try-live">'+ico("pulse")+' Run live migration '+ico("arrow")+'</button><span class="small sub">One trial per visitor per day.</span></div></section>'+
-   '<section class="import-panel"><div class="import-panel-header"><div><h2>See a real migration</h2><p>Explore the evidence before bringing your own agent.</p></div><span class="import-privacy">'+ico("eye")+' Public example</span></div>'+
-   '<div class="import-example"><div class="import-example-heading"><strong>Python knowledge-base agent</strong>'+compactStatus(state.demo.run.status)+'</div>'+ 
-   '<div class="import-example-route"><div><span>Original</span>'+modelIdentity(state.demo.run.source)+'</div><span class="sample-connector" aria-hidden="true">'+ico("arrow")+'</span><div><span>Replacement</span>'+modelIdentity(state.demo.run.target)+'</div></div></div>'+
-   '<div class="import-actions"><p>Recorded execution from November 7. No inference is used to browse.</p><button class="btn primary" data-action="example-agent">Inspect this agent '+ico("arrow")+'</button></div></section>'+
-
-   importPathSteps+'</div>';
-   return;
- }
  if(step===0){
   page.innerHTML='<div class="import-shell">'+wizardIntro()+
    '<section class="import-panel"><div class="import-panel-header"><div><h2>Where is your agent?</h2><p>Point Refit to the existing source. No code changes yet.</p></div><span class="import-privacy">'+ico("lock")+' Your workspace</span></div>'+
@@ -443,7 +433,8 @@ async function flow(){
    '<div class="import-form-body"><div id="githubFields"><label class="field" for="repository">Repository URL</label><div class="import-input-wrap"><span class="import-input-icon">'+ico("git")+'</span><input class="import-primary-input" id="repository" type="url" placeholder="https://github.com/owner/repository" autocomplete="url" spellcheck="false" required></div><p class="import-helper">Refit pins the commit and downloads selected source files. Build output, caches and binary assets are skipped by default.</p></div>'+
    '<div id="zipField" hidden><label class="field" for="zip">Source archive</label><input id="zip" class="control import-file" type="file" accept=".zip,application/zip"><p class="import-helper">Up to 32 MiB compressed. Refit reads eligible files within the 12 MiB source budget.</p></div>'+
    '<details class="import-advanced" id="advancedImport"><summary>Advanced options '+ico("arrow")+'</summary><div class="import-advanced-fields"><label class="field" for="revision">Exact commit SHA <span class="hint">Optional · overrides latest commit</span></label><input class="control mono" id="revision" placeholder="40-character commit hash" maxlength="40" autocomplete="off" spellcheck="false"><label class="field" for="repoToken">Private repository token <span class="hint">Optional · used only for this import</span></label><input type="password" id="repoToken" class="control mono" placeholder="GitHub read token" autocomplete="new-password" spellcheck="false" data-lpignore="true"><label class="field" for="sourceDirectory">Application directory <span class="hint">Optional · relative to repository root</span></label><input class="control mono" id="sourceDirectory" placeholder="apps/support-agent" spellcheck="false"><label class="field" for="sourceFiles">Source file override <span class="hint">Optional · one path per line relative to the application directory</span></label><textarea class="control mono" id="sourceFiles" rows="3" spellcheck="false"></textarea></div></details></div>'+
-   '<div class="import-actions"><p>'+ico("shield")+' Private inspection. No model calls or sandbox execution at this step.</p><button class="btn primary" type="submit">Inspect agent '+ico("arrow")+'</button></div></form></section>'+importPathSteps+'</div>';
+   '<div class="import-actions"><p>'+ico("shield")+' Inspection is private. No inference at this step.</p><button class="btn primary" type="submit">Inspect agent '+ico("arrow")+'</button></div></form></section>'+
+ '<p class="section-footnote">Don’t have an agent ready? <button type="button" class="btn compact" data-action="try-live">Run a live sample instead</button></p>'+importPathSteps+'</div>';
   return;
  }
  const p=state.wizard.project,d=selectedDiscovery();
@@ -515,10 +506,10 @@ async function flow(){
    '</p>':'<p class="small sub">Available now: '+safe(remaining)+' requests · minimum for complete evaluation: '+safe(minimum)+' · shared pool remaining: '+safe(state.capabilities.global_remaining_today??remaining)+'</p>')+
  '<label class="hstack" style="font-size:13px"><input id="authorize" type="checkbox" style="width:17px;height:17px"> I authorize this bounded live inference run.</label></section>'+
  '<aside class="card inner side-facts"><h3>Migration summary</h3><hr><div class="pair-line"><span class="sub">Source</span><span>'+safe(p.repository||"Uploaded ZIP")+'</span></div><div class="pair-line"><span class="sub">Entry point</span><span>'+safe(d.entry||"Operator-configured")+'</span></div><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(d.runtime)+'</span></div><div class="pair-line"><span class="sub">Verification</span><span>Original-runtime fresh check</span></div><div class="hint-note">'+ico("shield")+' Untrusted source runs inside a bounded disposable gVisor container. No production services are enabled by default.</div></aside></div>'+
- '<div class="flow-footer"><button class="btn" data-action="flow-inspect">'+ico("back")+' Back to inspection</button>'+(state.guest?'<button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">View recorded results '+ico("arrow")+'</button><a class="btn" href="/login?next=/app/agents/new">Sign in to run your agent</a>':(state.capabilities.review_run_used?'<a class="btn primary" href="/app/runs">Open saved migration '+ico("arrow")+'</a>':'<button id="start" class="btn primary" data-action="start-migration" '+(!canVerify?"disabled":"")+'>Run migration '+ico("arrow")+'</button>'))+'</div>';
+ '<div class="flow-footer"><button class="btn" data-action="flow-inspect">'+ico("back")+' Back to inspection</button>' +(state.capabilities.review_run_used?'<a class="btn primary" href="/app/runs">Open saved migration '+ico("arrow")+'</a>':'<button id="start" class="btn primary" data-action="start-migration" '+(!canVerify?"disabled":"")+' >Run migration '+ico("arrow")+'</button>')+'</div>';
 }
 async function importProject(){
- if(state.guest){notify("Sign in before submitting a private source import.");return;}
+ await ensureGuestSession();
  const btn=page.querySelector('#importForm button[type="submit"]');
  if(btn)btn.disabled=true;
  try{
@@ -556,7 +547,7 @@ async function chooseProject(id){
  navigate("/app/agents/new");
 }
 async function startMigration(){
- if(state.guest){notify("Sign in to authorize a live migration.");return;}
+ await ensureGuestSession();
  const btn=el("start");if(btn)btn.disabled=true;
  try{
    const p=state.wizard.project,d=selectedDiscovery();
@@ -1003,10 +994,15 @@ function runLog(events){if(!events.length)return "No events received yet.";
 }
 async function showRun(id,refreshOnly=false){
  if(state.guest && !["demo-python-2026-11-07",C1_DEMO_ID].includes(id)){
-   header("Private run");page.innerHTML=guestNote+empty("Private run","Sign in to view your saved migrations.",'<a class="btn primary" href="/login?next='+encodeURIComponent(location.pathname)+'">Sign in</a>');return;
+   header("Private run");page.innerHTML=guestNote+empty("Private run","This run belongs to another visitor workspace.",'<button class="btn primary" data-action="new-agent">Import agent</button>');return;
+ }
+ const publicId=id===C1_DEMO_ID||id==="demo-python-2026-11-07";
+ if(publicId && !(id===C1_DEMO_ID?state.c1demo:state.demo)){
+   if(id===C1_DEMO_ID)state.c1demo=await req("/challenge1-demo");
+   else state.demo=await req("/demo");
  }
  const publicRecord=id===C1_DEMO_ID?state.c1demo:state.demo;
- const [run,evidence]=state.guest ? [publicRecord.run,publicRecord] :
+ const [run,evidence]=publicId ? [publicRecord.run,publicRecord] :
    await Promise.all([req("/runs/"+id),req("/runs/"+id+"/evidence")]);
  if(location.pathname!=="/app/runs/"+id)return;
  state.runRevision++;
@@ -1075,9 +1071,14 @@ function subscribe(id){
  source.onerror=()=>{};
 }
 async function download(id,type){
- if(state.guest && !["demo-python-2026-11-07",C1_DEMO_ID].includes(id))throw Error("Sign in to access private artifacts.");
+ if(state.guest && !["demo-python-2026-11-07",C1_DEMO_ID].includes(id))throw Error("This artifact belongs to another visitor workspace.");
+ const publicId=id===C1_DEMO_ID||id==="demo-python-2026-11-07";
+ if(publicId && !(id===C1_DEMO_ID?state.c1demo:state.demo)){
+   if(id===C1_DEMO_ID)state.c1demo=await req("/challenge1-demo");
+   else state.demo=await req("/demo");
+ }
  const publicRecord=id===C1_DEMO_ID?state.c1demo:state.demo;
- const data=state.guest
+ const data=publicId
    ?(type==="artifact"?publicRecord.artifact:publicRecord)
    :await req("/runs/"+id+"/"+type);
  if(!data)throw Error("This example has no verified artifact.");
@@ -1092,8 +1093,8 @@ function searchOverlay(event){
   items:()=>[
    ...[["Overview",""],["Agents","/agents"],["Runs","/runs"],["Evidence","/evidence"],["Settings","/settings"]]
     .map(([title,path])=>({title,sub:"Go to page",group:"Navigation",action:"navigate",id:"/app"+path})),
-   {title:state.guest?"Inspect recorded run":"Import agent",sub:state.guest?"Recorded example":"GitHub or ZIP",group:"Actions",action:"navigate",
-    id:state.guest?"/app/runs/demo-python-2026-11-07":"/app/agents/new"},
+   {title:"Import agent",sub:"GitHub or ZIP · no account required",group:"Actions",action:"navigate",
+    id:"/app/agents/new"},
    ...state.projects.map(p=>({title:p.repository||"Uploaded ZIP",sub:p.id,group:"Agents",action:"project",id:p.id})),
    ...state.runs.map(r=>({title:r.id,sub:[r.source,r.target,statusText[r.status]].filter(Boolean).join(" · "),
     group:"Runs",action:"run",id:r.id}))
@@ -1422,8 +1423,8 @@ window.addEventListener("popstate",()=>show().catch(pageFailure));
   if(state.guest){
     el("avatar").textContent="G";document.body.classList.add("guest-session");
     const button=document.createElement("button");button.type="button";
-    button.dataset.action="try-live";button.dataset.trialStart="1";
-    button.className="btn compact";button.textContent="Try live";
+    button.dataset.action="new-agent";button.dataset.trialStart="1";
+    button.className="btn compact";button.textContent="Import agent";
     el("avatar").closest("details").before(button);
     await refreshWorkspace();
   }else {

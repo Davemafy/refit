@@ -8,6 +8,7 @@ on:
       - 'scripts/sandbox_runner.py'
       - 'tests/test_refit_diagnostic_http.py'
       - 'tests/test_refit_public_trial.py'
+      - 'tests/test_refit_open_guest.py'
       - 'data/trial/**'
       - 'scripts/smoke_application.py'
       - 'integrations/application/**'
@@ -26,6 +27,7 @@ on:
       - 'tests/browser_console_density.mjs'
       - 'tests/browser_guest_agents.mjs'
       - 'tests/browser_public_trial.mjs'
+      - 'tests/browser_open_guest.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - 'tests/saas_fixture_server.py'
@@ -47,6 +49,7 @@ on:
       - 'tests/browser_console_density.mjs'
       - 'tests/browser_guest_agents.mjs'
       - 'tests/browser_public_trial.mjs'
+      - 'tests/browser_open_guest.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - '.github/workflows/application.yml'
@@ -108,6 +111,8 @@ jobs:
         run: node tests/browser_guest_agents.mjs
       - name: Verify one-click visitor migration route without paid inference
         run: node tests/browser_public_trial.mjs
+      - name: Verify real GitHub or ZIP import and configuration without login
+        run: node tests/browser_open_guest.mjs
       - name: Verify workspace themes, command palette and trace navigation
         run: node tests/browser_workbench.mjs
       - name: Verify component density, themes and keyboard focus in Firefox

@@ -78,7 +78,7 @@ class AnonymousTrialHttpTests(unittest.TestCase):
             self.assertIn(security_flag, header)
         cookie = header.split(";", 1)[0]
         session = self.http("GET", "/session", cookie=cookie)[1]
-        self.assertEqual(session["username"], "Live visitor")
+        self.assertEqual(session["username"], "Visitor")
         self.assertTrue(session["trial"])
         result = self.http("GET", "/runs/" + response["id"], cookie=cookie)
         self.assertEqual(result[0], 200, result)
@@ -88,13 +88,12 @@ class AnonymousTrialHttpTests(unittest.TestCase):
         project = self.http("GET", "/projects", cookie=cookie)[1]["projects"][0]
         self.assertEqual(project["repository"], "simonw/llm")
         self.assertEqual(project["discovery"]["preset"], "llm-0.37.1")
-        self.assertEqual(self.http("GET", "", cookie=cookie)[1]["max_requests"], 0)
+        self.assertGreater(self.http("GET", "", cookie=cookie)[1]["max_requests"], 0)
         self.assertEqual(self.http("GET", "/runs/" + response["id"])[0], 401)
-        # A temporary guest principal cannot import arbitrary source or request a second run.
-        self.assertEqual(self.http("POST", "/imports", {"method": "github",
-                                                       "repository": "other/agent"},
-                                   cookie=cookie)[1]["error"]["code"], "trial_fixed_source_only")
-        self.assertEqual(self.http("POST", "/runs", {"budget": 12}, cookie=cookie)[0], 403)
+        # A temporary visitor can use the full import flow. Invalid run
+        # inputs are rejected by evaluation validation, not account gates.
+        self.assertEqual(self.http("POST", "/runs", {"budget": 12}, cookie=cookie)[1]["error"]["code"],
+                         "invalid_models")
         duplicate = self.try_run()
         self.assertEqual(duplicate[0], 429)
         self.assertEqual(duplicate[1]["error"]["code"], "trial_already_used")
