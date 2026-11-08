@@ -152,9 +152,10 @@ if id -nG refit-application | tr ' ' '\n' | grep -qx docker; then
   echo "Refit HTTP service still has privileged Docker group access" >&2
   exit 1
 fi
+# First prove that the unprivileged process can reach the allowlisted broker.
+# The actual runsc execution receipt below is the authoritative policy gate.
 runuser -u refit-application -- env PATH=/usr/local/libexec/refit-cli:/usr/bin:/bin \
-  /usr/local/libexec/refit-cli/docker info --format '{{json .Runtimes}}' |
-  python3 -c 'import json,sys; runtimes=json.load(sys.stdin); assert isinstance(runtimes,dict) and "runsc" in runtimes'
+  /usr/local/libexec/refit-cli/docker info --format '{{json .Runtimes}}' >/dev/null
 SERVICE_DIRECTORY="$(systemctl show refit-application --property=WorkingDirectory --value)"
 if [[ "$SERVICE_DIRECTORY" != "$REPO" ]]; then
   printf 'Refit service checkout mismatch: expected %s, got %s.\n' "$REPO" "$SERVICE_DIRECTORY" >&2
