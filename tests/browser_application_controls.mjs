@@ -119,7 +119,7 @@ try {
   await page.locator("#outcome").filter({ hasText: "Interrupted" }).waitFor();
   await assertSafe(interrupted.id, "interrupted");
   // Capacity is now exposed BEFORE submission. Browser validation rejects
-  // a request above the remaining zero quota; the server must still enforce
+  // a request above the remaining one-call quota; the server must still enforce
   // the same limit when bypassing the form.
   const imported = await inspect(zip);
   await page.getByRole("button", { name: "Run migration" }).waitFor();
@@ -127,10 +127,10 @@ try {
     headers: {Authorization: "Bearer " + token}
   });
   const limits = await cap.json();
-  assert.equal(limits.max_requests, 0);
-  assert.equal(limits.global_remaining_today, 0);
+  assert.equal(limits.max_requests, 1);
+  assert.equal(limits.global_remaining_today, 1);
   const budgetField = page.getByLabel("Maximum Vultr requests");
-  assert.equal(await budgetField.getAttribute("max"), "0");
+  assert.equal(await budgetField.getAttribute("max"), "1");
   await budgetField.fill("2");
   assert.equal(await budgetField.evaluate(el => el.checkValidity()), false);
   const quotaResponse = await page.request.post(origin + "/api/application/runs", {
