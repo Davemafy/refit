@@ -28,6 +28,8 @@ EXPANDED_LIMIT = 12 * 1024 * 1024
 FILE_LIMIT = 1500
 REPOSITORY = re.compile(r"[a-zA-Z0-9_.-]{1,100}/[a-zA-Z0-9_.-]{1,100}")
 REVISION = re.compile(r"[0-9a-f]{40}")
+# Next.js uses these literal directory names for dynamic route segments.
+ROUTE_SEGMENT = re.compile(r"\[(?:\.\.\.)?[A-Za-z0-9_-]+\]|\[\[\.\.\.[A-Za-z0-9_-]+\]\]")
 BLOCKED_DIRS = {".git", ".ssh", ".aws", ".venv", "node_modules", "__pycache__"}
 
 
@@ -229,7 +231,8 @@ def safe_path(name):
         raise ImportProblem("The archive contains an invalid file path.")
     path = PurePosixPath(name)
     if (not path.parts or len(path.parts) > 24 or path.is_absolute() or ".." in path.parts
-            or any(not re.fullmatch(r"[\w.@+() -]+", part) for part in path.parts)):
+            or any(not re.fullmatch(r"[\w.@+() -]+", part) and not ROUTE_SEGMENT.fullmatch(part)
+                   for part in path.parts)):
         raise ImportProblem("The archive contains an unsafe file path.")
     return path
 
@@ -361,6 +364,10 @@ def inspect(files):
     evaluation_files = [name for name in sorted(files) if name.endswith((".py", ".ts", ".js", ".mts", ".mjs"))
                         and (set(PurePosixPath(name).parts[:-1]) & {"test", "tests", "__tests__"}
                              or re.search(r"(?:^test_|[.]test[.]|[.]spec[.])", PurePosixPath(name).name))]
+    evaluation_inputs = [name for name in sorted(files)
+                         if set(PurePosixPath(name).parts[:-1]) & {"eval", "evals", "evaluation"}
+                         and PurePosixPath(name).suffix in {".json", ".jsonl"}]
+    service_entries = []
     candidates = []
     observed_runtimes = set()
     for name in sorted(files):
@@ -377,6 +384,14 @@ def inspect(files):
         scope = next((parent for parent in path.parents if (parent, runtime) in manifests), PurePosixPath("."))
         manifest, metadata, dependencies = manifests.get((scope, runtime), (None, {}, []))
         content = read(name)
+        if runtime == "typescript" and "next" in dependencies:
+            relative = path.relative_to(scope).parts
+            offset = 2 if relative[:2] == ("src", "app") else 1 if relative[:1] == ("app",) else 0
+            if (offset and len(relative) > offset + 1 and path.stem == "route"
+                    and re.search(r"\bexport\s+(?:(?:async\s+)?function|const)\s+POST\b", content)):
+                route = "/" + "/".join(part for part in relative[offset:-1]
+                                       if not (part.startswith("(") and part.endswith(")")))
+                service_entries.append({"path": name, "route": route, "method": "POST", "manifest": manifest})
         provider = None
         if "OPENAI_BASE_URL" in content and "OPENAI_MODEL" in content:
             provider = "OpenAI environment variables detected"
@@ -421,6 +436,15 @@ def inspect(files):
                            "directory": "" if str(scope) == "." else str(scope),
                            "manifest": manifest, "dependencies": dependencies[:40],
                            "provider": provider, "confidence": confidence, "evidence": evidence})
+    service_manifests = {entry["manifest"] for entry in service_entries}
+    candidates = [candidate for candidate in candidates if candidate["manifest"] not in service_manifests]
+    service_entries.sort(key=lambda entry: (
+        entry["route"].rsplit("/", 1)[-1] not in {"turn", "chat", "agent", "invoke", "run"},
+        entry["route"], entry["path"]))
+    evaluation_files.sort(key=lambda name: (
+        not re.search(r"eval(?:uation)?", PurePosixPath(name).name, re.I),
+        bool(set(PurePosixPath(name).parts) & {"browser", "e2e"}) or ".e2e." in name,
+        name))
     likely = [candidate for candidate in candidates if candidate["confidence"] == "high"]
     chosen = likely[0] if len(likely) == 1 else candidates[0] if len(candidates) == 1 else None
     runtime = chosen["runtime"] if chosen else (
@@ -430,6 +454,21 @@ def inspect(files):
               "dependencies": chosen["dependencies"] if chosen else [],
               "applications": candidates[:40], "evaluation_files": evaluation_files[:12],
               "setup": "Choose the original entry point and configure non-streaming Chat Completions and independent cases."}
+    if service_entries:
+        result["service_entries"] = service_entries[:8]
+    if evaluation_inputs:
+        result["evaluation_inputs"] = evaluation_inputs[:8]
+    if service_entries and not candidates:
+        _, metadata, dependencies = manifests[(PurePosixPath(service_entries[0]["manifest"]).parent, "typescript")]
+        result.update(
+            runtime="typescript", framework="Next.js", runnable=False, dependencies=dependencies[:40],
+            setup="This source exposes a Next.js HTTP service. Managed execution needs a standalone Node "
+                  "entry with a supported Chat Completions boundary. Import a standalone adapter with "
+                  "supported dependencies, or expose a compatible isolated test endpoint for the local connector.")
+        node = metadata.get("engines")
+        if isinstance(node, dict) and isinstance(node.get("node"), str):
+            result["node_requirement"] = node["node"][:80]
+        return result
     if runtime == "unknown" or (runtime == "typescript" and not any(lang == runtime for _, lang in manifests)):
         result["runnable"] = False
         result["setup"] = ("TypeScript execution is unavailable without a package.json declaring runtime dependencies."
@@ -457,7 +496,8 @@ def discover_source_signals(files):
         if path.suffix not in {".py", ".ts", ".mts", ".js", ".mjs"}:
             continue
         source = base64.b64decode(encoded).decode("utf-8", "replace")
-        for name_hint in ("OPENAI_BASE_URL", "OPENAI_MODEL", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"):
+        for name_hint in ("OPENAI_BASE_URL", "OPENAI_MODEL", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+                          "GOOGLE_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY", "GROK_API_KEY", "LLM_API_KEY"):
             if name_hint in source:
                 providers.add(name_hint)
         if path.suffix == ".py":

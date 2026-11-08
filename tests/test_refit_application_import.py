@@ -24,7 +24,7 @@ class ApplicationImportTests(unittest.TestCase):
         link = zipfile.ZipInfo("link")
         link.create_system = 3
         link.external_attr = (stat.S_IFLNK | 0o777) << 16
-        for name in ["../agent.py", "/agent.py", ".env", link]:
+        for name in ["../agent.py", "/agent.py", ".env", "app/[bad[]]/route.ts", "app/[id]/../route.ts", link]:
             with self.subTest(name=name), self.assertRaises(ImportProblem):
                 source_snapshot(archive([(name, b"example")]))
 
@@ -80,3 +80,34 @@ class ApplicationImportTests(unittest.TestCase):
         self.assertEqual(discovery["entry"], "python -m src.qa")
         self.assertIsNone(discovery["preset"])
         self.assertEqual(discovery["evaluation_files"], ["test_qa.py"])
+
+    def test_distinguishes_next_service_from_managed_cli(self):
+        entries = [
+            ("package.json", b'{"dependencies":{"next":"^16.0.0","ai":"7.0.0"},"engines":{"node":">=24"}}'),
+            ("src/app/api/tasks/[id]/turn/route.ts", b'export async function POST(request: Request) {}'),
+            ("src/app/api/account/route.ts", b'export const POST = () => Response.json({})'),
+            ("src/app/api/health/route.ts", b'export function GET() {}'),
+            ("src/tools/runtime.ts", b'process.env.ANTHROPIC_API_KEY; process.env.GEMINI_API_KEY; process.env.XAI_API_KEY;'),
+            ("scripts/maintenance.ts", b'process.argv[2]'),
+            ("evaluation/cases.json", b'[]'),
+            ("scripts/blind-eval.test.mjs", b'export {}'),
+            ("tests/browser/home.e2e.ts", b'export {}'),
+        ]
+        result = source_snapshot(archive(entries))["discovery"]
+        self.assertEqual(result["framework"], "Next.js")
+        self.assertEqual(result["node_requirement"], ">=24")
+        self.assertEqual(result["dependencies"], ["ai", "next"])
+        self.assertEqual(result["service_entries"][0]["route"], "/api/tasks/[id]/turn")
+        self.assertEqual(len(result["service_entries"]), 2)
+        self.assertEqual(result["provider_signals"], ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"])
+        self.assertEqual(result["evaluation_inputs"], ["evaluation/cases.json"])
+        self.assertEqual(result["evaluation_files"][0], "scripts/blind-eval.test.mjs")
+        self.assertFalse(result["runnable"])
+        self.assertFalse(result["applications"])
+        self.assertIn("isolated test endpoint", result["setup"])
+
+        entries += [("worker/package.json", b'{"main":"cli.ts","dependencies":{"ai":"7.0.0"}}'),
+                    ("worker/cli.ts", b'process.argv[2]')]
+        result = source_snapshot(archive(entries))["discovery"]
+        self.assertEqual(result["entry"], "worker/cli.ts")
+        self.assertIsNot(result.get("runnable"), False)

@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Deploy GitHub-verified mobile layout fixes reproduced from Android screenshots"
+  "reason": "Recognize Next.js agent service boundaries and explain the connection path"
 }

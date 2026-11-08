@@ -287,8 +287,17 @@ async function flow(){
  }
  const p=state.wizard.project,d=selectedDiscovery();
  if(step===1){
-   const features=[["Agent entry point",d.entry||"Not confidently detected"],["Runtime",d.runtime||"Unknown"],["Provider",d.provider||"Not detected"],["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],["Tools",d.tool||"Not independently enumerated"],["Provider signals",d.provider_signals?.join(", ")||"Not detected"]];
-   const files=d.evaluation_files||[];
+   const service=d.service_entries?.[0];
+   const serviceOnly=service&&d.runnable===false;
+   const runtime=d.framework?[d.framework,d.runtime,d.node_requirement&&"Node "+d.node_requirement].filter(Boolean).join(" · "):d.runtime;
+   const features=[["Agent entry point",d.entry||(serviceOnly?"No managed entry point":"Not confidently detected")],
+     ["Runtime",runtime||"Unknown"],["Provider",d.provider||(d.provider_signals?.length?"Configuration signals found below":"Not detected")],
+     ["Dependencies",d.dependencies?.length ? d.dependencies.join(", ") : "Not reported"],
+     ["Tools",d.tool||"Verify during execution"],["Provider signals",d.provider_signals?.join(", ")||"Not detected"]];
+   const files=[...(d.evaluation_inputs||[]),...(d.evaluation_files||[])];
+   const serviceGuidance=serviceOnly?'<div class="entry-guidance"><h3>HTTP service detected</h3><p><code>'+
+     safe(service.method+" "+service.route)+'</code> in <code>'+safe(service.path)+'</code></p><p>'+
+     safe(d.setup)+'</p><a href="https://github.com/Davemafy/refit/blob/main/docs/bring-your-agent.md#developer-side-connectors">Read the connector setup guide</a></div>':"";
    const needsEntry=!d.entry&&d.runnable!==false;
    const entryGuidance=needsEntry?
      '<div class="entry-guidance"><h3>Confirm the agent entry point</h3><p>Refit detected '+
@@ -296,10 +305,10 @@ async function flow(){
      (d.runtime==="typescript"?"the Node entry file":"the Python module or original entry point")+
      ' relative to the selected source. '+(d.provider?"":"The model provider is also unconfirmed. ")+
      'Define independent checks before authorizing execution.</p></div>':"";
-   page.innerHTML=lead("Inspect your agent","Review the detected runtime and confirm the original entry point.")+
-   '<section class="card"><div class="repo-card-head"><div class="repo-mark">'+ico("git")+'</div><div style="flex:1"><h3>'+safe(p.repository||"Uploaded ZIP")+'</h3><p class="small mono">'+safe(p.revision||p.id)+'</p></div><span class="chip bordered">'+safe(p.file_count)+' files inspected</span></div>'+
+   page.innerHTML=lead("Inspect your agent",serviceOnly?"Review the service boundary and choose how to connect it.":"Review the detected runtime and confirm the original entry point.")+
+   serviceGuidance+'<section class="card"><div class="repo-card-head"><div class="repo-mark">'+ico("git")+'</div><div style="flex:1"><h3>'+safe(p.repository||"Uploaded ZIP")+'</h3><p class="small mono">'+safe(p.revision||p.id)+'</p></div><span class="chip bordered">'+safe(p.file_count)+' files inspected</span></div>'+
    '<div class="split-panel"><div>'+features.map(f=>'<div class="fact"><span class="muted">'+ico(f[0]==="Runtime"?"code":f[0]==="Tools"?"layers":"box")+'</span><strong>'+safe(f[0])+'</strong><span class="value">'+safe(f[1])+'</span></div>').join("")+'</div>'+
-   '<div><h3 style="margin-bottom:12px">Possible test files</h3><p class="small">These are static hints. Confirm the entry point and choose independent checks before authorizing a run.</p><div class="file-list" style="margin-top:14px">'+(files.length?files.map(f=>'<div>'+ico("file")+' '+safe(f)+'</div>').join(""):'<div>No individual test-file paths reported.</div>')+'</div></div></div></section>'+
+   '<div><h3 style="margin-bottom:12px">Evaluation sources</h3><p class="small">Candidate inputs and tests from the repository. Review and select independent checks before authorizing a run.</p><div class="file-list" style="margin-top:14px">'+(files.length?files.map(f=>'<div>'+ico("file")+' '+safe(f)+'</div>').join(""):'<div>No individual test-file paths reported.</div>')+'</div></div></div></section>'+
    (d.applications?.length||d.runtime==="mixed"?'<section class="card inner" style="margin-top:16px"><label class="field" for="applicationBoundary">Application boundary</label>'+
      '<select id="applicationBoundary" class="control"><option value="">'+safe(d.entry||"Choose a runtime or detected entry")+'</option>'+
      (d.applications||[]).map((app,index)=>'<option value="'+index+'" '+(state.wizard.application?.path===app.path?"selected":"")+'>'+safe(app.entry+" · "+app.runtime+" · "+app.confidence+" confidence")+'</option>').join("")+
@@ -313,7 +322,7 @@ async function flow(){
      '</div><div id="sourceReport" aria-live="polite"></div>'+
      '<details class="case-options" style="margin-top:12px"><summary>Detected source signals</summary>'+[["Entry candidates",d.entry_candidates],["Imports",d.imports],["Configuration",d.configuration_files]].map(([label,items])=>
        '<p class="small"><strong>'+label+'</strong> '+safe(items?.join(", ")||"None detected")+'</p>').join("")+'</details></section>':'')+
-   (d.runnable===false?'<div class="notice" style="margin-top:18px">'+safe(d.setup||"Unsupported runtime")+'</div>':d.setup?'<p style="margin-top:16px;font-size:13px">'+safe(d.setup)+'</p>':'')+
+   (serviceOnly?"":d.runnable===false?'<div class="notice" style="margin-top:18px">'+safe(d.setup||"Unsupported runtime")+'</div>':d.setup?'<p style="margin-top:16px;font-size:13px">'+safe(d.setup)+'</p>':'')+
    entryGuidance+
    '<div class="flow-footer"><button class="btn" data-action="flow-back">'+ico("back")+' Back</button><button class="btn primary" data-action="flow-config" '+(d.runnable===false?"disabled":"")+'>Continue to configuration '+ico("arrow")+'</button></div>';
    return;
