@@ -1,5 +1,8 @@
 """Exercise the deployed operator HTTP boundary with a single explicit budget."""
 import argparse
+import base64
+import io
+import zipfile
 import json
 import os
 from pathlib import Path
@@ -15,6 +18,7 @@ TARGET = "glm-5.2"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--github", action="store_true", help="Opt into live GitHub API; CI defaults to a local ZIP.")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     base = "http://127.0.0.1:8098"
@@ -45,8 +49,21 @@ def main():
     else:
         raise AssertionError("Unauthenticated access unexpectedly accepted")
     assert SOURCE in api("")["models"]
-    imported = api("/imports", {"method": "github", "repository": REPO, "revision": REVISION})
-    assert imported["discovery"]["preset"] == "llm-0.37.1"
+    # Zero-inference CI must not depend on the availability of GitHub.
+    # The explicit --github / --execute path retains pinned remote source tests.
+    if args.github or args.execute:
+        imported = api("/imports", {"method": "github", "repository": REPO, "revision": REVISION})
+        assert imported["discovery"]["preset"] == "llm-0.37.1"
+    else:
+        fixture = b"import os\nOPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL')\nOPENAI_MODEL = os.environ.get('OPENAI_MODEL')\n"
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zipped:
+            zipped.writestr("agent.py", fixture)
+        imported = api("/imports", {
+            "method": "zip", "archive": base64.b64encode(buffer.getvalue()).decode("ascii")})
+        assert imported["file_count"] == 1
+        assert imported["file_paths"] == ["agent.py"]
+        assert imported["discovery"]["runtime"] == "python"
     print(json.dumps(imported), flush=True)
     if not args.execute:
         return
