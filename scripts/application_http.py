@@ -126,6 +126,33 @@ def public_example():
             "recorded": True, "public_sample": True}
 
 
+PUBLIC_CONTAINMENT_RECEIPT = Path("/usr/local/share/refit/c1-containment.json")
+
+
+def public_containment_proof(revision):
+    """Expose only host-root-sanitized evidence matching the deployed SHA."""
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ApiProblem(503, "containment_proof_unavailable", "Host proof is not published.")
+    try:
+        record = json.loads(PUBLIC_CONTAINMENT_RECEIPT.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ApiProblem(503, "containment_proof_unavailable", "Host proof is not published.") from None
+    if (record.get("kind") != "controlled_vultr_host_containment_probe"
+            or record.get("revision") != revision
+            or record.get("verified") is not True
+            or record.get("recorded") is not True
+            or record.get("generated_by_model") is not False
+            or record.get("host_canary_unchanged") is not True
+            or len(record.get("attempts", [])) != 5
+            or len(record.get("workers", [])) != 2
+            or any(worker.get("runtime") != "runsc"
+                   or worker.get("cleanup_verified") is not True
+                   or worker.get("ledger_valid") is not True
+                   for worker in record["workers"])):
+        raise ApiProblem(503, "containment_proof_unavailable", "Host proof failed integrity checks.")
+    return record
+
+
 def public_challenge_one():
     """Allowlisted sanitized evidence from a real production run.
 
@@ -770,6 +797,8 @@ class ApplicationHandler(RefitHandler):
                 return self._send(200, public_example())
             if url.path == "/api/application/challenge1-demo" and self.public():
                 return self._send(200, public_challenge_one())
+            if url.path == "/api/application/containment-proof" and self.public():
+                return self._send(200, public_containment_proof(self.deployed_revision))
             if url.path == "/api/application/session":
                 if not self.public():
                     return self._send(200, {"mode": "operator"})

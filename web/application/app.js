@@ -33,7 +33,7 @@ const symbols={
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
 const C1_DEMO_ID="demo-diagnostic-2026-11-08";
-const state={username:null,guest:false,demo:null,c1demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:"",runsPeriod:"all"};
+const state={username:null,guest:false,demo:null,c1demo:null,c1containment:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:"",runsPeriod:"all"};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -107,6 +107,14 @@ async function refreshWorkspace(){
  if(state.guest){
    if(!state.demo)state.demo=await req("/demo");
    if(!state.c1demo)state.c1demo=await req("/challenge1-demo");
+   if(!state.c1containment){
+     // This is a separate *recorded*, root-attested host probe. A missing
+     // or mismatched receipt is never presented as successful containment.
+     try { state.c1containment=await req("/containment-proof"); }
+     catch { state.c1containment={verified:false,unavailable:true}; }
+   }
+   if(state.c1containment.verified===true)
+     state.c1demo.run.containment=state.c1containment;
    state.projects=[];
    state.runs=[state.c1demo.run,state.demo.run];
    return;
@@ -564,6 +572,10 @@ function evidenceEntries(run,events){
   key:"diagnostic",type:"diagnostic",title:"Generated diagnostic",
   subtitle:"Vultr-generated Python · isolated execution",details:run.diagnostic
  });
+ if(run.containment)entries.push({
+  key:"containment",type:"containment",title:"Host containment test",
+  subtitle:"Separate synthetic probe · observed on Vultr",details:run.containment
+ });
  entries.push({key:"provenance",type:"provenance",title:"Run provenance",
   subtitle:"Configuration and run identifiers",details:run});
  return entries;
@@ -576,6 +588,7 @@ function evidenceOutcome(item){
   return d.receipt?.verified===true?"Verified":d.receipt?.verified===false?"Unverified":"Not recorded";
  if(item.type==="diagnostic")
   return d.status==="verified"?"Verified":d.status==="running"?"Executing":d.status==="rejected"?"Not verified":d.status||"Not recorded";
+ if(item.type==="containment")return d.verified===true?"Verified":"Not verified";
  return "Recorded";
 }
 function evidenceDetail(item){
@@ -595,6 +608,24 @@ function evidenceDetail(item){
    field("Receipt verified",d.receipt?.verified===true?"Yes":d.receipt?.verified===false?"No":"Not recorded"),
    field("Cleanup reason",d.receipt?.reason),field("Observed",d.receipt?.observed_at),
    field("Container",d.receipt?.container_name||d.container));
+ }else if(item.type==="containment"){
+  fields.push(field("Vultr deployment SHA",d.revision),
+   field("Execution origin","Vultr VM · separately operator initiated"),
+   field("Evidence type","Synthetic containment test (not model-generated)"),
+   field("Host canary intact",d.host_canary_unchanged===true?"Verified":"Not verified"),
+   field("Probe status",d.verified===true?"Verified":"Not verified"));
+  (d.workers||[]).forEach(worker=>{
+    fields.push(field(worker.kind+" runtime",worker.runtime),
+      field(worker.kind+" process",worker.status),
+      field(worker.kind+" cleanup",worker.cleanup_verified===true?"Verified":"Not verified"),
+      field(worker.kind+" ledger",worker.ledger_valid===true?"Valid":"Not verified"));
+  });
+  supplemental='<h4>Prohibited actions observed</h4><div class="evidence-checks">'+
+    (d.attempts||[]).map(attempt=>
+      '<div><span class="'+(attempt.blocked?"sub":"error")+'">'+
+       safe(attempt.blocked?"Contained":"Unverified")+'</span><span>'+
+       safe(attempt.action)+' · '+safe(attempt.observed)+'</span></div>').join("")+
+    '</div><p class="small sub">This is a separate controlled host test. The model-generated diagnostic and its unseen-input check are documented above.</p>';
  }else if(item.type==="diagnostic"){
   const worker=d.sandbox||{},policy=worker.policy||worker.ledger?.[0]?.event?.policy||{};
   const challenge=d.cross_check||{},second=challenge.sandbox||{};
@@ -653,7 +684,8 @@ function evidenceExplorer(run,events){
  let group="";
  const navigation=entries.map(item=>{
   const section=item.type==="verification"?"Verification":item.type==="case"?"Evaluations":
-   item.type==="cleanup"?"Sandbox cleanup":item.type==="diagnostic"?"Generated diagnostics":"Provenance";
+   item.type==="cleanup"?"Sandbox cleanup":item.type==="diagnostic"?"Generated diagnostics":
+   item.type==="containment"?"Containment evidence":"Provenance";
   const heading=section===group?"":'<div class="evidence-group">'+safe(section)+'</div>';
   group=section;
   return heading+'<button type="button" class="evidence-entry'+(item.key===selected.key?" selected":"")+

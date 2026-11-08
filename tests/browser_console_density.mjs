@@ -42,7 +42,7 @@ try{
  assert.equal(await page.locator("#crumb").innerText(),"Runs");
  assert.equal(await page.locator(".workspace-scope").innerText(),"Workspace");
  assert.equal(await page.locator('.sidebar [aria-current="page"]').innerText(),"Runs");
- assert.equal(await page.locator(".run-table-desktop tbody tr").count(),1);
+ assert.equal(await page.locator(".run-table-desktop tbody tr").count(),2);
  await page.getByLabel("Run status").selectOption("attention");
  await page.getByText("No matching runs").waitFor();
  await page.getByLabel("Run status").selectOption("all");
@@ -52,7 +52,7 @@ try{
  await page.locator("#runQuery").fill("nonexistent-revision");
  await page.getByText("No matching runs").waitFor();
  await page.locator("#runQuery").fill("glm-5.2");
- assert.equal(await page.locator(".run-table-desktop tbody tr").count(),1);
+ assert.equal(await page.locator(".run-table-desktop tbody tr").count(),2);
  const toolbarGap=await page.evaluate(()=>document.querySelector(".run-controls").getBoundingClientRect().top-
   document.querySelector("#contextBar").getBoundingClientRect().bottom);
  assert.ok(toolbarGap>=0&&toolbarGap<=12, String(toolbarGap));

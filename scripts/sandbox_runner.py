@@ -79,10 +79,15 @@ class DockerSandbox:
             raise ValueError("runtime must be Docker runc or registered gVisor runsc")
         if image != IMAGE:
             raise ValueError("image is pinned to the approved image name")
+        # Deployment pins the pulled diagnostic image to its immutable local
+        # content-addressed ID. Never accept a request-selected image.
+        pinned = os.environ.get("REFIT_DIAGNOSTIC_IMAGE_ID", "")
+        if pinned and not re.fullmatch(r"sha256:[a-f0-9]{64}", pinned):
+            raise ValueError("The trusted diagnostic image ID is invalid")
         if not 2 <= timeout_seconds <= 30:
             raise ValueError("timeout outside approved range")
         self.runtime = runtime
-        self.image = image
+        self.image = pinned or image
         self.timeout_seconds = timeout_seconds
         self.docker = docker
         # systemd PrivateTmp remaps /tmp in the controller's mount namespace,

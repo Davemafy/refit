@@ -100,6 +100,19 @@ class SandboxPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             DockerSandbox(timeout_seconds=1000)
 
+    def test_trusted_image_identity_is_content_addressed(self):
+        pinned = "sha256:" + "a" * 64
+        with patch.dict(os.environ, {"REFIT_DIAGNOSTIC_IMAGE_ID": pinned}):
+            runner = DockerSandbox(runtime="runsc")
+            self.assertEqual(runner.image, pinned)
+            self.assertEqual(runner._command("refit-safe", __import__("pathlib").Path("/tmp/refit"),
+                         __import__("pathlib").Path("/tmp/cid"))[-6], pinned)
+            with self.assertRaises(ValueError):
+                DockerSandbox(image="attacker/image")
+        with patch.dict(os.environ, {"REFIT_DIAGNOSTIC_IMAGE_ID": "python:latest"}):
+            with self.assertRaises(ValueError):
+                DockerSandbox()
+
     def test_ledger_detects_modified_or_reordered_records(self):
         records = chain_events([
             {"type": "launch_requested", "digest": "abc"},

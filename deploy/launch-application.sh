@@ -22,6 +22,8 @@ ACCOUNT_BUDGET="${REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET:-16}"
 # The bounded generated-Python diagnostic runs in a separate approved image.
 # Pull on the trusted host at deploy time; the worker itself has no network.
 docker pull python:3.11-alpine >/dev/null
+DIAGNOSTIC_IMAGE_ID="$(docker image inspect --format='{{.Id}}' python:3.11-alpine)"
+[[ "$DIAGNOSTIC_IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]]
 docker build -f "$REPO/integrations/application/Dockerfile" -t "$IMAGE" "$REPO"
 IMAGE_ID="$(docker image inspect --format='{{.Id}}' "$IMAGE")"
 [[ "$IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]]
@@ -57,6 +59,7 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
 Environment=REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1
 Environment=REFIT_SANDBOX_RUNTIME=runsc
+Environment=REFIT_DIAGNOSTIC_IMAGE_ID=$DIAGNOSTIC_IMAGE_ID
 ExecStart=$APP_COMMAND
 UMask=0077
 Restart=on-failure
@@ -65,6 +68,12 @@ NoNewPrivileges=true
 ProtectHome=true
 ProtectSystem=strict
 PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+LockPersonality=true
+RestrictSUIDSGID=true
 ReadWritePaths=/var/lib/refit-application
 MemoryMax=512M
 TasksMax=64
@@ -108,9 +117,18 @@ for attempt in {1..15}; do
     install -d -o root -g root -m 0700 /var/lib/refit-application/c1-acceptance
     (
       cd "$REPO"
-      timeout --signal=TERM --kill-after=5s 2m python3 -m scripts.c1_acceptance \
+      REFIT_DIAGNOSTIC_IMAGE_ID="$DIAGNOSTIC_IMAGE_ID" \
+        timeout --signal=TERM --kill-after=5s 2m python3 -m scripts.c1_acceptance \
         --output "/var/lib/refit-application/c1-acceptance/$REVISION.json"
     )
+    # Publish only a root-attested, redacted synthetic containment receipt.
+    # Never expose raw Docker or host-state receipts to the web service.
+    install -d -o root -g root -m 0755 /usr/local/share/refit
+    python3 -m scripts.c1_public_receipt \
+      --source "/var/lib/refit-application/c1-acceptance/$REVISION.json" \
+      --revision "$REVISION" \
+      --output /usr/local/share/refit/c1-containment.json
+    test "$(stat -c %u:%a /usr/local/share/refit/c1-containment.json)" = "0:644"
     echo "Refit application and Vultr-host containment verified at revision $REVISION with worker $IMAGE_ID."
     exit 0
   fi
