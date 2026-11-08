@@ -77,6 +77,9 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(capability["max_requests"], 16)
                     self.assertEqual(capability["account_daily_allowance"], 16)
                     self.assertEqual(capability["global_daily_ceiling"], 48)
+                    self.assertEqual(capability["account_remaining_today"], 16)
+                    self.assertEqual(capability["global_reserved_today"], 0)
+                    self.assertEqual(capability["global_remaining_today"], 48)
                     owner = service.accounts.resolve(alice.split("=", 1)[1])[0]
                     project = "import-1234567890abcdef"
                     service.accounts.save_project(owner, project, {"id": project},
@@ -86,6 +89,13 @@ class ApplicationAccountTests(unittest.TestCase):
                            "owner": owner, "budget": 16, "started_at": now(),
                            "export": {"model": "test"}}
                     service.runs[run_id] = (run, [])
+                    _, limited, _ = request("GET", "", cookie=alice)
+                    self.assertEqual(limited["account_remaining_today"], 0)
+                    self.assertEqual(limited["global_reserved_today"], 16)
+                    self.assertEqual(limited["global_remaining_today"], 32)
+                    self.assertEqual(limited["max_requests"], 0)
+                    _, other, _ = request("GET", "", cookie=bob)
+                    self.assertEqual(other["max_requests"], 16)
                     self.assertEqual(request("GET", "/projects", cookie=bob)[1]["projects"], [])
                     self.assertEqual(request("GET", "/runs", cookie=bob)[1]["runs"], [])
                     self.assertEqual(request("GET", "/projects", cookie=alice)[1]["projects"][0]["id"], project)
