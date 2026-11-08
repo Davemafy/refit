@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Inspect bounded gVisor broker receipt during live Vultr acceptance"
+  "reason": "Verify broker staging-only write permission and unprivileged gVisor execution"
 }
