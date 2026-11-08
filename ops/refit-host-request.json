@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Activate bounded one-shot judge migration and diagnostic access for unattended verification"
+  "reason": "Promote documented one-run judge diagnostic and revoke unused temporary acceptance credential"
 }
