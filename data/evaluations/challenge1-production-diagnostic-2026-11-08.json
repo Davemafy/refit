@@ -1,0 +1,750 @@
+{
+  "artifact": {
+    "args": [
+      "{prompt}"
+    ],
+    "environment": {
+      "OPENAI_BASE_URL": "https://api.vultrinference.com/v1",
+      "OPENAI_MODEL": "glm-5.2"
+    },
+    "format": "refit.application-export.v1",
+    "instructions": "",
+    "integrity_sha256": "sha256:fc26bbf0f2d513791343416e80862bbb982a1b42be4d9a465bf2f11f95644af3",
+    "model": "glm-5.2",
+    "module": "agent",
+    "seam": "openai-env",
+    "source_sha256": "sha256:e2aef56bd656624571a235c3ca28478872f8e8c8d484efa7fd8a1b168d1c018e"
+  },
+  "events": [
+    {
+      "details": {},
+      "seq": 2,
+      "time": "2026-11-08T11:16:56.549766+00:00",
+      "type": "run_started"
+    },
+    {
+      "details": {
+        "seconds": 0.029
+      },
+      "seq": 3,
+      "time": "2026-11-08T11:16:56.579560+00:00",
+      "type": "runtime_ready"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "phase": "source_training"
+      },
+      "seq": 4,
+      "time": "2026-11-08T11:16:56.580607+00:00",
+      "type": "phase_started"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "model": "deepseek-v4.1-flash-1017",
+        "phase": "train"
+      },
+      "seq": 6,
+      "time": "2026-11-08T11:16:56.582805+00:00",
+      "type": "sandbox_started"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "model": "deepseek-v4.1-flash-1017",
+        "number": 1
+      },
+      "seq": 7,
+      "time": "2026-11-08T11:16:56.878986+00:00",
+      "type": "inference_requested"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "number": 1,
+        "seconds": 1.774
+      },
+      "seq": 8,
+      "time": "2026-11-08T11:16:58.653093+00:00",
+      "type": "inference_completed"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "phase": "train",
+        "receipt": {
+          "verified": true
+        }
+      },
+      "seq": 9,
+      "time": "2026-11-08T11:16:58.827881+00:00",
+      "type": "sandbox_cleanup"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "error": null,
+        "model": "deepseek-v4.1-flash-1017",
+        "model_requests": 1,
+        "passed": true,
+        "phase": "train",
+        "verdict": {
+          "stdout_matches": true
+        }
+      },
+      "seq": 10,
+      "time": "2026-11-08T11:16:58.829035+00:00",
+      "type": "case_completed"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "passed": 1,
+        "phase": "source_training",
+        "total": 1
+      },
+      "seq": 11,
+      "time": "2026-11-08T11:16:58.829960+00:00",
+      "type": "phase_completed"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "phase": "target_training"
+      },
+      "seq": 12,
+      "time": "2026-11-08T11:16:58.830806+00:00",
+      "type": "phase_started"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "model": "glm-5.2",
+        "phase": "train"
+      },
+      "seq": 14,
+      "time": "2026-11-08T11:16:58.832767+00:00",
+      "type": "sandbox_started"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "model": "glm-5.2",
+        "number": 2
+      },
+      "seq": 15,
+      "time": "2026-11-08T11:16:59.088133+00:00",
+      "type": "inference_requested"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "number": 2,
+        "seconds": 1.114
+      },
+      "seq": 16,
+      "time": "2026-11-08T11:17:00.201773+00:00",
+      "type": "inference_completed"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "phase": "train",
+        "receipt": {
+          "verified": true
+        }
+      },
+      "seq": 17,
+      "time": "2026-11-08T11:17:00.397525+00:00",
+      "type": "sandbox_cleanup"
+    },
+    {
+      "details": {
+        "case": "even_train",
+        "error": null,
+        "model": "glm-5.2",
+        "model_requests": 1,
+        "passed": true,
+        "phase": "train",
+        "verdict": {
+          "stdout_matches": true
+        }
+      },
+      "seq": 18,
+      "time": "2026-11-08T11:17:00.398872+00:00",
+      "type": "case_completed"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "passed": 1,
+        "phase": "target_training",
+        "total": 1
+      },
+      "seq": 19,
+      "time": "2026-11-08T11:17:00.399907+00:00",
+      "type": "phase_completed"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "phase": "source_validation"
+      },
+      "seq": 20,
+      "time": "2026-11-08T11:17:00.400816+00:00",
+      "type": "phase_started"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "model": "deepseek-v4.1-flash-1017",
+        "phase": "validation"
+      },
+      "seq": 22,
+      "time": "2026-11-08T11:17:00.403007+00:00",
+      "type": "sandbox_started"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "model": "deepseek-v4.1-flash-1017",
+        "number": 3
+      },
+      "seq": 23,
+      "time": "2026-11-08T11:17:00.653392+00:00",
+      "type": "inference_requested"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "number": 3,
+        "seconds": 0.926
+      },
+      "seq": 24,
+      "time": "2026-11-08T11:17:01.579010+00:00",
+      "type": "inference_completed"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "phase": "validation",
+        "receipt": {
+          "verified": true
+        }
+      },
+      "seq": 25,
+      "time": "2026-11-08T11:17:01.758254+00:00",
+      "type": "sandbox_cleanup"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "error": null,
+        "model": "deepseek-v4.1-flash-1017",
+        "model_requests": 1,
+        "passed": true,
+        "phase": "validation",
+        "verdict": {
+          "stdout_matches": true
+        }
+      },
+      "seq": 26,
+      "time": "2026-11-08T11:17:01.760735+00:00",
+      "type": "case_completed"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "passed": 1,
+        "phase": "source_validation",
+        "total": 1
+      },
+      "seq": 27,
+      "time": "2026-11-08T11:17:01.761851+00:00",
+      "type": "phase_completed"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "phase": "validation"
+      },
+      "seq": 28,
+      "time": "2026-11-08T11:17:01.762846+00:00",
+      "type": "phase_started"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "model": "glm-5.2",
+        "phase": "validation"
+      },
+      "seq": 30,
+      "time": "2026-11-08T11:17:01.765273+00:00",
+      "type": "sandbox_started"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "model": "glm-5.2",
+        "number": 4
+      },
+      "seq": 31,
+      "time": "2026-11-08T11:17:02.026118+00:00",
+      "type": "inference_requested"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "number": 4,
+        "seconds": 1.163
+      },
+      "seq": 32,
+      "time": "2026-11-08T11:17:03.189271+00:00",
+      "type": "inference_completed"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "phase": "validation",
+        "receipt": {
+          "verified": true
+        }
+      },
+      "seq": 33,
+      "time": "2026-11-08T11:17:03.383921+00:00",
+      "type": "sandbox_cleanup"
+    },
+    {
+      "details": {
+        "case": "odd_validation",
+        "error": null,
+        "model": "glm-5.2",
+        "model_requests": 1,
+        "passed": true,
+        "phase": "validation",
+        "verdict": {
+          "stdout_matches": true
+        }
+      },
+      "seq": 34,
+      "time": "2026-11-08T11:17:03.385472+00:00",
+      "type": "case_completed"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "passed": 1,
+        "phase": "validation",
+        "total": 1
+      },
+      "seq": 35,
+      "time": "2026-11-08T11:17:03.386763+00:00",
+      "type": "phase_completed"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "phase": "source_holdout"
+      },
+      "seq": 36,
+      "time": "2026-11-08T11:17:03.387912+00:00",
+      "type": "phase_started"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "model": "deepseek-v4.1-flash-1017",
+        "phase": "holdout"
+      },
+      "seq": 38,
+      "time": "2026-11-08T11:17:03.390359+00:00",
+      "type": "sandbox_started"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "model": "deepseek-v4.1-flash-1017",
+        "number": 5
+      },
+      "seq": 39,
+      "time": "2026-11-08T11:17:03.635013+00:00",
+      "type": "inference_requested"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "number": 5,
+        "seconds": 0.755
+      },
+      "seq": 40,
+      "time": "2026-11-08T11:17:04.390129+00:00",
+      "type": "inference_completed"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "phase": "holdout",
+        "receipt": {
+          "verified": true
+        }
+      },
+      "seq": 41,
+      "time": "2026-11-08T11:17:04.592352+00:00",
+      "type": "sandbox_cleanup"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "error": null,
+        "model": "deepseek-v4.1-flash-1017",
+        "model_requests": 1,
+        "passed": true,
+        "phase": "holdout",
+        "verdict": {
+          "stdout_matches": true
+        }
+      },
+      "seq": 42,
+      "time": "2026-11-08T11:17:04.593937+00:00",
+      "type": "case_completed"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017",
+        "passed": 1,
+        "phase": "source_holdout",
+        "total": 1
+      },
+      "seq": 43,
+      "time": "2026-11-08T11:17:04.595226+00:00",
+      "type": "phase_completed"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "phase": "original_holdout"
+      },
+      "seq": 44,
+      "time": "2026-11-08T11:17:04.596425+00:00",
+      "type": "phase_started"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "model": "glm-5.2",
+        "phase": "holdout"
+      },
+      "seq": 46,
+      "time": "2026-11-08T11:17:04.599123+00:00",
+      "type": "sandbox_started"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "model": "glm-5.2",
+        "number": 6
+      },
+      "seq": 47,
+      "time": "2026-11-08T11:17:04.849447+00:00",
+      "type": "inference_requested"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "number": 6,
+        "seconds": 1.082
+      },
+      "seq": 48,
+      "time": "2026-11-08T11:17:05.931828+00:00",
+      "type": "inference_completed"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "phase": "holdout",
+        "receipt": {
+          "verified": true
+        }
+      },
+      "seq": 49,
+      "time": "2026-11-08T11:17:06.108170+00:00",
+      "type": "sandbox_cleanup"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "error": null,
+        "model": "glm-5.2",
+        "model_requests": 1,
+        "passed": true,
+        "phase": "holdout",
+        "verdict": {
+          "stdout_matches": true
+        }
+      },
+      "seq": 50,
+      "time": "2026-11-08T11:17:06.109916+00:00",
+      "type": "case_completed"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "passed": 1,
+        "phase": "original_holdout",
+        "total": 1
+      },
+      "seq": 51,
+      "time": "2026-11-08T11:17:06.111264+00:00",
+      "type": "phase_completed"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "model": "glm-5.2",
+        "phase": "fresh_export"
+      },
+      "seq": 53,
+      "time": "2026-11-08T11:17:06.114180+00:00",
+      "type": "sandbox_started"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "model": "glm-5.2",
+        "number": 7
+      },
+      "seq": 54,
+      "time": "2026-11-08T11:17:06.382215+00:00",
+      "type": "inference_requested"
+    },
+    {
+      "details": {
+        "model": "glm-5.2",
+        "number": 7,
+        "seconds": 1.069
+      },
+      "seq": 55,
+      "time": "2026-11-08T11:17:07.451260+00:00",
+      "type": "inference_completed"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "phase": "fresh_export",
+        "receipt": {
+          "verified": true
+        }
+      },
+      "seq": 56,
+      "time": "2026-11-08T11:17:07.632505+00:00",
+      "type": "sandbox_cleanup"
+    },
+    {
+      "details": {
+        "case": "even_holdout",
+        "error": null,
+        "model": "glm-5.2",
+        "model_requests": 1,
+        "passed": true,
+        "phase": "fresh_export",
+        "verdict": {
+          "stdout_matches": true
+        }
+      },
+      "seq": 57,
+      "time": "2026-11-08T11:17:07.634486+00:00",
+      "type": "case_completed"
+    },
+    {
+      "details": {
+        "model_requests": 7,
+        "status": "compatible_on_sample"
+      },
+      "seq": 58,
+      "time": "2026-11-08T11:17:07.635901+00:00",
+      "type": "terminal"
+    },
+    {
+      "details": {
+        "model": "deepseek-v4.1-flash-1017"
+      },
+      "seq": 59,
+      "time": "2026-11-08T11:17:32.458079+00:00",
+      "type": "diagnostic_requested"
+    },
+    {
+      "details": {
+        "model_requests": 1,
+        "status": "verified"
+      },
+      "seq": 60,
+      "time": "2026-11-08T11:17:35.395946+00:00",
+      "type": "diagnostic_finished"
+    }
+  ],
+  "limitation": "Recorded read-only evidence, not a new live execution. One synthetic Python agent and bounded diagnostic; no unrestricted third-party agent support.",
+  "provenance": "Fresh authenticated Vultr production execution, 2026-11-08. Published after removing private account, full host cleanup metadata and model prompts.",
+  "public_sample": true,
+  "recorded": true,
+  "run": {
+    "budget": 7,
+    "configuration_sha256": "sha256:f6062be3c486fee7546638a9ea9f1c331b98c88dc26b539aab26fa16f922d2e4",
+    "demo": true,
+    "diagnostic": {
+      "completed_at": "2026-11-08T11:17:35.395934+00:00",
+      "cross_check": {
+        "error": null,
+        "expected": {
+          "holdout_improvement": null,
+          "target_failed_cases": [
+            "alpha_206b2fcc78",
+            "delta_206b2fcc78"
+          ],
+          "training_regression_delta": 5
+        },
+        "observed": {
+          "holdout_improvement": null,
+          "target_failed_cases": [
+            "alpha_206b2fcc78",
+            "delta_206b2fcc78"
+          ],
+          "training_regression_delta": 5
+        },
+        "sandbox": {
+          "cleanup_evidence": {
+            "observed_at": "2026-11-08T11:17:35.395377+00:00",
+            "reason": "verified_absent",
+            "verified": true,
+            "version": 1
+          },
+          "code_sha256": "f52960c05d8f3d65410d1265bb781a4a243259407f10a5529acf9b1447c591b2",
+          "container_created": true,
+          "container_removed_verified": true,
+          "duration_ms": 739,
+          "exit_code": 0,
+          "image": "python:3.11-alpine",
+          "input_sha256": "73adfc8ce322ac758fdae7b889180508e8beadb9b27db8c552a680f6ee3c8730",
+          "label": "diagnostic_unseen_check",
+          "ledger_event_count": 3,
+          "ledger_final_sha256": "25aeaacdc25ac3488c543b0d0d6b4bbc9a4acbbf686ec3f21476d6e8a3acb5f7",
+          "ledger_valid": true,
+          "policy": {
+            "capabilities": "dropped_all",
+            "cpus": 0.5,
+            "image": "python:3.11-alpine",
+            "memory_mb": 128,
+            "network": "none",
+            "no_new_privileges": true,
+            "output_limit_bytes_per_stream": 65536,
+            "pids_limit": 32,
+            "readonly_root": true,
+            "runtime": "runsc",
+            "timeout_seconds": 12,
+            "user": "65534:65534"
+          },
+          "runtime": "runsc",
+          "runtime_identity": {
+            "docker_runtime": "runsc",
+            "registered_binary": "/usr/bin/runsc",
+            "version": "runsc version release-20261102.0\nspec: 1.2.1"
+          },
+          "status": "passed",
+          "stderr": "",
+          "stdout": "{\"training_regression_delta\": 5, \"target_failed_cases\": [\"alpha_206b2fcc78\", \"delta_206b2fcc78\"], \"holdout_improvement\": null}\n",
+          "timed_out": false,
+          "warning": "gVisor isolation requires runtime verification on the target Vultr host."
+        }
+      },
+      "expected": {
+        "holdout_improvement": null,
+        "target_failed_cases": [],
+        "training_regression_delta": 0
+      },
+      "generated_code": "import json\n\nwith open('/refit-input/input.json', 'r', encoding='utf-8') as f:\n    data = json.load(f)\n\nphases = data.get('phases', {})\nsource_training = phases.get('source_training', {})\ntarget_training = phases.get('target_training', {})\n\ntraining_regression_delta = max(\n    0,\n    source_training.get('passed', 0) - target_training.get('passed', 0)\n)\n\ntarget_failed_cases = sorted(set(target_training.get('failed', [])))\n\noriginal_holdout = phases.get('original_holdout')\nrepaired_holdout = phases.get('repaired_holdout')\n\nif original_holdout is not None and repaired_holdout is not None:\n    holdout_improvement = (\n        repaired_holdout.get('passed', 0) - original_holdout.get('passed', 0)\n    )\nelse:\n    holdout_improvement = None\n\nresult = {\n    'training_regression_delta': training_regression_delta,\n    'target_failed_cases': target_failed_cases,\n    'holdout_improvement': holdout_improvement,\n}\n\nprint(json.dumps(result))",
+      "generator_model": "deepseek-v4.1-flash-1017",
+      "kind": "vultr_model_generated_python_diagnostic",
+      "limitations": "Supplementary migration diagnosis, not business acceptance. Existing business tests use synthetic state.",
+      "migration_id": "app-a0e10e54c00c4aa1",
+      "model_requests": 1,
+      "observed": {
+        "holdout_improvement": null,
+        "target_failed_cases": [],
+        "training_regression_delta": 0
+      },
+      "requested_at": "2026-11-08T11:17:32.458074+00:00",
+      "sandbox": {
+        "cleanup_evidence": {
+          "observed_at": "2026-11-08T11:17:34.609008+00:00",
+          "reason": "verified_absent",
+          "verified": true,
+          "version": 1
+        },
+        "code_sha256": "f52960c05d8f3d65410d1265bb781a4a243259407f10a5529acf9b1447c591b2",
+        "container_created": true,
+        "container_removed_verified": true,
+        "duration_ms": 687,
+        "exit_code": 0,
+        "image": "python:3.11-alpine",
+        "input_sha256": "3c89f8e3d9b649171c42d1c29f6cc9751bb83bf8c35624ca983cc72a54040b62",
+        "label": "model_generated_diagnostic",
+        "ledger_event_count": 3,
+        "ledger_final_sha256": "02b94102f997cf034c847d535f1ed936bad9f11154e33a92213133e348679480",
+        "ledger_valid": true,
+        "policy": {
+          "capabilities": "dropped_all",
+          "cpus": 0.5,
+          "image": "python:3.11-alpine",
+          "memory_mb": 128,
+          "network": "none",
+          "no_new_privileges": true,
+          "output_limit_bytes_per_stream": 65536,
+          "pids_limit": 32,
+          "readonly_root": true,
+          "runtime": "runsc",
+          "timeout_seconds": 12,
+          "user": "65534:65534"
+        },
+        "runtime": "runsc",
+        "runtime_identity": {
+          "docker_runtime": "runsc",
+          "registered_binary": "/usr/bin/runsc",
+          "version": "runsc version release-20261102.0\nspec: 1.2.1"
+        },
+        "status": "passed",
+        "stderr": "",
+        "stdout": "{\"training_regression_delta\": 0, \"target_failed_cases\": [], \"holdout_improvement\": null}\n",
+        "timed_out": false,
+        "warning": "gVisor isolation requires runtime verification on the target Vultr host."
+      },
+      "scope": "measured_training_only",
+      "source_domain": "application",
+      "status": "verified",
+      "validation_error": null,
+      "verified": true
+    },
+    "execution_seconds": 11.085,
+    "export_available": true,
+    "finished_at": "2026-11-08T11:17:07.635890+00:00",
+    "id": "demo-diagnostic-2026-11-08",
+    "import": {
+      "discovery": {
+        "runtime": "python"
+      },
+      "repository": "Recorded classification agent (synthetic)"
+    },
+    "model_requests": 7,
+    "production_migration_id": "app-a0e10e54c00c4aa1",
+    "recorded": true,
+    "source": "deepseek-v4.1-flash-1017",
+    "started_at": "2026-11-08T11:16:56.548046+00:00",
+    "status": "compatible_on_sample",
+    "target": "glm-5.2",
+    "verification": [
+      {
+        "case": "even_holdout",
+        "passed": true
+      }
+    ]
+  }
+}

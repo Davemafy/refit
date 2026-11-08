@@ -82,6 +82,16 @@ try {
   assert.equal(await page.locator(".trace-entry[aria-pressed=true]").getAttribute("data-seq"),chosen);
   await page.screenshot({path:output+"/"+mode+"-trace.jpg",type:"jpeg",quality:66});
  }
+ const challenge = await page.request.get(origin+"/api/application/challenge1-demo");
+ if(challenge.ok()){
+  const published = await challenge.json();
+  assert.equal(published.recorded,true);
+  assert.equal(published.run.diagnostic.status,"verified");
+  await page.goto(origin+"/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=diagnostic");
+  await page.locator(".evidence-inspector").getByText("Vultr-generated Python").waitFor();
+  assert.ok(await page.locator(".evidence-inspector").getByText("Observed stdout").count()>0);
+  await page.screenshot({path:output+"/production-challenge1-diagnostic.jpg",type:"jpeg",quality:82});
+ }
  await page.goto(origin+"/app/runs");
  await page.getByRole("heading",{name:"Runs",exact:true}).waitFor();
  await page.keyboard.press("Control+k");

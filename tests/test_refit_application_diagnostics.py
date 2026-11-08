@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.api_service import ApiProblem
-from scripts.application_http import ApplicationService, now
+from scripts.application_http import ApplicationService, public_challenge_one, now
 from scripts.sandbox_diagnostics import diagnostics_input, expected_diagnostic
 from scripts.sandbox_runner import DockerSandbox, SandboxUnavailable
 
@@ -165,6 +165,24 @@ class DiagnosticAccountTests(unittest.TestCase):
         diag = restored.get(RUN_ID, self.owner)[0]["diagnostic"]
         self.assertEqual(diag["status"], "interrupted")
         self.assertEqual(diag["error"], "service_restarted_no_automatic_retry")
+
+
+class PublicChallengeProofTests(unittest.TestCase):
+    def test_recorded_production_evidence_matches_observed_outputs(self):
+        record = public_challenge_one()
+        self.assertTrue(record["recorded"])
+        self.assertTrue(record["public_sample"])
+        run = record["run"]
+        self.assertEqual(run["model_requests"], 7)
+        diagnostic = run["diagnostic"]
+        self.assertEqual(diagnostic["status"], "verified")
+        self.assertEqual(diagnostic["model_requests"], 1)
+        for item in (diagnostic["sandbox"], diagnostic["cross_check"]["sandbox"]):
+            self.assertEqual(item["runtime"], "runsc")
+            self.assertTrue(item["container_removed_verified"])
+            self.assertEqual(item["exit_code"], 0)
+        self.assertEqual(json.loads(diagnostic["sandbox"]["stdout"]), diagnostic["expected"])
+        self.assertEqual(json.loads(diagnostic["cross_check"]["sandbox"]["stdout"]), diagnostic["cross_check"]["expected"])
 
 
 class GvisorIdentityTests(unittest.TestCase):

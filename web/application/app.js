@@ -32,7 +32,8 @@ const symbols={
 };
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
-const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:"",runsPeriod:"all"};
+const C1_DEMO_ID="demo-diagnostic-2026-11-08";
+const state={username:null,guest:false,demo:null,c1demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:"",runsPeriod:"all"};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -105,8 +106,9 @@ function navigate(to,replace=false){
 async function refreshWorkspace(){
  if(state.guest){
    if(!state.demo)state.demo=await req("/demo");
+   if(!state.c1demo)state.c1demo=await req("/challenge1-demo");
    state.projects=[];
-   state.runs=[state.demo.run];
+   state.runs=[state.c1demo.run,state.demo.run];
    return;
  }
  const [projects,runs]=await Promise.all([req("/projects"),req("/runs")]);
@@ -589,7 +591,7 @@ function evidenceDetail(item){
    field("Cleanup reason",d.receipt?.reason),field("Observed",d.receipt?.observed_at),
    field("Container",d.receipt?.container_name||d.container));
  }else if(item.type==="diagnostic"){
-  const worker=d.sandbox||{},policy=worker.ledger?.[0]?.event?.policy||{};
+  const worker=d.sandbox||{},policy=worker.policy||worker.ledger?.[0]?.event?.policy||{};
   const challenge=d.cross_check||{},second=challenge.sandbox||{};
   fields.push(field("Migration run",d.migration_id),
    field("Vultr model",d.generator_model),field("Model requests",d.model_requests),
@@ -873,10 +875,11 @@ function runLog(events){if(!events.length)return "No events received yet.";
  }).join("\n");
 }
 async function showRun(id,refreshOnly=false){
- if(state.guest && id!=="demo-python-2026-11-07"){
+ if(state.guest && !["demo-python-2026-11-07",C1_DEMO_ID].includes(id)){
    header("Private run");page.innerHTML=guestNote+empty("Private run","Sign in to view your saved migrations.",'<a class="btn primary" href="/login?next='+encodeURIComponent(location.pathname)+'">Sign in</a>');return;
  }
- const [run,evidence]=state.guest ? [state.demo.run,state.demo] :
+ const publicRecord=id===C1_DEMO_ID?state.c1demo:state.demo;
+ const [run,evidence]=state.guest ? [publicRecord.run,publicRecord] :
    await Promise.all([req("/runs/"+id),req("/runs/"+id+"/evidence")]);
  if(location.pathname!=="/app/runs/"+id)return;
  state.runRevision++;
@@ -944,9 +947,10 @@ function subscribe(id){
  source.onerror=()=>{};
 }
 async function download(id,type){
- if(state.guest && id!=="demo-python-2026-11-07")throw Error("Sign in to access private artifacts.");
+ if(state.guest && !["demo-python-2026-11-07",C1_DEMO_ID].includes(id))throw Error("Sign in to access private artifacts.");
+ const publicRecord=id===C1_DEMO_ID?state.c1demo:state.demo;
  const data=state.guest
-   ?(type==="artifact"?state.demo.artifact:state.demo)
+   ?(type==="artifact"?publicRecord.artifact:publicRecord)
    :await req("/runs/"+id+"/"+type);
  if(!data)throw Error("This example has no verified artifact.");
  const body=JSON.stringify(data,null,2),file=new Blob([body],{type:"application/json"});
@@ -988,7 +992,7 @@ async function show(){
  if(pathname==="/app/runs"){await runs();return;}
  if(pathname==="/app/evidence"){await evidenceIndex();return;}
  if(pathname==="/app/settings"){await settings();return;}
- const match=pathname.match(/^\/app\/runs\/(app-[0-9a-f]{16}|demo-python-2026-11-07)$/);
+ const match=pathname.match(/^\/app\/runs\/(app-[0-9a-f]{16}|demo-python-2026-11-07|demo-diagnostic-2026-11-08)$/);
  if(match){
   const query=new URLSearchParams(location.search);
   state.tab=query.get("view")||"evaluation";

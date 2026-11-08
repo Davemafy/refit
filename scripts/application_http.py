@@ -126,6 +126,20 @@ def public_example():
             "recorded": True, "public_sample": True}
 
 
+def public_challenge_one():
+    """Allowlisted sanitized evidence from a real production run.
+
+    The published file is a frozen redacted snapshot: never load public
+    examples from private account state or run the model on a guest GET.
+    """
+    path = ROOT / "data/evaluations/challenge1-production-diagnostic-2026-11-08.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if (record.get("public_sample") is not True or record.get("recorded") is not True
+            or record.get("run", {}).get("id") != "demo-diagnostic-2026-11-08"):
+        raise ValueError("Public Challenge 1 evidence provenance is invalid")
+    return record
+
+
 class ApplicationService:
     def __init__(self, directory, token, image, daily_budget=24, public_origin=None,
                  account_budget=DEFAULT_ACCOUNT_BUDGET, max_active=1, review_passes=None):
@@ -754,6 +768,8 @@ class ApplicationHandler(RefitHandler):
                 raise ApiProblem(503, "revision_unavailable", "No deployed revision was configured.")
             if url.path == "/api/application/demo" and self.public():
                 return self._send(200, public_example())
+            if url.path == "/api/application/challenge1-demo" and self.public():
+                return self._send(200, public_challenge_one())
             if url.path == "/api/application/session":
                 if not self.public():
                     return self._send(200, {"mode": "operator"})
