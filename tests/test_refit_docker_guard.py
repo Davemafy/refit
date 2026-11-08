@@ -90,7 +90,7 @@ class DockerGuardPolicyTests(unittest.TestCase):
                 "#!/usr/bin/python3\nimport sys\n"
                 "if sys.argv[1] == 'info': print('\"fake-daemon\"',flush=True)\n"
                 "elif sys.argv[1] == 'run':\n"
-                " for line in sys.stdin: print(line.strip(),flush=True)\n"
+                " for line in sys.stdin: print(line.strip(),flush=True); break\n"
                 "else: print('unused',flush=True)\n"
             )
             fake.chmod(0o755)
@@ -128,9 +128,13 @@ class DockerGuardPolicyTests(unittest.TestCase):
                         ready, _, _ = select.select([interactive.stdout], [], [], 4)
                         self.assertTrue(ready, "Worker frame stalled until stdin EOF")
                         self.assertEqual(interactive.stdout.readline(), b"first frame" + bytes([10]))
+                        # The child has exited but stdin is STILL OPEN.
+                        # Previously the daemon BufferedReader thread aborted
+                        # the client interpreter with SIGABRT (-6).
+                        self.assertEqual(interactive.wait(timeout=5), 0,
+                                         "Broker must exit cleanly with stdin still open")
                     finally:
                         interactive.stdin.close()
-                        interactive.wait(timeout=5)
                         interactive.stdout.close()
                         interactive.stderr.close()
                     self.assertEqual(interactive.returncode, 0)
