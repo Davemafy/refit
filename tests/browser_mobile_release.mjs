@@ -38,10 +38,11 @@ try{
     const link=page.getByRole("link",{name:"Open workspace",exact:true});
     assert.equal(await link.isVisible(),true);
     const box=await link.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=size);
-    assert.equal(await page.getByRole("link",{name:"Documentation"}).isVisible(),false);
-    const compat=await page.locator(".compatibility-panel p").boundingBox();
-    assert.ok(compat.width>=200,"compatibility squeezed: "+compat.width);
-    assert.ok(compat.x>=0&&compat.x+compat.width<=size);
+    assert.equal(await page.locator(".m-nav").isVisible(),false,"Desktop navigation should collapse");
+    const preview=await page.locator(".m-product-preview").boundingBox();
+    assert.ok(preview&&preview.width>=size-40,"Recorded evidence preview squeezed: "+JSON.stringify(preview));
+    assert.ok(preview.x>=0&&preview.x+preview.width<=size,"Preview clips the mobile viewport");
+    assert.equal(await page.locator(".m-feature").count(),3,"All illustrated steps remain present");
    });
    await capture("runs","/app/runs",size,async()=>{
     assert.equal(await page.locator(".run-table-desktop").isVisible(),false);
@@ -70,5 +71,5 @@ try{
    assert.ok(inp.y<480,"Form delayed: "+inp.y);
  });
  assert.deepEqual(jsErrors,[]);
- console.log(JSON.stringify({status:"pass",browser:"Firefox",screens:checks.length,widths:[320,360,390],noClippedControls:true,marketingNavigation:true,compatibilityReadable:true,mobileRunHistory:true,guestStateDistinct:true,authFormAboveFold:true,paidRequests:0}));
+ console.log(JSON.stringify({status:"pass",browser:"Firefox",screens:checks.length,widths:[320,360,390],noClippedControls:true,marketingNavigation:true,previewReadable:true,mobileRunHistory:true,guestStateDistinct:true,authFormAboveFold:true,paidRequests:0}));
 }finally{await browser?.close();backend.kill("SIGKILL");}
