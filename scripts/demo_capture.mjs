@@ -8,7 +8,7 @@ fs.mkdirSync(outdir, { recursive: true });
 const story = [];
 // 2560x1440 source, rasterized at high resolution before 1920x1080 delivery.
 const viewport = { width: 2560, height: 1440 };
-const visualZoom = 4 / 3;
+const visualZoom = 1.6; // 1600px effective layout, rendered at 2560px native source
 const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 const context = await browser.newContext({ viewport, screen: viewport, deviceScaleFactor: 1,
   ignoreHTTPSErrors: true, reducedMotion: 'no-preference', colorScheme: 'dark',
@@ -121,21 +121,29 @@ async function clickAt(locator,label) {
     if(r){r.style.opacity='0';r.style.transform=r.style.transform.replace('scale(1)','scale(1.5)');}
   });
 }
-async function zoomOn(locator,label,scale=1.31) {
+async function zoomOn(locator,label,requestedScale=1.12) {
   const b=await locator.boundingBox();if(!b)return;
-  const x=b.x+b.width/2,y=b.y+b.height/2;
-  const dx=Math.max(-230,Math.min(230,(viewport.width/2-x)*0.18));
-  const dy=Math.max(-110,Math.min(110,(viewport.height/2-y)*0.12));
+  // Camera anchors must remain within the visible region even for tall investigation panels.
+  const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
+  const scale=Math.min(1.12,Math.max(1.07,requestedScale));
+  const x=clamp(b.x+Math.min(b.width*.42,viewport.width*.40),viewport.width*.32,viewport.width*.68);
+  const y=clamp(b.y+Math.min(b.height*.18,viewport.height*.28),viewport.height*.26,viewport.height*.73);
+  const dx=clamp((viewport.width/2-x)*.14,-100,100);
+  const dy=clamp((viewport.height/2-y)*.14,-70,70);
   await page.evaluate(({x,y,dx,dy,scale})=>{
     const shell=document.querySelector('.shell');
-    if(shell){const z=parseFloat(shell.style.zoom)||1;shell.style.transformOrigin=(x/z)+'px '+(y/z)+'px';shell.style.transform='translate('+(dx/z)+'px,'+(dy/z)+'px) scale('+scale+')';}
+    if(shell){
+      const z=parseFloat(shell.style.zoom)||1;
+      shell.style.transformOrigin=(x/z)+'px '+(y/z)+'px';
+      shell.style.transform='translate('+(dx/z)+'px,'+(dy/z)+'px) scale('+scale+')';
+    }
   },{x,y,dx,dy,scale});
-  mark('zoom-in',{focus:label,scale,x,y}); await sleep(2300);
+  mark('zoom-in',{focus:label,scale,x,y});await sleep(2200);
   await page.evaluate(()=>{
     const shell=document.querySelector('.shell');
     if(shell)shell.style.transform='none';
   });
-  mark('zoom-out',{focus:label});await sleep(930);
+  mark('zoom-out',{focus:label});await sleep(920);
 }
 async function safeNav(href,label,hold=2700) {
   await page.evaluate(()=>{
