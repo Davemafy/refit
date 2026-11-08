@@ -206,6 +206,12 @@ class ApplicationService:
         self.image = image
         self.daily_budget = daily_budget
         self.account_budget = account_budget
+        # Anonymous access is a first-class workspace, not a low-capacity demo.
+        # The shared daily broker ceiling still limits total provider requests.
+        self.guest_daily_allowance = int(os.getenv(
+            "REFIT_GUEST_DAILY_BUDGET", str(max(32, account_budget))))
+        if not 7 <= self.guest_daily_allowance <= 512:
+            raise ValueError("Guest daily request allowance must be within 7–512.")
         self.lock = threading.RLock()
         self.streams = threading.BoundedSemaphore(8)
         self.import_slots = threading.BoundedSemaphore(2)
@@ -406,7 +412,10 @@ class ApplicationService:
         day = now()[:10]
         # A public sample must not silently require a larger account allowance
         # than the same guest receives when importing their own application.
-        trial_budget = min(PUBLIC_TRIAL_BUDGET, self.account_budget)
+        trial_allowance = (self.guest_daily_allowance if
+                           not existing_owner or existing_owner.startswith("guest-")
+                           else self.account_budget)
+        trial_budget = min(PUBLIC_TRIAL_BUDGET, trial_allowance)
         if trial_budget < 7:
             raise ApiProblem(503, "trial_budget_unavailable",
                              "The current inference allowance cannot finish independent verification.")
@@ -500,7 +509,8 @@ class ApplicationService:
                                      "The review pass reserves one request for generated-code diagnosis.")
                 if any(run.get("owner") == owner for run in jobs):
                     raise ApiProblem(409, "review_run_used", "This review link has already submitted its live migration. Open Runs to review it.")
-            elif owner != "operator" and self.reserved(day, owner) + budget > self.account_budget:
+            elif owner != "operator" and self.reserved(day, owner) + budget > (
+                    self.guest_daily_allowance if owner.startswith("guest-") else self.account_budget):
                 raise ApiProblem(429, "account_budget_exhausted", "Your daily request allowance is reserved.")
             if not is_review and self.reserved(day) + budget > self.daily_budget:
                 raise ApiProblem(429, "daily_budget_exhausted", "This operator's daily request allowance is reserved.")
@@ -582,7 +592,8 @@ class ApplicationService:
                     raise ApiProblem(429, "review_budget_exhausted",
                                      "This reviewer pass has used its inference allowance.")
             else:
-                if owner != "operator" and self.reserved(day, owner) + 1 > self.account_budget:
+                if owner != "operator" and self.reserved(day, owner) + 1 > (
+                        self.guest_daily_allowance if owner.startswith("guest-") else self.account_budget):
                     raise ApiProblem(429, "account_budget_exhausted", "Your daily inference allowance is reserved.")
                 if self.reserved(day) + 1 > self.daily_budget:
                     raise ApiProblem(429, "daily_budget_exhausted", "The daily Vultr request budget is exhausted.")
@@ -992,7 +1003,7 @@ class ApplicationHandler(RefitHandler):
                         if expires > time.time()
                     }
                 runnable = (not quarantined and remaining >= 7 and
-                            self.service.account_budget >= 7)
+                            self.service.guest_daily_allowance >= 7)
                 reviewer_ready = (not quarantined and
                                   bool(valid_reviewers - used_review_owners))
                 reason = ("operator_review_required" if quarantined else
@@ -1039,7 +1050,9 @@ class ApplicationHandler(RefitHandler):
                         run.get("owner") == owner for run, _ in self.service.runs.values()))
                     review_expired = (is_review and
                         self.service.review_passes.get(owner, 0) <= time.time())
-                allowance = self.service.account_budget if owner != "operator" else self.service.daily_budget
+                allowance = (self.service.daily_budget if owner == "operator" else
+                             self.service.guest_daily_allowance if owner.startswith("guest-") else
+                             self.service.account_budget)
                 if is_review:
                     # Reserve one invocation for generated diagnostics while
                     # making the single-use migration contract visible in UI.
