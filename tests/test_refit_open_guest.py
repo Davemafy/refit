@@ -98,6 +98,23 @@ class NoAccountImportTests(unittest.TestCase):
         self.assertEqual(self.http("GET", "/runs/" + created[1]["id"], cookie=cookie_two, ip="198.51.100.9")[0], 404)
         self.assertEqual(self.http("GET", "", cookie=cookie)[1]["account_remaining_today"], 12)
 
+    def test_branded_domain_is_an_explicit_approved_guest_origin(self):
+        with patch.dict("os.environ", {"REFIT_PUBLIC_ORIGIN_ALIASES": "https://refit.davemafy.xyz"}):
+            with TemporaryDirectory() as folder:
+                approved = ApplicationService(
+                    Path(folder), TOKEN, "sandbox-image",
+                    daily_budget=64, account_budget=32, public_origin=ORIGIN)
+                self.assertEqual(
+                    approved.allowed_origins,
+                    {ORIGIN, "https://refit.davemafy.xyz"})
+                approved.process_lock.close()
+        self.service.allowed_origins.add("https://refit.davemafy.xyz")
+        status, result, cookie = self.http(
+            "POST", "/guest-session", {}, origin="https://refit.davemafy.xyz")
+        self.assertEqual(status, 201, result)
+        self.assertTrue(result["guest"])
+        self.assertIn("HttpOnly", cookie)
+
     def test_guest_budget_cannot_reset_by_clearing_cookie(self):
         accounts = self.service.accounts
         day = now()[:10]
