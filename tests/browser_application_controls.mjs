@@ -116,9 +116,29 @@ try {
   await page.getByRole("button", { name: "Open run" }).click();
   await page.locator("#outcome").filter({ hasText: "Interrupted" }).waitFor();
   await assertSafe(interrupted.id, "interrupted");
-  const quota = await start(429, 2);
+  // Capacity is now exposed BEFORE submission. Browser validation rejects
+  // a request above the remaining zero quota; the server must still enforce
+  // the same limit when bypassing the form.
+  await inspect(zip);
+  await page.getByRole("button", { name: "Run migration" }).waitFor();
+  const cap = await page.request.get(origin + "/api/application", {
+    headers: {Authorization: "Bearer " + token}
+  });
+  const limits = await cap.json();
+  assert.equal(limits.max_requests, 0);
+  assert.equal(limits.global_remaining_today, 0);
+  const budgetField = page.getByLabel("Maximum Vultr requests");
+  assert.equal(await budgetField.getAttribute("max"), "0");
+  await budgetField.fill("2");
+  assert.equal(await budgetField.evaluate(el => el.checkValidity()), false);
+  const quotaResponse = await page.request.post(origin + "/api/application/runs", {
+    headers: {Authorization: "Bearer " + token},
+    data: {import_id: "import-0000000000000000", source: "deepseek-v4.1-flash-1017",
+      target: "glm-5.2", budget: 2, authorize: true, setup}
+  });
+  assert.equal(quotaResponse.status(), 429);
+  const quota = await quotaResponse.json();
   assert.equal(quota.error.code, "daily_budget_exhausted");
-  await page.getByRole("alert").getByText("This operator's daily request allowance is reserved.").waitFor();
   console.log(JSON.stringify({ unsupported: true, cancelled: cancelled.id, interrupted: interrupted.id,
     quota: quota.error.code, inferenceRequests: 0 }));
 } finally {
