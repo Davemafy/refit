@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Release cleaned no-login GitHub and ZIP import UI with no duplicate CTA"
+  "reason": "Promote clean signup-free agent import with single primary action"
 }
