@@ -194,7 +194,7 @@ async function overview(){
    '<div class="workspace-start-copy"><h2>One model change. See what really happens.</h2>'+
    '<p>Run a real refund agent against two Vultr models. Watch the tool calls, authorization checks, sandbox cleanup and verification. No sign-in.</p>'+
    '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-refund">'+ico("arrow")+' Run refund agent</button>'+ 
-   '<button class="btn" type="button" data-action="new-agent">Import your own agent</button>'+
+   '<button class="btn" type="button" data-action="new-agent">Import your agent</button>'+
    '</div>'+
    '<p class="small sub">Sample orders are synthetic. Inference, tool decisions, state updates and verification are real.</p></div>'+
    illustratedAsset("programs")+'</section>'+
