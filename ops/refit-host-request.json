@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Validate no-login migration release with updated session-contract HTTPS acceptance"
+  "reason": "Promote login-free Vultr trial with corrected guest Firefox and HTTPS acceptance"
 }
