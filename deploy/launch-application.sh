@@ -104,6 +104,9 @@ EnvironmentFile=/etc/refit/application.env
 EnvironmentFile=-/etc/refit/application-public.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
+# Same-origin requests from either documented HTTPS ingress are valid.
+# Do not rely on client-supplied proxy headers to select the origin.
+Environment=REFIT_PUBLIC_ORIGIN_ALIASES=https://refit.davemafy.xyz
 Environment=REFIT_PUBLIC_TRIAL_ENABLED=1
 Environment=REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1
 Environment=REFIT_SANDBOX_RUNTIME=runsc
