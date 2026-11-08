@@ -110,8 +110,23 @@ try{
   await zoomOn(page.locator('#page'),'workspace overview',1.13);
   await safeNav('/app/agents','Agents',3000);
   await zoomOn(page.locator('#page'),'agent inventory',1.15);
+  const review=page.locator('#page button[data-action="run"][data-id="demo-python-2026-11-07"]').first();
+  if(await review.count() && await review.isVisible()) {
+    await clickAt(review,'Review recorded agent migration');await sleep(3000);
+    await zoomOn(page.locator('.page-lead'),'verified migration summary',1.2);
+    const trace=page.locator('button[data-action="tab"][data-tab="traces"]').first();
+    if(await trace.count() && await trace.isVisible()){
+      await clickAt(trace,'Inspect original tool traces');await sleep(2500);
+      await zoomOn(page.locator('#runPanel'),'observed execution traces',1.18);
+    }
+    const evidence=page.locator('button[data-action="tab"][data-tab="evidence"]').first();
+    if(await evidence.count() && await evidence.isVisible()){
+      await clickAt(evidence,'Inspect verification evidence');await sleep(2500);
+      await zoomOn(page.locator('#runPanel'),'independent verification',1.18);
+    }
+  }
   await safeNav('/app/runs','Runs',3200);
-  const runEntry=page.locator('#page a[href*="/app/runs/"]').first();
+  const runEntry=page.locator('#page button[data-action="run"]').first();
   if(await runEntry.count() && await runEntry.isVisible()) {
     await zoomOn(runEntry,'recorded migration row',1.22);
     await clickAt(runEntry,'Open recorded migration');await sleep(3300);
