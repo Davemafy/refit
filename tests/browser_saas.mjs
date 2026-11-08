@@ -39,8 +39,8 @@ try{
  await page.getByRole("heading",{name:/Change the model/}).waitFor();
  await page.screenshot({path:"artifacts/saas-ui/01-landing.png",fullPage:true});
  await page.goto(url+"/app");
- await page.getByRole("heading",{name:"Explore Refit"}).waitFor();
- await page.getByText(/Public, read-only preview/).first().waitFor();
+ await page.getByRole("heading",{name:"Explore a migration"}).waitFor();
+ await page.getByText(/Recorded migration|Public, read-only preview/).first().waitFor();
  await page.screenshot({path:"artifacts/saas-ui/00-guest-workspace.png",fullPage:true});
  await page.goto(url+"/app/agents/new");
  await page.getByRole("button",{name:/Inspect this agent/}).click();
@@ -129,6 +129,21 @@ try{
  await page.getByRole("button",{name:/Inspect agent/}).click();
  await page.getByRole("heading",{name:"Inspect your agent"}).waitFor();
  await page.locator(".fact .value").filter({hasText:/^python -m agent$/}).waitFor();
+ await page.setViewportSize({width:360,height:780});
+ await page.evaluate(()=>{
+   // Exercise the real 40-character revision shape even with ZIP fixtures.
+   document.querySelector(".repo-card-head .small.mono").textContent="dc833d0daa44f3a44822aee8b468dc40a3b377a9";
+ });
+ const inspectLayout=await page.evaluate(()=>{
+   const width=document.documentElement.clientWidth;
+   const relevant=[...document.querySelectorAll(".repo-card-head .small.mono,.fact .value,.repo-card-head h3")];
+   return {viewport:width,scroll:document.documentElement.scrollWidth,
+     outside:relevant.filter(el=>{const r=el.getBoundingClientRect();return r.right>width+1||r.left < -1;}).map(el=>el.textContent)};
+ });
+ assert.equal(inspectLayout.scroll,inspectLayout.viewport,"Inspection mobile viewport must fit");
+ assert.deepEqual(inspectLayout.outside,[],"Source revision and inspection fields must not clip");
+ await page.screenshot({path:"artifacts/saas-ui/15-inspection-360.png",fullPage:true});
+ await page.setViewportSize({width:1440,height:900});
  await page.getByLabel("Application boundary").selectOption("0");
  await page.screenshot({path:"artifacts/saas-ui/02-inspection.png",fullPage:true});
  await page.getByRole("button",{name:/Continue to configuration/}).click();
