@@ -132,3 +132,12 @@ body.replay-film .replay-provenance{display:none}
  .workbench.guest-session .overview-activity{margin-top:10px}
  .workbench.guest-session .overview-recent-heading{padding-block:10px}
 }
+
+
+@media(max-width:760px){
+ /* Two immediate actions instead of a tall hero above the evidence. */
+ .workbench.guest-session .workspace-start--visual{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;box-shadow:none;padding:0 0 12px;margin:0 0 5px}
+ .workbench.guest-session .workspace-start--visual h2,
+ .workbench.guest-session .workspace-start--visual p{display:none}
+ .workbench.guest-session .workspace-start--visual .workspace-start-actions{margin:0}
+}
