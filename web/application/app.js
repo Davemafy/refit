@@ -165,7 +165,7 @@ async function agents(){
 async function runs(){
  header("Runs");
  await refreshWorkspace();
- page.innerHTML=(state.guest?guestNote:"")+lead("Runs",state.guest?"Published example run; private user runs are never listed here.":"Migration history with actual inference, evaluation and sandbox evidence.",importButton)+'<section class="card">'+runTable(state.runs)+'</section>';
+ page.innerHTML=(state.guest?guestNote:"")+lead("Runs",state.guest?"Published example run; private user runs are never listed here.":"Migration history with actual inference, evaluation and sandbox evidence.",state.guest?"":importButton)+'<section class="card">'+runTable(state.runs)+'</section>';
 }
 async function evidenceIndex(){
  header("Evidence");
