@@ -49,10 +49,22 @@ jobs:
             }
             args+=(--expected-revision "$EXPECTED_APPLICATION_REVISION")
           fi
-          python -m scripts.smoke_platform_https \
-            --url https://80.240.30.92 \
-            "${args[@]}" \
-            --output /tmp/refit-https-smoke.json
+          # The push job may overlap a systemd release handoff.
+          # Retry a bounded number of real HTTPS checks; never hide a persistent outage.
+          for attempt in $(seq 1 10); do
+            if python -m scripts.smoke_platform_https \
+                --url https://80.240.30.92 \
+                "${args[@]}" \
+                --output /tmp/refit-https-smoke.json; then
+              echo "HTTPS production smoke passed on attempt $attempt"
+              break
+            fi
+            if (( attempt == 10 )); then
+              echo "HTTPS smoke still failing after ten production checks" >&2
+              exit 1
+            fi
+            sleep 8
+          done
       - name: Preserve external observations
         if: always()
         uses: actions/upload-artifact@v4
