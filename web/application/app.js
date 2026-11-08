@@ -446,8 +446,8 @@ async function flow(){
  const models=state.capabilities.models||[];
  const source=state.wizard.source||models[0]||"",target=state.wizard.target||models[1]||"";
  page.innerHTML=lead("Configure migration","Choose the source and replacement models, then supply independent evaluation cases.")+
- '<div class="flow-grid"><section class="card inner stack"><label class="field">Original model <span class="hint">The model used for baseline execution.</span><select class="control" id="source">'+models.map(m=>'<option '+(source===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
- '<label class="field">Replacement model <span class="hint">The model whose behavior will be verified.</span><select class="control" id="target">'+models.map(m=>'<option '+(target===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+'</option>').join("")+'</select></label>'+
+ '<div class="flow-grid"><section class="card inner stack"><label class="field">Original model <span class="hint">The model used for baseline execution.</span><select class="control" id="source">'+models.map(m=>'<option '+(source===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+(state.capabilities.experimental_models?.includes(m)?" · experimental":"")+'</option>').join("")+'</select></label>'+
+ '<label class="field">Replacement model <span class="hint">The model whose behavior will be verified.</span><select class="control" id="target">'+models.map(m=>'<option '+(target===m?"selected":"")+' value="'+safe(m)+'">'+safe(m)+(state.capabilities.experimental_models?.includes(m)?" · experimental":"")+'</option>').join("")+'</select></label>'+
  (d.preset?'<div class="hint-note">'+safe(d.evaluation||"Reviewed native evaluation preset will be used.")+'</div>':
   setupFields(d))+
  '<label class="field">Maximum Vultr requests<input type="number" id="budget" class="control" min="'+safe(minimum)+'" max="'+safe(remaining)+'" value="'+safe(budgetValue)+'" '+(!canVerify?"disabled":"")+'></label>'+
