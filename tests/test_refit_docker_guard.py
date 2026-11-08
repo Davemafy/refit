@@ -123,11 +123,11 @@ class DockerGuardPolicyTests(unittest.TestCase):
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, env=env)
                     try:
-                        interactive.stdin.write(b"first frame\\n")
+                        interactive.stdin.write(b"first frame" + bytes([10]))
                         interactive.stdin.flush()
                         ready, _, _ = select.select([interactive.stdout], [], [], 4)
                         self.assertTrue(ready, "Worker frame stalled until stdin EOF")
-                        self.assertEqual(interactive.stdout.readline(), b"first frame\\n")
+                        self.assertEqual(interactive.stdout.readline(), b"first frame" + bytes([10]))
                     finally:
                         interactive.stdin.close()
                         interactive.wait(timeout=5)
