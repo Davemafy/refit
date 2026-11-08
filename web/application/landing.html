@@ -3,93 +3,163 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#fbfaf7">
-  <meta name="description" content="Compare two models in your existing agent and verify its behavior before you switch.">
-  <title>Refit — Change the model. Keep the behavior.</title>
+  <meta name="theme-color" content="#0b0c0c">
+  <meta name="description" content="Refit tests how an existing AI agent behaves when you change its language model. Run, compare, adapt and export only when independent evidence passes.">
+  <meta property="og:title" content="Refit — Change the model. Prove what survived.">
+  <meta property="og:description" content="Migrate existing AI agents with observed tool calls, isolated execution, and independently verified exports.">
+  <meta property="og:type" content="website">
+  <title>Refit — Change the model. Prove what survived.</title>
   <link rel="stylesheet" href="/assets/ui.css">
   <link rel="stylesheet" href="/assets/marketing.css">
-  <script defer src="/assets/marketing.js"></script>
 </head>
 <body class="marketing">
-  <a href="#main" class="m-skip">Skip to content</a>
-  <header class="m-header">
-    <div class="m-width m-nav-layout">
-      <a class="m-brand" href="/" aria-label="Refit homepage">
-        <svg viewBox="0 0 24 24" width="25" height="25" fill="none" aria-hidden="true"><path d="M3 8h17m-4-4 4 4-4 4M21 16H4m4-4-4 4 4 4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Refit
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="/" aria-label="Refit home">
+        <svg viewBox="0 0 32 32" width="29" height="29" fill="none" aria-hidden="true">
+          <path d="M5.5 7H18a8 8 0 0 1 0 16H5.5" stroke="currentColor" stroke-width="4" stroke-linecap="square"/>
+          <path d="M13.5 16H25.5M20.5 11l5 5-5 5" stroke="#d9bb77" stroke-width="3" stroke-linecap="square"/>
+        </svg>
+        <span>refit</span>
       </a>
-      <nav class="m-nav" aria-label="Main navigation">
-        <a href="#how-it-works">How it works</a>
-        <a href="/docs">Docs</a>
-        <a href="https://github.com/Davemafy/refit">GitHub</a>
+      <nav class="desktop-nav" aria-label="Primary">
+        <a href="#how-it-works">Platform</a>
+        <a href="#sandbox">Isolation</a>
+        <a href="#evidence">Evidence</a>
+        <a href="/docs">Documentation</a>
+        <a href="https://github.com/Davemafy/refit" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
       </nav>
-      <a class="m-button m-primary" href="/app">Open workspace <span aria-hidden="true">↗</span></a>
+      <a class="nav-cta" href="/app">Open workspace <span aria-hidden="true">↗</span></a>
+      <details class="mobile-nav">
+        <summary aria-label="Open navigation"><span></span><span></span></summary>
+        <nav aria-label="Mobile navigation">
+          <a href="#how-it-works">Platform</a><a href="#sandbox">Isolation</a>
+          <a href="#evidence">Evidence</a><a href="/docs">Documentation</a>
+          <a href="https://github.com/Davemafy/refit">GitHub ↗</a>
+          <a href="/app">Open workspace ↗</a>
+        </nav>
+      </details>
     </div>
   </header>
+
   <main id="main">
-    <section class="m-hero m-width" aria-labelledby="m-title">
-      <div class="m-hero-copy">
-        <a class="m-label" href="#comparison">Model migration for agents <span aria-hidden="true">↘</span></a>
-        <h1 id="m-title">Change the model.<br>Keep the behavior.</h1>
-        <p>Bring the agent you already built. Compare two models in its original runtime and verify what changes before you ship.</p>
-        <div class="m-actions">
-          <a class="m-button m-primary" href="/app">Try a migration <span aria-hidden="true">↗</span></a>
-          <a class="m-button m-secondary" href="/app/runs/demo-python-2026-11-07">View a verified run <span aria-hidden="true">→</span></a>
-        </div>
-      </div>
-      <div class="m-hero-art" aria-hidden="true">
-        <svg viewBox="0 0 530 266" fill="none">
-          <defs>
-            <pattern id="hero-grid" width="22" height="22" patternUnits="userSpaceOnUse"><path d="M22 0H0v22" stroke="#e1e2e8"/></pattern>
-            <linearGradient id="hero-fade"><stop stop-color="white" stop-opacity="0"/><stop offset=".24" stop-color="white"/><stop offset=".76" stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient>
-            <mask id="hero-mask"><rect width="530" height="266" fill="url(#hero-fade)"/></mask>
-          </defs>
-          <g mask="url(#hero-mask)">
-            <rect x="0" y="22" width="530" height="222" fill="url(#hero-grid)"/>
-            <path d="M3 88h142l66 44h98l66-44h155M3 176h142l66-44m98 0 66 44h155" stroke="#7b8cd9" stroke-width="1.2"/>
-            <path d="M3 132h527" stroke="#a9b3e7" stroke-dasharray="3 5"/>
-            <g fill="#f0f2fc" stroke="#9ca9e4"><rect x="110" y="71" width="65" height="34" rx="5"/><rect x="110" y="159" width="65" height="34" rx="5"/><rect x="355" y="71" width="65" height="34" rx="5"/><rect x="355" y="159" width="65" height="34" rx="5"/></g>
-            <g stroke="#6579d6" stroke-width="1.5"><path d="M126 88h32m-32 88h32m213-88h32m-32 88h32"/></g>
-            <rect x="231" y="99" width="67" height="67" rx="10" fill="#263fc6"/>
-            <path d="M249 124h31l-6-6m6 6-6 6m6 11h-31l6-6m-6 6 6 6" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-          </g>
-        </svg>
-      </div>
-    </section>
-
-    <section class="m-preview-wrap m-width" id="comparison" aria-labelledby="preview-title">
-      <div class="m-preview">
-        <div class="m-preview-bar"><span><strong>Refit</strong><span class="m-divider" aria-hidden="true">/</span> Migration review</span><span class="m-recorded">Recorded run</span></div>
-        <div class="m-preview-layout">
-          <div class="m-preview-index">
-            <span>Evaluation</span>
-            <strong><span aria-hidden="true">⇄</span> Behavior comparison</strong>
-            <a href="/app/runs/demo-python-2026-11-07">Execution evidence <span aria-hidden="true">↗</span></a>
+    <section class="hero grid-plane">
+      <div class="grid-decoration deco-a" aria-hidden="true"></div>
+      <div class="grid-decoration deco-b" aria-hidden="true"></div>
+      <div class="grid-decoration deco-c" aria-hidden="true"></div>
+      <div class="hero-inner">
+        <div class="hero-content">
+          <div class="eyeline"><span class="status-spark"></span> Evidence-first agent migration <span class="eyeline-rule"></span> Built on Vultr</div>
+          <h1>Change the model.<br><span>Prove what survived.</span></h1>
+          <p class="hero-lede">Bring the agent you've already built. Refit runs the original and replacement models, compares real tool behavior, and verifies the result before you export.</p>
+          <div class="hero-actions">
+            <a class="button button-gold" href="/app">Explore Refit <span aria-hidden="true">↗</span></a>
+            <a class="button button-outline" href="#evidence">See the evidence <span aria-hidden="true">→</span></a>
           </div>
-          <div class="m-preview-main">
-            <div class="m-preview-heading">
-              <div><p>Python knowledge-base agent</p><h2 id="preview-title">Behavior comparison</h2></div>
-              <span class="m-verdict" id="previewState">Recorded evaluation</span>
+          <p class="hero-note"><span class="note-dot"></span> Guest access includes recorded evidence. Running a new migration requires authorization.</p>
+        </div>
+
+        <div class="hero-product" id="evidence" aria-label="Real recorded migration verification results">
+          <div class="product-bar">
+            <div class="product-bar-left"><span class="window-mark"><i></i><i></i><i></i></span><span>Execution / original agent framework</span></div>
+            <a href="https://github.com/Davemafy/refit/blob/main/docs/framework-evidence-2026-11-06.md" target="_blank" rel="noopener noreferrer">View source record <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="product-core">
+            <div class="product-topline">
+              <div><span class="micro-label">RECORDED EVALUATION</span><h2>What changed when the model changed?</h2><p>Same refund agent. Equivalent fresh scenarios. Three predeclared seeds.</p></div>
+              <span class="sample-pill"><span></span> Published result</span>
             </div>
-            <table class="m-results">
-              <thead><tr><th scope="col">Evaluation</th><th scope="col">Original<span id="previewSource"></span></th><th scope="col">Replacement<span id="previewTarget"></span></th></tr></thead>
-              <tbody id="previewCases"><tr><td colspan="3">Loading recorded results…</td></tr></tbody>
-            </table>
-            <div class="m-preview-footer"><span id="previewProvenance"></span><a href="/app/runs/demo-python-2026-11-07">Inspect the run <span aria-hidden="true">↗</span></a></div>
+            <div class="result-grid">
+              <div class="result result-source">
+                <span class="result-index">SOURCE MODEL</span>
+                <strong class="model-name">DeepSeek</strong>
+                <span class="result-num">24<span>/24</span></span>
+                <div class="result-track"><span style="width:100%"></span></div>
+                <span class="result-foot">Original behavior</span>
+              </div>
+              <div class="result result-replacement">
+                <span class="result-index">UNCHANGED REPLACEMENT</span>
+                <strong class="model-name">Muse</strong>
+                <span class="result-num">13<span>/24</span></span>
+                <div class="result-track"><span style="width:54.1667%"></span></div>
+                <span class="result-foot">11 cases no longer passed</span>
+              </div>
+              <div class="result result-adapted">
+                <span class="result-index">EXPORTED ADAPTATION</span>
+                <strong class="model-name">Muse <span class="model-plus">+ patch</span></strong>
+                <span class="result-num">24<span>/24</span></span>
+                <div class="result-track"><span style="width:100%"></span></div>
+                <span class="result-foot"><span class="verified-symbol">✓</span> Fresh original-runtime verification</span>
+              </div>
+            </div>
+            <div class="product-bottom"><span><b class="small-square"></b> Measured in the upstream agent runner · 201 real Vultr model requests</span><a href="https://github.com/Davemafy/refit/actions/runs/42257639812" target="_blank" rel="noopener noreferrer">Inspect original run ↗</a></div>
           </div>
+        </div>
+        <div class="hero-caption"><span>Real recorded results, not a simulated dashboard.</span><span>These samples do not guarantee performance for arbitrary agents.</span></div>
+      </div>
+    </section>
+
+    <section class="section-intro" id="how-it-works">
+      <div class="section-wrap">
+        <div class="section-side"><span class="section-marker"></span> THE PLATFORM</div>
+        <div class="section-main">
+          <h2>Don’t rewrite the agent.<br><span>Find out what broke.</span></h2>
+          <p>Model switching changes more than the answer. It can change tool calls, decision paths and application state. Refit examines the behavior that matters, not just the text the model returns.</p>
         </div>
       </div>
     </section>
 
-    <section class="m-workflow m-width" id="how-it-works" aria-labelledby="m-how-title">
-      <h2 id="m-how-title">From source to verified export.</h2>
-      <div class="m-workflow-grid">
-        <article><span class="m-feature-icon" aria-hidden="true">↳</span><h3>Import your agent</h3><p>Start from GitHub or a ZIP. Inspect the source revision, entry point, and model boundary.</p></article>
-        <article><span class="m-feature-icon" aria-hidden="true">⇄</span><h3>Compare behavior</h3><p>Run both models on the same cases. Inspect results, tool observations, and sandbox evidence.</p></article>
-        <article><span class="m-feature-icon" aria-hidden="true">✓</span><h3>Export with evidence</h3><p>Download the configuration once fresh verification passes in the original runtime.</p></article>
+    <section class="capability-section">
+      <div class="capability-row">
+        <div class="capability-copy"><span class="capability-tag">01 — IMPORT</span><h3>Start with the code<br>you already have.</h3><p>Bring a pinned GitHub revision or a ZIP. Refit inspects the source, identifies supported entry points and makes the execution boundary explicit.</p><a href="/docs">Explore supported integrations <span aria-hidden="true">↗</span></a></div>
+        <div class="capability-visual visual-import" aria-label="Source import and execution boundary">
+          <div class="terminal-title"><span class="terminal-dot"></span> Original agent <span class="terminal-muted">/ source snapshot</span></div>
+          <div class="terminal-tree"><div><span class="tree-branch">├─</span> agent.py <span class="tree-hint">runtime entry</span></div><div><span class="tree-branch">├─</span> tools/ <span class="tree-hint">observed actions</span></div><div><span class="tree-branch">└─</span> contract.json <span class="tree-hint">required behavior</span></div></div>
+          <div class="terminal-note">Illustrative structure — importer accepts supported application layouts</div>
+        </div>
       </div>
+      <div class="capability-row capability-row-reverse">
+        <div class="capability-copy"><span class="capability-tag">02 — EVALUATE</span><h3>See what the<br>new model actually does.</h3><p>Run controlled cases, collect tool observations and compare outcomes with the original. When the application exposes an allowed instruction seam, test a bounded change.</p><a href="https://github.com/Davemafy/refit/blob/main/docs/framework-evidence-2026-11-06.md">Read the evaluation record <span aria-hidden="true">↗</span></a></div>
+        <div class="capability-visual visual-evaluate">
+          <div class="eval-title"><span>Same workflow</span><span>Different observed outcome</span></div>
+          <div class="eval-line"><span>Source model</span><div class="eval-progress"><i style="width:100%"></i></div><strong>24 / 24</strong></div>
+          <div class="eval-line"><span>Replacement</span><div class="eval-progress eval-progress-bad"><i style="width:54.1667%"></i></div><strong>13 / 24</strong></div>
+          <div class="eval-line"><span>With adaptation</span><div class="eval-progress"><i style="width:100%"></i></div><strong>24 / 24</strong></div>
+          <p>External original-runner experiment · recorded sample</p>
+        </div>
+      </div>
+      <div class="capability-row">
+        <div class="capability-copy"><span class="capability-tag">03 — VERIFY</span><h3>Export only after<br>independent checks.</h3><p>Refit reruns the exported configuration inside the original runtime. Failed candidates preserve their evidence—but do not receive a verified export.</p><a href="https://github.com/Davemafy/refit/blob/main/docs/vultr-frozen-patch-recovery-2026-11-06.md">Inspect verification evidence <span aria-hidden="true">↗</span></a></div>
+        <div class="capability-visual visual-verify">
+          <div class="verify-overline">VERIFICATION DECISION</div>
+          <div class="verify-flow"><div class="verify-step"><span class="verify-icon">✓</span><span>Evidence collected</span></div><div class="flow-connector"></div><div class="verify-step"><span class="verify-icon">✓</span><span>Fresh validation</span></div><div class="flow-connector"></div><div class="verify-step verify-step-gold"><span class="verify-icon">↗</span><span>Verified export</span></div></div>
+          <div class="verify-warning">Failed validation → no verified export</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="security-section grid-plane" id="sandbox">
+      <div class="section-wrap security-heading">
+        <div class="section-side"><span class="section-marker"></span> ISOLATION</div>
+        <div class="section-main"><h2>Your agent runs.<br><span>Your host stays separate.</span></h2><p>Refit's trusted controller runs on Vultr Cloud Compute. Original agent code executes in disposable gVisor workers. Model requests are brokered through Vultr Serverless Inference, outside the worker.</p></div>
+      </div>
+      <div class="security-diagram">
+        <div class="diagram-host"><span class="diagram-label">TRUSTED HOST · VULTR CLOUD COMPUTE</span><div class="diagram-row"><div class="diagram-box"><span>Control plane</span><strong>Evidence + model broker</strong><small>Inference key stays here</small></div><div class="diagram-line" aria-hidden="true"></div><div class="diagram-box diagram-box-green"><span>MODEL ENDPOINT</span><strong>Vultr Serverless Inference</strong><small>Source / target / repair</small></div></div></div>
+        <div class="diagram-boundary"><span class="diagram-label">ISOLATED EXECUTION · GVISOR</span><strong>Untrusted agent + original tools</strong><div class="boundary-flags"><span>No network</span><span>No inference key</span><span>No Docker socket</span></div></div>
+        <div class="diagram-foot"><span>Separate recorded host test</span><strong>24 / 24</strong><span>worker cleanup receipts verified</span><a href="https://github.com/Davemafy/refit/blob/main/docs/vultr-frozen-patch-recovery-2026-11-06.md">Read host evidence ↗</a></div>
+      </div>
+      <p class="security-caveat">This architecture diagram describes the documented execution boundary. The host controller is trusted; recorded cleanup evidence is not a signed host attestation.</p>
+    </section>
+
+    <section class="guard-section">
+      <div class="section-wrap guard-layout"><div class="section-side"><span class="section-marker"></span> THE FAILURE CASE</div><div class="section-main"><h2>A failed check is<br><span>a real answer.</span></h2><p>In a separate on-host repair attempt, a generated candidate failed independent validation. Refit rejected it and withheld the patch. A convincing output wasn't enough.</p><a class="text-link" href="https://github.com/Davemafy/refit/blob/main/docs/vultr-frozen-patch-recovery-2026-11-06.md">Inspect the rejected candidate <span aria-hidden="true">↗</span></a><div class="rejected-line"><span class="rejected-badge">NOT VERIFIED</span><span>Candidate rejected at validation</span><strong>Export withheld</strong></div></div></div>
+    </section>
+
+    <section class="cta-section grid-plane">
+      <div class="cta-content"><span class="cta-eyeline">YOU HAVE AN AGENT. YOU HAVE ANOTHER MODEL.</span><h2>Now prove it works.</h2><p>Inspect a real recorded migration or bring your own supported agent.</p><div class="hero-actions"><a class="button button-gold" href="/app">Open Refit <span aria-hidden="true">↗</span></a><a class="button button-outline" href="/docs">Read the docs <span aria-hidden="true">→</span></a></div></div>
     </section>
   </main>
-  <footer class="m-footer m-width"><strong>Refit</strong><span>Built on Vultr</span><a href="/docs">Documentation</a><a href="https://github.com/Davemafy/refit">GitHub</a></footer>
+  <footer class="site-footer"><div class="site-footer-inner"><a class="footer-brand" href="/">refit<span>.</span></a><span>Change the model. Keep the behavior.</span><div><a href="/docs">Docs</a><a href="https://github.com/Davemafy/refit">Source</a><a href="/app">Workspace ↗</a></div></div></footer>
 </body>
 </html>
