@@ -185,7 +185,7 @@ async function overview(){
   page.innerHTML=lead("Overview","Inspect model migration outcomes and recorded execution.")+
    '<section class="workspace-start workspace-start--visual" aria-label="Try Refit live">'+
    '<div class="workspace-start-copy"><h2>See your first migration happen.</h2>'+
-   '<p>No account. No setup. Run a real, pinned Python agent with DeepSeek and GLM on Vultr, then inspect the tool calls, result and sandbox evidence.</p>'+
+   '<p>Run a pinned Python agent on Vultr. Watch actual model calls and execution evidence. No account needed.</p>'+
    '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-live">'+ico("pulse")+' Try a live migration '+ico("arrow")+'</button>'+
    '<a class="btn" data-nav href="/app/replay">Watch agent execution '+ico("arrow")+'</a>'+ 
    '</div>' +
