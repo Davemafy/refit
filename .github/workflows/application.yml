@@ -17,6 +17,7 @@ on:
       - 'tests/browser_ui_polish.mjs'
       - 'tests/browser_workbench.mjs'
       - 'tests/browser_console_density.mjs'
+      - 'tests/browser_guest_agents.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - 'tests/saas_fixture_server.py'
@@ -34,6 +35,7 @@ on:
       - 'tests/browser_ui_polish.mjs'
       - 'tests/browser_workbench.mjs'
       - 'tests/browser_console_density.mjs'
+      - 'tests/browser_guest_agents.mjs'
       - 'tests/evidence_ui.test.mjs'
       - 'tests/run_outcome.test.mjs'
       - '.github/workflows/application.yml'
@@ -91,6 +93,8 @@ jobs:
         run: node tests/browser_mobile_release.mjs
       - name: Verify console density, real-event deep links and run filtering in Firefox
         run: node tests/browser_console_density.mjs
+      - name: Verify guest agent page has one import action and neutral theme
+        run: node tests/browser_guest_agents.mjs
       - name: Verify workspace themes, command palette and trace navigation
         run: node tests/browser_workbench.mjs
       - name: Archive zero-inference SaaS browser captures

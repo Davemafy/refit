@@ -2,16 +2,16 @@
 :root[data-theme] {
  --bg:#0c0d0f; --panel:#121418; --raised:#191c21; --field:#171a1e;
  --line:#30343b; --line2:#262a30; --ink:#edf0f4; --sub:#aab2bc; --muted:#939da9;
- --work-frame:#141619; --work-active:#222b36; --work-accent:#a8cbff;
- --work-action:#315b91; --work-action-hover:#3b6ca8; --work-action-text:#fff;
+ --work-frame:#141619; --work-active:#272b27; --work-accent:#c4c7bb;
+ --work-action:#ecebe6; --work-action-hover:#ffffff; --work-action-text:#171916;
  --work-positive:#91d6b2; --work-negative:#ffb2b6; --work-warning:#e9cc96;
  --work-positive-bg:#13271e; --work-negative-bg:#301c23; --work-warning-bg:#2c2419;
 }
 :root[data-theme=light] {
  color-scheme:light; --bg:#fff; --panel:#f7f8fa; --raised:#edf0f4; --field:#fff;
  --line:#cdd4de; --line2:#e0e4ea; --ink:#17212d; --sub:#475569; --muted:#546176;
- --work-frame:#f3f5f8; --work-active:#e4edf9; --work-accent:#1d4d89;
- --work-action:#254e85; --work-action-hover:#1b3c6b;
+ --work-frame:#f4f4f1; --work-active:#e6e9e4; --work-accent:#3d4b3d;
+ --work-action:#2c332d; --work-action-hover:#434c44; --work-action-text:#fff;
  --work-positive:#176343; --work-negative:#96283a; --work-warning:#74470c;
  --work-positive-bg:#e7f5ec; --work-negative-bg:#fcebf0; --work-warning-bg:#fff3dd;
 }
@@ -185,3 +185,38 @@
 .trace-state code{color:var(--ink);overflow-wrap:anywhere}
 .trace-state .passed{color:var(--work-positive)}
 .trace-state .failed{color:var(--work-negative)}
+
+/* Guest agents: a single source row instead of layered CTA cards. */
+.workbench .agent-record{
+ display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:14px;
+ align-items:center;min-height:93px;padding:15px 12px;
+ background:transparent;border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0;
+}
+.workbench .agent-record-icon{
+ width:34px;height:34px;border:1px solid var(--line);border-radius:5px;
+ background:var(--raised);color:var(--sub);
+}
+.workbench .agent-record-title{
+ display:inline-block;padding:0;border:0;background:transparent;color:var(--ink);
+ text-align:left;font:590 14px/1.4 "Geist",sans-serif;letter-spacing:-.025em;
+}
+.workbench .agent-record-title:hover{text-decoration:underline;text-underline-offset:3px}
+.workbench .agent-record-body p{margin:4px 0 7px;font-size:11.5px;color:var(--sub)}
+.workbench .agent-record-actions{display:flex;grid-column:auto;flex:none;width:auto;gap:0}
+.workbench .agent-record-review.btn{min-height:34px;flex:none;background:var(--raised);border-color:var(--line);color:var(--ink)}
+.workbench .agent-record-review.btn:hover{background:var(--work-active);border-color:var(--line)}
+@media(max-width:760px){
+ .workbench .agent-record{grid-template-columns:30px minmax(0,1fr);padding:13px 2px;gap:10px;align-items:start}
+ .workbench .agent-record-icon{width:30px;height:30px}
+ .workbench .agent-record-actions{grid-column:2;justify-content:flex-start}
+ .workbench .agent-record-actions .btn{min-height:35px;flex:none}
+}
+
+.workbench .mobile-nav .nav-link.selected{
+ background:transparent;
+ color:var(--ink);
+ border-bottom-color:var(--work-accent);
+}
+.workbench .page-lead p:empty{display:none}
+
+@media(max-width:760px){.workbench .top-context{display:none}}
