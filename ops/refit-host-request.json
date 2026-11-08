@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Verify real agent migration after interactive Docker broker input fix and seven-case host acceptance"
+  "reason": "Capture bounded agent transport exit and gVisor state in seven-worker production acceptance"
 }
