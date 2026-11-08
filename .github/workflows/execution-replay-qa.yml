@@ -1,0 +1,40 @@
+name: Refit execution replay browser QA
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/application/**"
+      - "scripts/application_http.py"
+      - "tests/browser_execution_replay.mjs"
+      - ".github/workflows/execution-replay-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install browser
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Test real-event playback, provenance, and mobile rendering
+        run: node tests/browser_execution_replay.mjs
+      - name: Upload test screenshots and recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-execution-replay-browser
+          path: artifacts/replay-demo/
+          retention-days: 7
+          if-no-files-found: warn
