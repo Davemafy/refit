@@ -129,7 +129,7 @@ class AnonymousTrialHttpTests(unittest.TestCase):
         run = self.service.runs[response["id"]][0]
         self.assertEqual(run["budget"], PUBLIC_TRIAL_BUDGET)
         cookie = header.split(";", 1)[0]
-        self.assertEqual(self.http("GET", "", cookie=cookie)[1]["account_daily_allowance"], 32)
+        self.assertEqual(self.http("GET", "", cookie=cookie)[1]["account_daily_allowance"], 64)
 
     def test_origin_and_arbitrary_parameters_rejected_without_spending(self):
         self.assertEqual(self.http("POST", "/try", {}, origin="https://evil.example")[0], 403)
