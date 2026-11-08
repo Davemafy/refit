@@ -226,9 +226,13 @@
 
 /* Keep the Runs toolbar on the same grid as the local header and table. */
 .workbench[data-workspace-page=runs] .main{padding:9px 0 24px}
-.workbench[data-workspace-page=runs] .page-lead{margin:0;padding:0 16px}
+.workbench[data-workspace-page=runs] .page-lead{min-height:0;margin:0;padding:0}
 .workbench[data-workspace-page=runs] .page-heading{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.workbench[data-workspace-page=runs] .page-lead .btn{margin:0 0 8px auto}
+.workbench[data-workspace-page=runs] .run-controls>.btn{margin-left:auto;min-height:27px}
+.workbench .run-search input{color:var(--ink);height:25px}
+.workbench .run-search input::placeholder{color:var(--muted)}
+.workbench .run-search:focus-within{border-color:var(--work-accent)}
+.workbench .run-search input:focus-visible{outline:0}
 .workbench[data-workspace-page=runs] .run-controls{justify-content:flex-start;align-items:center;flex-direction:row;gap:7px;padding:0 12px;margin:0 0 8px;background:transparent}
 .workbench[data-workspace-page=runs] .run-search,.run-facet{min-height:27px;border:1px solid var(--line);border-radius:4px;font-size:11px}
 .workbench[data-workspace-page=runs] .run-search{width:200px;min-width:0}

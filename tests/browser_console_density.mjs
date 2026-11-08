@@ -53,6 +53,11 @@ try{
  await page.getByText("No matching runs").waitFor();
  await page.locator("#runQuery").fill("glm-5.2");
  assert.equal(await page.locator(".run-table-desktop tbody tr").count(),1);
+ const toolbarGap=await page.evaluate(()=>document.querySelector(".run-controls").getBoundingClientRect().top-
+  document.querySelector("#contextBar").getBoundingClientRect().bottom);
+ assert.ok(toolbarGap>=0&&toolbarGap<=12, String(toolbarGap));
+ await page.locator("#runQuery").fill("");
+ await page.locator("#runQuery").blur();
  await page.screenshot({path:"artifacts/console-release/03-runs-desktop.png",fullPage:true});
  for(const width of [320,360,390]){
   await page.setViewportSize({width,height:780});

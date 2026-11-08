@@ -215,7 +215,7 @@ function runIndexRows(){
  const items=filteredRuns();
  return items.length?runTable(items):'<div class="run-filter-empty"><strong>No matching runs</strong><p>Try another status or search term.</p></div>';
 }
-function runFilters(){
+function runFilters(action=""){
  const options=(items,current)=>items.map(([value,label])=>
   '<option value="'+value+'"'+(value===current?' selected':'')+'>'+label+'</option>').join("");
  return '<div class="run-controls"><label class="run-search">'+ico("search")+
@@ -224,7 +224,7 @@ function runFilters(){
   options([["all","All time"],["1","Last 24 hours"],["7","Last 7 days"]],state.runsPeriod)+'</select></label>'+
   '<label class="run-facet"><span>Status</span><select id="runStatus" aria-label="Run status">'+
   options([["all","All runs"],["verified","Verified"],["active","In progress"],["attention","Needs attention"]],state.runsFilter)+
-  '</select></label></div>';
+  '</select></label>'+action+'</div>';
 }
 async function agents(){
  header("Agents");
@@ -242,8 +242,8 @@ async function agents(){
 async function runs(){
  header("Runs");
  await refreshWorkspace();
- page.innerHTML=lead("Runs","Inspect executions, outcomes and model evidence.",state.guest?"":importButton)+
- runFilters()+'<section class="records" id="runRecords">'+runIndexRows()+'</section>'+
+ page.innerHTML=lead("Runs","Inspect executions, outcomes and model evidence.")+
+ runFilters(state.guest?"":importButton)+'<section class="records" id="runRecords">'+runIndexRows()+'</section>'+
  (state.guest?'<p class="section-footnote">Public example only. <a href="/signup">Bring an agent</a> to evaluate your own source.</p>':"");
 }
 async function evidenceIndex(){
