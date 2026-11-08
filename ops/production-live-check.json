@@ -1,5 +1,5 @@
 {
-  "revision": "9e3a3a050dd7d96475f6194b5885010dc39eed29",
-  "purpose": "Single explicit real-model migration acceptance of the hardened Refit release",
+  "revision": "a82c40d9b454138fe85b5971c0b97beac0a6aa3c",
+  "purpose": "Manual-only paid production migration acceptance, only with available daily inference capacity",
   "estimated_model_request_ceiling": 10
 }
