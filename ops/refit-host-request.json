@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Capture bounded agent transport exit and gVisor state in seven-worker production acceptance"
+  "reason": "Validate lock-free broker stdin and seven real imported-agent gVisor workers end to end"
 }
