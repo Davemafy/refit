@@ -32,7 +32,7 @@ const symbols={
 };
 const ico=name=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+(symbols[name]||symbols.box)+'</svg>';
 for(const target of document.querySelectorAll("[data-icon]"))target.innerHTML=ico(target.dataset.icon);
-const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],runsFilter:"all",runsQuery:""};
+const state={username:null,guest:false,demo:null,projects:[],runs:[],capabilities:null,wizard:null,tab:"evaluation",stream:null,streamId:null,streamCursor:0,refreshHandle:null,search:null,runRevision:0,evidenceSelected:null,evidenceItems:[],traceFilter:"all",traceSelected:null,traceEvents:[],traceCollapsed:new Set(),runsFilter:"all",runsQuery:""};
 const statusText={
  compatible_on_sample:"Compatible on evaluated cases",
  verified_adaptation:"Verified repair",
@@ -134,11 +134,14 @@ async function overview(){
      '<time class="overview-event-time">'+safe((e.time||"").slice(11,19))+'</time>'+ico("arrow")+'</button>';
    }).join("")+'</div></section>':'';
   page.innerHTML=lead("Overview","Execution history and migration evidence.")+
+   '<section class="overview-metrics" aria-label="Recorded migration totals">'+
+   [[completed.length,"Case observations"],[modelCalls.length,"Model responses"],[cleanup.length,"Verified cleanups"]].map(([total,label])=>
+    '<div class="overview-metric"><span>'+safe(label)+'</span><strong>'+safe(total)+'</strong><small>Recorded example</small></div>').join("")+'</section>'+
    '<section class="guest-feature"><div class="guest-feature-copy">'+
    '<div class="guest-feature-caption"><span class="status-light"></span> Recorded execution</div>'+
    '<h2>Python knowledge-base migration</h2>'+
    '<p>Inspect case results, model requests and cleanup receipts from the isolated verification run.</p>'+
-   '<button class="btn primary" data-action="run" data-id="'+safe(r.id)+'">Open run '+ico("arrow")+'</button></div>'+
+   '<button class="btn primary" data-action="run" data-id="'+safe(r.id)+'">Try a migration '+ico("arrow")+'</button></div>'+
    '<div class="guest-feature-facts"><div><span>Original model</span><strong>'+safe(r.source||"—")+'</strong></div>'+
    '<div><span>Replacement model</span><strong>'+safe(r.target||"—")+'</strong></div>'+
    '<div><span>Result</span>'+statusChip(r.status)+'</div></div></section>'+
@@ -147,15 +150,23 @@ async function overview(){
 
   return;
  }
+ const capacity=await req("");
+ if(!state.projects.length&&!state.runs.length){
+  page.innerHTML=lead("Your workspace","Connect an existing agent to begin.")+
+   '<section class="workspace-start"><h2>Import your first agent</h2><p>Start with a GitHub repository or ZIP. Refit inspects the source before you authorize any execution.</p>'+
+   importButton+' <a class="btn" href="/docs">Read the setup guide</a></section>';
+  return;
+ }
  page.innerHTML=lead("Your workspace","Your agent migrations and recorded outcomes.",importButton)+
+ '<div class="workspace-capacity"><span>Daily request capacity</span><strong>'+
+ safe(capacity.account_reserved_today)+' / '+safe(capacity.account_daily_allowance)+' reserved</strong></div>'+
  '<div class="metrics"><div class="metric"><strong>'+state.projects.length+'</strong><span>Agents</span></div>'+
  '<div class="metric"><strong>'+state.runs.length+'</strong><span>Runs</span></div>'+
  '<div class="metric"><strong>'+state.runs.filter(r=>r.status==="compatible_on_sample"||r.status==="verified_adaptation").length+'</strong><span>Verified results</span></div>'+
  '<div class="metric"><strong>'+state.runs.filter(r=>!ended(r.status)).length+'</strong><span>In progress</span></div></div>'+
  '<section class="card inner dashboard-runs"><div class="between"><h3>Recent migrations</h3><a href="/app/runs" data-nav class="btn compact">View all '+ico("arrow")+'</a></div>'+
  '<div class="run-history">'+runTable(state.runs.slice(0,5))+'</div></section>'+
- (state.projects.length||state.runs.length?"":'<section class="workspace-start"><h3>Start with an agent</h3>'+
- '<p>Import a GitHub repository or ZIP, confirm its runtime, then define the outcomes that must survive a model change.</p>'+importButton+'</section>');
+ "";
 }
 const shortStatus=status=>({
  compatible_on_sample:"Compatible",verified_adaptation:"Verified repair",source_baseline_insufficient:"Baseline failed",
@@ -166,13 +177,13 @@ const compactStatus=status=>{
  const kind=["compatible_on_sample","verified_adaptation"].includes(status)?"good":ended(status)?"bad":"warn";
  return '<span class="run-status '+kind+'"><span class="status-light"></span>'+safe(shortStatus(status))+'</span>';
 };
-const runTable=runs=>runs.length?
- '<div class="run-table-desktop"><table class="table"><thead><tr><th>Run</th><th>Models</th><th>Status</th><th>Started</th></tr></thead><tbody>'+
- runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td><div class="model-pair"><span>'+safe(r.source||"—")+'</span><span class="model-pair-sep">→</span><span>'+safe(r.target||"—")+'</span></div></td><td>'+compactStatus(r.status)+'</td><td class="run-timestamp">'+safe(formatTime(r.started_at))+'</td></tr>').join("")+'</tbody></table></div>'+
+const runTable=(runs,view="")=>runs.length?
+ '<div class="run-table-desktop"><table class="table"><thead><tr><th>Run</th><th>Models</th><th>Status</th><th>Started</th><th class="numeric">Duration</th></tr></thead><tbody>'+
+ runs.map(r=>'<tr><td><button class="link-btn mono" data-action="run" data-view="'+safe(view)+'" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button></td><td><div class="model-pair"><span>'+safe(r.source||"—")+'</span><span class="model-pair-sep">→</span><span>'+safe(r.target||"—")+'</span></div></td><td>'+compactStatus(r.status)+'</td><td class="run-timestamp">'+safe(formatTime(r.started_at))+'</td><td class="numeric">'+safe(formatDuration(r.execution_seconds))+'</td></tr>').join("")+'</tbody></table></div>'+
  '<div class="run-list-mobile" role="list" aria-label="Migration runs">'+runs.map(r=>{
   const kind=["compatible_on_sample","verified_adaptation"].includes(r.status)?"good":ended(r.status)?"bad":"warn";
   return '<article class="run-mobile-item" role="listitem"><div class="run-mobile-head">'+
-   '<button type="button" class="run-mobile-link mono" data-action="run" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button>'+
+   '<button type="button" class="run-mobile-link mono" data-action="run" data-view="'+safe(view)+'" data-id="'+safe(r.id)+'">'+safe(r.id)+'</button>'+
    '<span class="run-mobile-status '+kind+'" title="'+safe(statusText[r.status]||r.status||"Unknown")+'">'+safe(shortStatus(r.status))+'</span></div>'+
    '<div class="run-mobile-models"><span class="mono">'+safe(r.source||"—")+'</span>'+ico("arrow")+
     '<span class="mono">'+safe(r.target||"—")+'</span></div>'+
@@ -181,7 +192,9 @@ const runTable=runs=>runs.length?
  empty("No runs yet","Your migrations will appear here. Import an agent to start.",importButton);
 function filteredRuns(){
  const query=state.runsQuery.toLowerCase();
+ const agent=new URLSearchParams(location.search).get("agent");
  return state.runs.filter(r=>{
+  if(agent&&r.import?.id!==agent)return false;
   const matches=!query||[r.id,r.source,r.target,r.status,r.import?.repository].filter(Boolean).join(" ").toLowerCase().includes(query);
   const ok=state.runsFilter==="all"||
    (state.runsFilter==="verified"&&["compatible_on_sample","verified_adaptation"].includes(r.status))||
@@ -207,8 +220,11 @@ async function agents(){
  page.innerHTML=(state.guest?"":guestNote)+lead("Agents",state.guest?"A recorded example to explore before importing your own source.":"Your imported application source snapshots and detected runtimes.",state.guest?'<a href="/signup" class="btn primary">Bring your own agent</a>':importButton)+
  (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("code")+'</div><div class="agent-record-body"><strong>Recorded Python agent</strong><p>Knowledge-base application · Independently verified sample</p><div class="agent-record-meta"><span>Python</span><span>gVisor execution</span>'+compactStatus(state.demo.run.status)+'</div></div><div class="agent-record-actions"><button class="btn" data-action="example-agent">Inspect source</button><button class="btn primary" data-action="run" data-id="demo-python-2026-11-07">Review run '+ico("arrow")+'</button></div></section>':"")+
  (state.projects.length?
- '<div class="card" style="overflow-x:auto"><table class="table"><thead><tr><th>Source</th><th>Runtime</th><th>Entry point</th><th>Files</th><th></th></tr></thead><tbody>'+
- state.projects.map(p=>'<tr><td><button class="link-btn" data-action="project" data-id="'+safe(p.id)+'">'+safe(p.repository||"Uploaded ZIP")+'</button><div class="small muted mono">'+safe(p.id)+'</div></td><td>'+safe(p.discovery?.runtime||"Unknown")+'</td><td>'+safe(p.discovery?.entry||"Configuration required")+'</td><td>'+safe(p.file_count||0)+'</td><td><button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table></div>':
+ '<label class="run-search agent-search">'+ico("search")+'<input type="search" id="agentQuery" aria-label="Search agents" placeholder="Search repositories or runtimes"></label>'+
+ '<div class="card agent-list"><table class="table"><thead><tr><th>Source</th><th>Runtime</th><th>Integration</th><th>Provider boundary</th><th></th></tr></thead><tbody>'+
+ state.projects.map(p=>'<tr data-agent-row><td><button class="link-btn" data-action="project" data-id="'+safe(p.id)+'">'+safe(p.repository||"Uploaded ZIP")+'</button><div class="small muted mono">'+safe(p.revision||p.id)+'</div></td><td>'+safe([p.discovery?.framework,p.discovery?.runtime].filter(Boolean).join(" · ")||"Unknown")+'</td><td>'+
+ safe(p.discovery?.service_entries?.length?"Service connector required":p.discovery?.entry?"Managed · confirm checks":"Configuration required")+
+ '</td><td>'+safe(p.discovery?.provider||"Unconfirmed")+'</td><td><a data-nav class="btn compact" href="/app/runs?agent='+encodeURIComponent(p.id)+'">Runs</a> <button data-action="remove" data-id="'+safe(p.id)+'" class="btn compact danger">Remove</button></td></tr>').join("")+'</tbody></table><p id="agentNoMatches" class="run-filter-empty" hidden>No matching agents.</p></div>':
  empty("No agents imported","Import a pinned GitHub revision or a ZIP. Refit will inspect the source before any paid execution.",importButton));
 }
 async function runs(){
@@ -222,7 +238,7 @@ async function evidenceIndex(){
  header("Evidence");
  await refreshWorkspace();
  page.innerHTML=lead("Evidence","Recorded observations from actual application execution.")+
- (state.runs.length?'<section class="records"><div class="records-heading"><span>Runs with evidence</span><span>'+safe(state.runs.length)+' total</span></div>'+runTable(state.runs)+'</section>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
+ (state.runs.length?'<section class="records"><div class="records-heading"><span>Runs with evidence</span><span>'+safe(state.runs.length)+' total</span></div>'+runTable(state.runs,"evidence")+'</section>':empty("No evidence yet","Evidence is generated by actual migrations. Nothing is simulated here.",importButton));
 }
 async function settings(){
  header("Settings");
@@ -472,7 +488,7 @@ function renderComparison(cases,source,target,report){
     safe(check.path+" · "+check.op.replaceAll("_"," ")+" · "+(check.before?.status||"unknown")+" → "+(check.after?.status||"unknown")+(check.passed?" · passed":" · failed"))+'</li>').join("")+
    (tools.length?'<li class="sub">Model requested '+safe(tools.join(", "))+'</li>':"")+
    (Number.isInteger(d.model_requests)?'<li class="sub">'+safe(d.model_requests)+' model requests</li>':"")+
-   (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul></details>';
+   (d.error?'<li class="error">'+safe(d.error.replaceAll("_"," "))+'</li>':"")+'</ul><button type="button" class="evidence-jump" data-action="inspect-evidence" data-key="case-'+safe(observation.seq)+'">Open this observation '+ico("arrow")+'</button></details>';
  };
  return '<div class="comparison-scroll"><table class="table comparison-table"><thead><tr><th>Case</th><th>Original · '+safe(source)+'</th><th>Replacement · '+safe(target)+'</th>'+
  (repair?'<th>Adapted replacement</th>':'')+'<th>Observed result</th></tr></thead><tbody>'+
@@ -733,6 +749,10 @@ function traceDetails(e){
  if(checks.length)extra+='<h4>Evaluation checks</h4><div class="trace-checks">'+checks.map(([key,value])=>
   '<span class="'+(value?"passed":"failed")+'">'+safe(key.replaceAll("_"," "))+
   ' · '+(value?"passed":"failed")+'</span>').join("")+'</div>';
+ if(d.state_checks?.length)extra+='<h4>Verified application state</h4><ul class="trace-state">'+
+  d.state_checks.map(check=>'<li><code>'+safe(check.path)+'</code><span>'+
+   safe((check.before?.status||"unknown")+" → "+(check.after?.status||"unknown"))+'</span><strong class="'+
+   (check.passed?"passed":"failed")+'">'+(check.passed?"Passed":"Failed")+'</strong></li>').join("")+'</ul>';
  if(d.error)extra+='<div class="notice">'+safe(String(d.error))+'</div>';
  return '<div class="trace-detail-head"><div><span class="trace-sequence mono">Event '+safe(e.seq)+'</span>'+
   '<h3>'+safe(RefitOutcomes.eventLabel(e.type))+'</h3></div></div>'+
@@ -740,30 +760,58 @@ function traceDetails(e){
   '<details class="trace-raw"><summary>Original event payload</summary>'+
   '<pre class="log">'+safe(JSON.stringify({seq:e.seq,type:e.type,time:e.time,details:d},null,2))+'</pre></details>';
 }
-function traceExplorer(run,events){
+function traceExplorer(events){
  state.traceEvents=events;
  const filter=traceGroups[state.traceFilter]||traceGroups.all;
- const visible=events.filter(filter).slice(-150);
+ const matches=events.filter(filter),visible=matches.slice(-150);
+ const allowed=new Set(visible.map(e=>e.seq));
  if(!visible.some(e=>String(e.seq)===String(state.traceSelected)))
   state.traceSelected=visible.at(-1)?.seq??null;
  const selected=visible.find(e=>String(e.seq)===String(state.traceSelected));
  const filterButtons=[["all","All events"],["models","Model calls"],["cases","Cases"],["sandbox","Sandboxes"]]
   .map(([name,label])=>'<button type="button" class="trace-filter'+(name===state.traceFilter?" selected":"")+
    '" data-action="trace-filter" data-filter="'+name+'" aria-pressed="'+(name===state.traceFilter)+'">'+label+'</button>').join("");
- const items=visible.slice().reverse().map(e=>{
+ const groups=[];
+ let group=null, currentCase=null;
+ for(const e of events){
+  const d=e.details||{};
+  if(e.type==="phase_started"||!group){
+   group={seq:e.seq,label:e.type==="phase_started"?RefitOutcomes.phaseName(d.phase):"Run activity", model:d.model,items:[]};
+   groups.push(group);
+   currentCase=null;
+  }
+  if((e.type==="sandbox_starting"||e.type==="sandbox_started"||e.type==="local_started")&&d.case&&currentCase?.name!==d.case){
+   currentCase={seq:e.seq,name:d.case,entries:[]};
+   group.items.push(currentCase);
+  }
+  if(allowed.has(e.seq)){
+   if(currentCase)currentCase.entries.push(e);
+   else group.items.push(e);
+  }
+  if(e.type==="case_completed")currentCase=null;
+ }
+ const entry=e=>{
   const d=e.details||{},passed=d.passed===true||d.receipt?.verified===true;
   const failed=d.passed===false||d.receipt?.verified===false||!!d.error;
-  const title=RefitOutcomes.eventLabel(e.type);
-  return '<button type="button" class="trace-entry'+(String(e.seq)===String(state.traceSelected)?" selected":"")+
-   '" data-action="trace-select" data-seq="'+safe(e.seq)+'" aria-pressed="'+(String(e.seq)===String(state.traceSelected))+'">'+
+  const chosen=String(e.seq)===String(state.traceSelected);
+  const duration=d.elapsed_seconds??d.seconds;
+  return '<button type="button" class="trace-entry'+(chosen?" selected":"")+
+   '" data-action="trace-select" data-seq="'+safe(e.seq)+'" aria-pressed="'+chosen+'">'+
    '<span class="trace-event-dot '+(failed?"failed":passed?"passed":"")+'"></span>'+
-   '<span class="trace-entry-copy"><strong>'+safe(title)+'</strong><small>'+
+   '<span class="trace-entry-copy"><strong>'+safe(RefitOutcomes.eventLabel(e.type))+'</strong><small>'+
    safe([d.case,d.model,d.phase].filter(Boolean).join(" · ")||"Runtime event")+'</small></span>'+
-   '<time class="mono">'+safe((e.time||"").slice(11,19))+'</time></button>';
- }).join("");
+   '<time class="mono">'+safe((e.time||"").slice(11,19))+'</time><span class="mono trace-duration">'+
+   safe(formatDuration(duration))+'</span></button>';
+ };
+ const branch=(key,label,model,children)=>children?
+  '<details class="trace-branch" data-trace-branch="'+safe(key)+'" '+(state.traceCollapsed.has(key)?"":"open")+
+  '><summary><span>'+safe(label)+'</span>'+(model?'<small class="mono">'+safe(model)+'</small>':"")+'</summary><div class="trace-children">'+
+  children+'</div></details>':"";
+ const items=groups.map(g=>branch("phase-"+g.seq,g.label,g.model,
+  g.items.map(node=>node.entries?branch("case-"+node.seq,node.name,null,node.entries.map(entry).join("")):entry(node)).join(""))).join("");
  return traceWaterfall(events)+
  '<div class="trace-toolbar"><div class="trace-filters" role="group" aria-label="Filter trace events">'+filterButtons+'</div>'+
- '<span class="trace-count">'+visible.length+' / '+events.length+' events'+(events.filter(filter).length>visible.length?" · latest shown":"")+'</span></div>'+
+ '<span class="trace-count">'+visible.length+' / '+events.length+' events'+(matches.length>visible.length?" · latest shown":"")+'</span></div>'+
  '<div class="trace-explorer"><div class="trace-events" aria-label="Recorded events">'+
  (items||'<p class="trace-nothing">No matching recorded events.</p>')+
  '</div><section id="traceInspector" class="trace-inspector" aria-live="polite">'+traceDetails(selected)+'</section></div>';
@@ -797,7 +845,7 @@ async function showRun(id,refreshOnly=false){
    safe(report.accepted_patch?.instructions||report.proposal.instructions||"No instruction change")+
    '</pre><p class="small">'+(run.export_available?"The adaptation passed fresh original-runtime verification.":"The adaptation has no verified export.")+
    '</p></div>':
-  currentTab==="traces"?traceExplorer(run,events):
+  currentTab==="traces"?traceExplorer(events):
   evidenceExplorer(run,events);
  page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration review")+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
  (active?'<button data-action="cancel-run" data-id="'+safe(id)+'" class="btn">Cancel</button>':"")+
@@ -805,8 +853,8 @@ async function showRun(id,refreshOnly=false){
  (run.export_available?'<button data-action="artifact-download" data-id="'+safe(id)+'" class="btn primary">'+ico("download")+' Export verified configuration</button>':"")+
  '</div></div>'+
  (run.error?'<div class="notice" style="margin-bottom:18px">'+safe("Execution result: "+String(run.error).replaceAll("_"," "))+'</div>':"")+
- decisionSurface(run,events)+
- '<div class="run-layout"><div class="stack"><section class="card inner comparison-card"><div class="between"><div><h2>'+(active?"Executing migration":"Review migration results")+'</h2><p style="font-size:13px;margin-top:5px">Case outcomes, original traces and verification receipts from this run.</p></div><span class="chip bordered">'+safe(run.model_requests??run.request_attempts_logged??0)+' / '+safe(run.budget)+' requests</span></div>'+
+ (["evaluation","repair"].includes(currentTab)?decisionSurface(run,events):"")+
+ '<div class="run-layout'+(["traces","evidence"].includes(currentTab)?" investigation-layout":"")+'"><div class="stack"><section class="card inner comparison-card"><div class="between"><div><h2>'+(active?"Executing migration":"Review migration results")+'</h2><p style="font-size:13px;margin-top:5px">Case outcomes, original traces and verification receipts from this run.</p></div><span class="chip bordered">'+safe(run.model_requests??run.request_attempts_logged??0)+' / '+safe(run.budget)+' requests</span></div>'+
  '<div class="tabs" style="margin-top:19px">'+tabs.map(t=>'<button class="tab '+(t===currentTab?"active":"")+'" data-action="tab" data-tab="'+t+'">'+(t==="traces"?"Trace":t.charAt(0).toUpperCase()+t.slice(1))+'</button>').join("")+'</div>'+
  '<div class="tab-panel" id="runPanel">'+panel+'</div></section>'+
  (active?'<div class="hint-note">'+ico("clock")+' This run is persisted. You can leave this page and reopen it from Runs. Inference is never automatically retried.</div>':
@@ -847,56 +895,22 @@ async function download(id,type){
  link.href=url;link.download=id+"-"+type+".json";document.body.appendChild(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-function closeSearch(){
- const overlay=el("searchOverlay");
- if(!overlay)return;
- const restore=overlay._restoreFocus;
- overlay.remove();
- restore?.focus?.();
-}
-function searchOverlay(){
- if(el("searchOverlay")){el("searchInput")?.focus();return;}
- const previousFocus=document.activeElement;
- const overlay=document.createElement("div");
- overlay._restoreFocus=previousFocus;
- overlay.id="searchOverlay";overlay.setAttribute("role","dialog");overlay.setAttribute("aria-modal","true");overlay.setAttribute("aria-label","Search agents and runs");
- overlay.style.cssText="position:fixed;inset:0;background:#000b;z-index:90;display:flex;align-items:flex-start;justify-content:center;padding:13vh 14px";
- overlay.innerHTML='<div class="card inner" style="width:100%;max-width:600px;background:#1a1b1f;max-height:70vh;overflow:auto"><div class="hstack">'+ico("search")+'<input id="searchInput" class="control" autofocus placeholder="Search your agents and runs…" aria-label="Search your agents and runs"><button class="btn compact" id="searchClose" aria-label="Close search">'+ico("close")+'</button></div><div id="searchResults" style="margin-top:15px"></div></div>';
- document.body.appendChild(overlay);
- const input=overlay.querySelector("#searchInput"),results=overlay.querySelector("#searchResults");
- function update(){
-   const term=input.value.trim().toLowerCase();
-   const candidates=[
-    ...state.projects.map(p=>({title:p.repository||"Uploaded ZIP",sub:p.id,url:"/app/agents/new?project="+p.id,action:"project",id:p.id})),
-    ...state.runs.map(r=>({title:r.id,sub:statusText[r.status]||r.status,url:"/app/runs/"+r.id,action:"run",id:r.id}))
-   ].filter(x=>(x.title+" "+x.sub).toLowerCase().includes(term)).slice(0,15);
-   results.innerHTML=candidates.length?candidates.map(x=>'<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:8px" data-search-action="'+x.action+'" data-search-id="'+safe(x.id)+'"><span>'+safe(x.title)+'</span><span class="muted small" style="margin-left:auto">'+safe(x.sub)+'</span></button>').join(""):'<div class="small muted" style="padding:16px">No matching agents or runs.</div>';
- }
- input.addEventListener("input",update);update();input.focus();
- // Deep links can open a run before overview/agents has loaded the workspace index.
- // Refresh asynchronously so search works without navigating away or dropping input.
- refreshWorkspace().then(()=>{if(overlay.isConnected)update();}).catch(error=>{
-  if(overlay.isConnected && !state.runs.length && !state.projects.length){
-   results.innerHTML='<p class="small muted" style="padding:14px">'+
-    safe(error.message||"Search is temporarily unavailable.")+'</p>';
+function searchOverlay(event){
+ openWorkspacePalette({
+  escape:safe, refresh:refreshWorkspace, trigger:event?.currentTarget,
+  items:()=>[
+   ...[["Overview",""],["Agents","/agents"],["Runs","/runs"],["Evidence","/evidence"],["Settings","/settings"]]
+    .map(([title,path])=>({title,sub:"Go to page",group:"Navigation",action:"navigate",id:"/app"+path})),
+   {title:state.guest?"Try a migration":"Import agent",sub:state.guest?"Recorded example":"GitHub or ZIP",group:"Actions",action:"navigate",
+    id:state.guest?"/app/runs/demo-python-2026-11-07":"/app/agents/new"},
+   ...state.projects.map(p=>({title:p.repository||"Uploaded ZIP",sub:p.id,group:"Agents",action:"project",id:p.id})),
+   ...state.runs.map(r=>({title:r.id,sub:[r.source,r.target,statusText[r.status]].filter(Boolean).join(" · "),
+    group:"Runs",action:"run",id:r.id}))
+  ],
+  activate:item=>{
+   if(item.action==="project")chooseProject(item.id).catch(e=>notify(e.message));
+   else navigate(item.action==="run"?"/app/runs/"+item.id:item.id);
   }
- });
- overlay.querySelector("#searchClose").onclick=closeSearch;
- overlay.onclick=event=>{if(event.target===overlay)closeSearch();};
- overlay.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){event.preventDefault();closeSearch();return;}
-  if(event.key!=="Tab")return;
-  const controls=[...overlay.querySelectorAll("input,button")].filter(x=>!x.disabled);
-  if(!controls.length)return;
-  const first=controls[0],last=controls.at(-1);
-  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
-  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
- });
- overlay.addEventListener("click",event=>{
-  const action=event.target.closest("[data-search-action]");
-  if(!action)return;
-  const id=action.dataset.searchId,kind=action.dataset.searchAction;closeSearch();
-  if(kind==="project"){chooseProject(id).catch(e=>notify(e.message));}else navigate("/app/runs/"+id);
  });
 }
 async function show(){
@@ -916,7 +930,15 @@ async function show(){
  if(pathname==="/app/evidence"){await evidenceIndex();return;}
  if(pathname==="/app/settings"){await settings();return;}
  const match=pathname.match(/^\/app\/runs\/(app-[0-9a-f]{16}|demo-python-2026-11-07)$/);
- if(match){await showRun(match[1]);return;}
+ if(match){
+  const query=new URLSearchParams(location.search);
+  state.tab=query.get("view")||"evaluation";
+  state.traceSelected=query.get("event");
+  state.evidenceSelected=query.get("observation");
+  state.traceFilter="all";
+  state.traceCollapsed.clear();
+  await showRun(match[1]);return;
+ }
  navigate("/app",true);
 }
 document.addEventListener("click",async event=>{
@@ -926,9 +948,7 @@ document.addEventListener("click",async event=>{
  const action=button.dataset.action,id=button.dataset.id;
  try{
   if(action==="overview-trace"){
-   state.tab="traces";
-   state.traceSelected=Number(button.dataset.seq);
-   navigate("/app/runs/"+id);
+   navigate("/app/runs/"+id+"?view=traces&event="+encodeURIComponent(button.dataset.seq));
   }
   else if(action==="runs-filter"){
    state.runsFilter=button.dataset.filter;
@@ -974,7 +994,7 @@ document.addEventListener("click",async event=>{
    el("advancedImport").open=true;
    el("sourceDirectory").focus();
   }
-  else if(action==="run")navigate("/app/runs/"+id);
+  else if(action==="run")navigate("/app/runs/"+id+(button.dataset.view==="evidence"?"?view=evidence":""));
   else if(action==="project")await chooseProject(id);
   else if(action==="remove"){
    if(!confirm("Delete this imported source snapshot from your workspace? Existing run evidence is retained."))return;
@@ -1028,6 +1048,9 @@ document.addEventListener("click",async event=>{
    const inspector=el("evidenceInspector");
    if(!item||!inspector)return;
    state.evidenceSelected=item.key;
+   const url=new URL(location.href);
+   url.searchParams.set("observation",item.key);
+   history.replaceState(history.state,"",url);
    inspector.innerHTML=evidenceDetail(item);
    page.querySelectorAll(".evidence-entry").forEach(entry=>{
     const selected=entry.dataset.key===item.key;
@@ -1038,12 +1061,15 @@ document.addEventListener("click",async event=>{
   else if(action==="trace-filter"){
    state.traceFilter=button.dataset.filter;
    const panel=el("runPanel");
-   if(panel)panel.innerHTML=traceExplorer(null,state.traceEvents);
+   if(panel)panel.innerHTML=traceExplorer(state.traceEvents);
   }
   else if(action==="trace-select"){
    const entry=state.traceEvents.find(e=>String(e.seq)===String(button.dataset.seq));
    if(!entry)return;
    state.traceSelected=entry.seq;
+   const url=new URL(location.href);
+   url.searchParams.set("event",entry.seq);
+   history.replaceState(history.state,"",url);
    const details=el("traceInspector");
    if(details)details.innerHTML=traceDetails(entry);
    page.querySelectorAll(".trace-entry").forEach(item=>{
@@ -1054,12 +1080,50 @@ document.addEventListener("click",async event=>{
   }
   else if(action==="retry-page")await show();
   else if(action==="evidence-download"||action==="artifact-download")await download(id,action==="evidence-download"?"evidence":"artifact");
-  else if(action==="inspect-evidence"){state.tab="evidence";state.evidenceSelected=button.dataset.key;await showRun(location.pathname.split("/").pop());page.querySelector("#runPanel")?.scrollIntoView({block:"start",behavior:"smooth"});}
-  else if(action==="tab"){state.tab=button.dataset.tab;const runId=location.pathname.split("/").pop();await showRun(runId);}
+  else if(action==="inspect-evidence"){
+   state.tab="evidence";state.evidenceSelected=button.dataset.key;
+   const url=new URL(location.href);
+   url.searchParams.set("view","evidence");url.searchParams.set("observation",state.evidenceSelected);
+   url.searchParams.delete("event");
+   history.replaceState(history.state,"",url);
+   await showRun(location.pathname.split("/").pop());
+   page.querySelector("#runPanel")?.scrollIntoView({block:"start"});
+  }
+  else if(action==="tab"){
+   state.tab=button.dataset.tab;
+   const url=new URL(location.href);
+   url.searchParams.set("view",state.tab);
+   if(state.tab!=="traces")url.searchParams.delete("event");
+   if(state.tab!=="evidence")url.searchParams.delete("observation");
+   history.replaceState(history.state,"",url);
+   await showRun(location.pathname.split("/").pop());
+  }
   else if(action==="signout"){await req("/logout",{});location.assign("/");}
  }catch(e){notify(e.message);}
 });
+document.addEventListener("toggle",event=>{
+ const key=event.target.dataset?.traceBranch;
+ if(!key||!event.target.isConnected)return;
+ if(event.target.open)state.traceCollapsed.delete(key);else state.traceCollapsed.add(key);
+},true);
+document.addEventListener("keydown",event=>{
+ const selected=event.target.closest?.(".trace-entry");
+ if(!selected||!["ArrowUp","ArrowDown","Home","End"].includes(event.key))return;
+ const rows=[...document.querySelectorAll(".trace-entry")].filter(row=>row.getClientRects().length);
+ const current=rows.indexOf(selected);
+ const next=event.key==="Home"?0:event.key==="End"?rows.length-1:
+  Math.max(0,Math.min(rows.length-1,current+(event.key==="ArrowDown"?1:-1)));
+ event.preventDefault();
+ rows[next]?.focus();
+});
 document.addEventListener("input",event=>{
+ if(event.target.id==="agentQuery"){
+  const query=event.target.value.trim().toLowerCase();
+  const rows=[...page.querySelectorAll("[data-agent-row]")];
+  rows.forEach(row=>{row.hidden=!row.textContent.toLowerCase().includes(query)});
+  el("agentNoMatches").hidden=rows.some(row=>!row.hidden);
+  return;
+ }
  if(event.target.id!=="runQuery")return;
  state.runsQuery=event.target.value;
  const rows=el("runRecords");
@@ -1085,9 +1149,17 @@ document.addEventListener("submit",async event=>{
  if(event.target.id==="importForm"){event.preventDefault();await importProject();}
 });
 el("search").addEventListener("click",searchOverlay);
+if(/Mac|iPhone|iPad/.test(navigator.platform))el("commandKey").textContent="⌘ K";
+document.addEventListener("click",event=>{
+ const menu=document.querySelector(".workspace-account[open]");
+ if(menu&&(!menu.contains(event.target)||event.target.closest("[data-nav]")))menu.open=false;
+});
+document.addEventListener("keydown",event=>{
+ const menu=document.querySelector(".workspace-account[open]");
+ if(menu&&event.key==="Escape"){menu.open=false;menu.querySelector("summary").focus();}
+});
 document.addEventListener("keydown",event=>{
  if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();searchOverlay();}
- if(event.key==="Escape")closeSearch();
 });
 window.addEventListener("popstate",()=>show().catch(pageFailure));
 (async()=>{
@@ -1102,12 +1174,15 @@ window.addEventListener("popstate",()=>show().catch(pageFailure));
   state.username=session.username||null;
   state.guest=!state.username;
   if(state.guest){
-    el("avatar").hidden=true;document.body.classList.add("guest-session");
+    el("avatar").textContent="G";document.body.classList.add("guest-session");
     const button=document.createElement("a");button.href="/login?next="+encodeURIComponent(location.pathname);
     button.className="btn compact";button.textContent="Sign in";
-    el("avatar").before(button);
+    el("avatar").closest("details").before(button);
     await refreshWorkspace();
-  }else el("avatar").textContent=state.username.charAt(0).toUpperCase();
+  }else {
+   el("avatar").textContent=state.username.charAt(0).toUpperCase();
+   el("workspaceIdentity").textContent=state.username;
+  }
   await show();
  }catch(e){pageFailure(e);}
 })();

@@ -1,18 +1,26 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0e1012"><title>Workspace · Refit</title><link rel="stylesheet" href="/assets/ui.css"></head>
-<body><div class="shell">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0e1012"><title>Workspace · Refit</title><script>
+try {
+ const mode=localStorage.getItem("refit-theme")||"system";
+ document.documentElement.dataset.themePreference=["dark","light","system"].includes(mode)?mode:"system";
+} catch { document.documentElement.dataset.themePreference="system"; }
+document.documentElement.dataset.theme=document.documentElement.dataset.themePreference==="system"?
+ (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):document.documentElement.dataset.themePreference;
+</script><link rel="stylesheet" href="/assets/ui.css"><link rel="stylesheet" href="/assets/workbench.css"></head>
+<body class="workbench"><a class="skip-link" href="#page">Skip to workspace</a><div class="shell">
 <aside class="sidebar" aria-label="Workspace sidebar">
- <a class="sidebar-brand" href="/app" data-nav aria-label="Refit workspace"><span class="sidebar-wordmark">Refit<span class="brand-stop">.</span></span></a>
-
- <nav class="nav-set" aria-label="Workspace"><a class="nav-link" data-nav href="/app/agents"><span class="symbol" data-icon="layers"></span>Agents</a><a class="nav-link" data-nav href="/app/runs"><span class="symbol" data-icon="list"></span>Runs</a><a class="nav-link" data-nav href="/app/evidence"><span class="symbol" data-icon="pulse"></span>Evidence</a></nav>
+ <div class="sidebar-section">Workspace</div>
+ <nav class="nav-set" aria-label="Overview"><a class="nav-link" data-nav href="/app"><span class="symbol" data-icon="box"></span>Overview</a><a class="nav-link" data-nav href="/app/agents"><span class="symbol" data-icon="layers"></span>Agents</a></nav>
+ <div class="sidebar-section">Monitor</div>
+ <nav class="nav-set" aria-label="Monitor"><a class="nav-link" data-nav href="/app/runs"><span class="symbol" data-icon="list"></span>Runs</a><a class="nav-link" data-nav href="/app/evidence"><span class="symbol" data-icon="pulse"></span>Evidence</a></nav>
  <div class="sidebar-bottom"><nav class="nav-set" aria-label="Utilities"><a class="nav-link" data-nav href="/app/settings"><span class="symbol" data-icon="settings"></span>Settings</a><a class="nav-link" href="/docs"><span class="symbol" data-icon="book"></span>Documentation</a></nav><div class="sidebar-footnote"><span class="sidebar-footnote-mark"></span>Isolated execution on Vultr</div></div>
 </aside>
 <header class="topbar">
- <a href="/app" data-nav class="mobile-brand">Refit<span class="brand-stop">.</span></a>
+ <a href="/app" data-nav class="workspace-brand">Refit<span class="brand-stop">.</span></a>
  <div class="top-context"><span class="context-root">Workspace</span><span class="context-separator">/</span><span id="topCurrent">Overview</span></div>
- <div class="top-actions"><button id="search" class="searchbox" type="button" aria-label="Search agents and runs"><span class="symbol" data-icon="search"></span><span>Search</span><span class="kbd">⌘ K</span></button><a class="top-help" href="/docs" aria-label="Documentation" title="Documentation"><span class="symbol" data-icon="help"></span></a><span class="avatar" id="avatar" aria-label="Account">R</span></div>
+ <div class="top-actions"><button id="search" class="searchbox" type="button" aria-label="Search agents and runs"><span class="symbol" data-icon="search"></span><span>Search</span><span class="kbd" id="commandKey">Ctrl K</span></button><a class="top-help" href="/docs" aria-label="Documentation" title="Documentation"><span class="symbol" data-icon="help"></span></a><details class="workspace-account"><summary aria-label="Workspace preferences"><span class="avatar" id="avatar" aria-hidden="true">R</span><span class="account-chevron" aria-hidden="true">⌄</span></summary><div class="workspace-account-menu"><strong id="workspaceIdentity">Guest workspace</strong><label for="workspaceTheme">Appearance</label><select id="workspaceTheme" class="control"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select><a href="/app/settings" data-nav>Workspace settings</a></div></details></div>
 </header>
-<nav class="mobile-nav" aria-label="Mobile navigation"><a data-nav href="/app/agents" class="nav-link">Agents</a><a data-nav href="/app/runs" class="nav-link">Runs</a><a data-nav href="/app/evidence" class="nav-link">Evidence</a><a data-nav href="/app/settings" class="nav-link">Settings</a></nav>
-<main class="content"><div class="subheader" id="contextBar"><div class="path" id="crumb">Overview</div><div class="steps" id="steps" hidden></div></div><div class="main" id="page"><div class="small muted">Loading workspace…</div></div></main>
-</div><script src="/assets/run-outcome.js" defer></script><script src="/assets/app.js" defer></script></body></html>
+<nav class="mobile-nav" aria-label="Mobile navigation"><a data-nav href="/app" class="nav-link">Overview</a><a data-nav href="/app/agents" class="nav-link">Agents</a><a data-nav href="/app/runs" class="nav-link">Runs</a><a data-nav href="/app/evidence" class="nav-link">Evidence</a><a data-nav href="/app/settings" class="nav-link">Settings</a></nav>
+<main class="content"><div class="subheader" id="contextBar"><div class="path" id="crumb">Overview</div><div class="steps" id="steps" hidden></div></div><div class="main" id="page" tabindex="-1"><div class="small muted">Loading workspace…</div></div></main>
+<footer class="workspace-footer"><a href="/docs">Documentation</a><a href="https://github.com/Davemafy/refit">GitHub</a><span>Execution on Vultr</span></footer></div><script src="/assets/workspace-controls.js" defer></script><script src="/assets/run-outcome.js" defer></script><script src="/assets/app.js" defer></script></body></html>

@@ -578,6 +578,8 @@ class ApplicationHandler(RefitHandler):
             page = url.path
             # Fixed-allowlist assets, never arbitrary file paths or user source.
             assets = {
+                "/assets/workbench.css": ("workbench.css", "text/css; charset=utf-8"),
+                "/assets/workspace-controls.js": ("workspace-controls.js", "text/javascript; charset=utf-8"),
                 "/assets/ui.css": ("ui.css", "text/css; charset=utf-8"),
                 "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
                 "/assets/run-outcome.js": ("run-outcome.js", "text/javascript; charset=utf-8"),
@@ -651,7 +653,8 @@ class ApplicationHandler(RefitHandler):
                 return self._send(200, {"projects": self.service.accounts.list_projects(owner)})
             if url.path == "/api/application/runs":
                 with self.service.lock:
-                    runs = [{k: run.get(k) for k in ("id", "status", "started_at", "source", "target")}
+                    runs = [({k: run.get(k) for k in ("id", "status", "started_at", "source", "target", "execution_seconds")}
+                             | {"import": {k: (run.get("import") or {}).get(k) for k in ("id", "repository")}})
                             for run, _ in reversed(list(self.service.runs.values()))
                             if run.get("owner", "operator") == owner][:50]
                 return self._send(200, {"runs": runs})
