@@ -1,0 +1,33 @@
+name: Live end-to-end agent migration acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ops/production-live-check.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refit-manual-live-migration
+  cancel-in-progress: false
+
+jobs:
+  live-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install bounded HTTPS test client
+        run: python -m pip install requests==2.32.5
+      - name: Exercise actual public-account migration and model-written diagnostic
+        run: |
+          REVISION="$(python -c 'import json; print(json.load(open("ops/production-live-check.json"))["revision"])')"
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
+          python -m scripts.production_live_e2e --expected-revision "$REVISION"
