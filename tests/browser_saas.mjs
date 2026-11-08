@@ -64,7 +64,8 @@ try{
  await page.setViewportSize({width:1440,height:900});
  await page.goto(url+"/app");
  await page.getByRole("heading",{name:"Overview"}).waitFor();
- await page.locator(".overview-recent").waitFor();
+ await page.locator(".refund-start").waitFor();
+ await page.getByRole("button",{name:"Run refund agent"}).waitFor();
  await page.screenshot({path:"artifacts/saas-ui/00-guest-workspace.png",fullPage:true});
  await page.goto(url+"/app/agents/new",{waitUntil:"domcontentloaded"});
  await page.locator("#repository").waitFor();
