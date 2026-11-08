@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Provision judge-only access and isolated paid E2E acceptance without public capacity bypass"
+  "reason": "Fix verified reviewer login-to-capability 502 and enforce cold-start HTTP regression"
 }
