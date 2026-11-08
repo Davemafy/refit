@@ -445,6 +445,7 @@ def run_migration(snapshot, setup, source, target, image, broker, event, stopped
                     "state_checks": state_checks,
                     "stdout_sha256": hashlib.sha256(result.get("stdout", "").encode()).hexdigest(),
                     "exit_code": result.get("exit_code"), "cleanup": cleanup,
+                    "worker_transport_exit_code": proc.returncode if proc is not None else None,
                     "runtime": runtime_label if local else state["HostConfig"]["Runtime"] if state else None,
                     "oom_killed": state["State"]["OOMKilled"] if state else None,
                     "elapsed_seconds": round(time.monotonic() - case_start, 3)}
