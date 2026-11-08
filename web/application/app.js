@@ -420,7 +420,6 @@ function readSetup(discovery){
  return setup;
 }
 async function flow(){
- await ensureGuestSession();
  let step=state.wizard?.step||0;
  if(!step)header("Import agent",1);
  if(step===1)header("Inspect your agent",1);
