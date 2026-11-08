@@ -46,8 +46,9 @@ try{
    await capture("runs","/app/runs",size,async()=>{
     assert.equal(await page.locator(".run-table-desktop").isVisible(),false);
     assert.equal(await page.locator(".run-list-mobile").isVisible(),true);
-    assert.equal(await page.locator(".run-mobile-item").count(),1);
+    assert.equal(await page.locator(".run-mobile-item").count(),2, "Both recorded public runs must be accessible");
     assert.equal(await page.locator(".run-mobile-item").getByRole("button",{name:"demo-python-2026-11-07"}).count(),1);
+    assert.equal(await page.locator(".run-mobile-item").getByRole("button",{name:"demo-diagnostic-2026-11-08"}).count(),1);
    });
    await capture("overview","/app",size,async()=>{
      assert.equal(await page.locator(".guest-feature").isVisible(),true);
