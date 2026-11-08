@@ -187,6 +187,7 @@ async function overview(){
    '<div class="workspace-start-copy"><h2>See your first migration happen.</h2>'+
    '<p>No account. No setup. Run a real, pinned Python agent with DeepSeek and GLM on Vultr, then inspect the tool calls, result and sandbox evidence.</p>'+
    '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-live">'+ico("pulse")+' Try a live migration '+ico("arrow")+'</button>'+
+   '<a class="btn" data-nav href="/app/replay">Watch agent execution '+ico("arrow")+'</a>'+ 
    '<a class="btn" href="/app/runs/demo-diagnostic-2026-11-08">Inspect recorded proof</a></div>'+
    '<p class="small sub">One sample per visitor per day. The sample is predetermined; no arbitrary code is accepted.</p></div>'+
    illustratedAsset("programs")+'</section>'+
@@ -1030,6 +1031,7 @@ async function showRun(id,refreshOnly=false){
  (!active&&!run.demo&&run.diagnostics_available&&!diagnostic?
   '<button data-action="diagnose-run" data-id="'+safe(id)+'" class="btn">'+ico("code")+' Run diagnostic</button>':"")+
  (diagnostic?'<button data-action="inspect-diagnostic" class="btn">'+ico("eye")+' '+(diagnosing?"Diagnostic running":"Inspect diagnostic")+'</button>':"")+
+ (id==="demo-python-2026-11-07"?'<a class="btn" data-nav href="/app/replay">'+ico("eye")+' Watch execution</a>':"")+
  '<button data-action="evidence-download" data-id="'+safe(id)+'" class="btn">'+ico("download")+' Download evidence</button>'+
  (run.export_available?'<button data-action="artifact-download" data-id="'+safe(id)+'" class="btn primary">'+ico("download")+' Export verified configuration</button>':"")+
  '</div></div>'+
@@ -1103,9 +1105,19 @@ function searchOverlay(event){
  });
 }
 async function show(){
- stopStream();page.innerHTML='<div class="small muted">Loading…</div>';
+ stopStream();
+ if(window.RefitReplay)RefitReplay.stop();
+ page.innerHTML='<div class="small muted">Loading…</div>';
  const pathname=location.pathname;
  if(pathname==="/app"){await overview();return;}
+ if(pathname==="/app/replay"){
+  header("Execution replay");
+  document.body.dataset.workspacePage="replay";
+  const evidence=state.demo||await req("/demo");
+  page.innerHTML=RefitReplay.shell(evidence);
+  RefitReplay.mount(evidence);
+  return;
+ }
  if(pathname==="/app/agents"){await agents();return;}
  if(pathname==="/app/agents/new"){
   const projectId=new URLSearchParams(location.search).get("project");
