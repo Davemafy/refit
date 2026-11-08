@@ -20,7 +20,28 @@ from .docker_cleanup import remove_and_verify
 from .migration_engine import AgentContract, AgentProfile, ReplayCase, fingerprint, migrate
 from .refit_vultr_probe import ENDPOINT
 
-MODELS = ("deepseek-v4.1-flash-1017", "glm-5.2")
+DEFAULT_MODELS = ("deepseek-v4.1-flash-1017", "glm-5.2")
+
+
+def configured_models(value=None):
+    """Root/operator-approved Vultr model IDs, never supplied by run requests.
+
+    Custom entries are experimental until the full gVisor + holdout +
+    independent-export acceptance has actually passed for those models.
+    """
+    if value is None:
+        value = os.environ.get("REFIT_APPLICATION_MODELS", "")
+    if not value:
+        return DEFAULT_MODELS
+    models = tuple(part.strip() for part in value.split(","))
+    if (not 2 <= len(models) <= 12 or len(set(models)) != len(models) or
+            any(not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._/-]{1,95}", model)
+                for model in models)):
+        raise ValueError("Choose 2–12 distinct, valid operator-approved Vultr model IDs.")
+    return models
+
+
+MODELS = configured_models()
 BUDGET_LIMIT = 64
 CASE_SECONDS = 100
 RUN_SECONDS = 1000
