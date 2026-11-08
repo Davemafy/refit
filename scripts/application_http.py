@@ -858,6 +858,7 @@ class ApplicationHandler(RefitHandler):
                                 BUDGET_LIMIT if is_review else global_remaining)
                 return self._send(200, {
                     "models": MODELS, "max_requests": available,
+                    "minimum_complete_migration_requests": 7,
                     "account_daily_allowance": allowance, "account_reserved_today": reserved,
                     "account_remaining_today": account_remaining,
                     "global_daily_ceiling": self.service.daily_budget,
