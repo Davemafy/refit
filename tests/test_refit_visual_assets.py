@@ -64,8 +64,10 @@ class VisualAssetTests(unittest.TestCase):
                         status, mime, home = get("/")
                         self.assertEqual((status, mime), (200, "text/html; charset=utf-8"))
                         self.assertIn(b"/assets/marketing.css", home)
-                        self.assertIn(b"/assets/marketing.js", home)
-                        self.assertIn(b"/api/application/demo", (ROOT / "web/application/marketing.js").read_bytes())
+                        self.assertIn(b"Prove what survived.", home)
+                        self.assertIn(b"framework-evidence-2026-11-06.md", home)
+                        self.assertIn(b"24<span>/24</span>", home)
+                        self.assertIn(b"13<span>/24</span>", home)
                         for asset in ("marketing.css", "marketing.js", "visual.css"):
                             status, mime, body = get("/assets/" + asset)
                             self.assertEqual(status, 200)

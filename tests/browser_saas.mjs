@@ -36,23 +36,22 @@ try{
  page.on("pageerror",error=>errors.push(error.message));
  page.on("request",request=>{if(request.url().endsWith("/api/application/runs")&&request.method()==="POST")runRequests.push(request.url());});
  await page.goto(url+"/");
- await page.getByRole("heading",{name:/Change the model/}).waitFor();
- await page.waitForFunction(()=>document.querySelector("#previewPassed")?.textContent!=="—");
+ await page.getByRole("heading",{name:/Change the model.*Prove what survived/}).waitFor();
  const visual = await page.evaluate(()=>{
-   const art=[...document.querySelectorAll(".m-feature-visual img, .m-worker-art .m-art-dark")];
+   const results=[...document.querySelectorAll(".result .result-num")].map(el=>el.textContent.replace(/\\s+/g,"").trim());
+   const evidence=[...document.querySelectorAll("a[href]")].filter(el=>el.href.includes("framework-evidence-2026-11-06"));
    return {
-     artCount:art.length,loaded:art.every(image=>image.complete&&image.naturalWidth>0),
-     cases:document.querySelectorAll("#previewTicks .m-tick").length,
-     observed:document.querySelector("#previewPassed")?.textContent,
-     recorded:document.querySelector("#previewProvenance")?.textContent,
+     results,
+     evidenceCount:evidence.length,
+     imported:!!document.querySelector(".capability-row"),
+     isolated:!!document.querySelector("#sandbox .diagram-boundary"),
+     rejection:!!document.querySelector(".rejected-line .rejected-badge"),
      overflow:document.documentElement.scrollWidth>innerWidth
    };
  });
- assert.equal(visual.artCount,4,"Homepage must have four distinct sourced illustrations");
- assert.ok(visual.loaded,"Licenced static illustrations must actually load");
- assert.equal(visual.cases,7,"Hero observation marks must come from published case events");
- assert.equal(visual.observed,"7");
- assert.match(visual.recorded,/verified cleanups/);
+ assert.deepEqual(visual.results,["24/24","13/24","24/24"],"Homepage must show the real three-way upstream comparison");
+ assert.ok(visual.evidenceCount>=2,"Published scores must link to original evidence");
+ assert.ok(visual.imported&&visual.isolated&&visual.rejection,"Import, containment and failed validation stories must be visible");
  assert.equal(visual.overflow,false,"Desktop marketing must not scroll horizontally");
  await page.screenshot({path:"artifacts/saas-ui/01-landing.png",fullPage:true});
  await page.setViewportSize({width:390,height:844});
