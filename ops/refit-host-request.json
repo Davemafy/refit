@@ -1,4 +1,1 @@
-{
-  "action": "deploy",
-  "reason": "Promote verified neutral-theme guest agent screen and remove duplicate empty state"
-}
+{"action":"deploy","reason":"Release the compact workspace shell and verified Runs toolbar"}
