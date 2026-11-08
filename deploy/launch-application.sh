@@ -33,14 +33,27 @@ if metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0o600 or not stat.S
     raise SystemExit("Budget configuration ownership/mode invalid")
 raw = path.read_text(encoding="utf8")
 lines = raw.splitlines()
-patterns = (r"REFIT_APPLICATION_DAILY_BUDGET=(\\d+)",
-            r"REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET=(\\d+)")
-if len(lines) != 2:
-    raise SystemExit("Unexpected budget configuration format")
-matched = [re.fullmatch(pattern, line) for pattern, line in zip(patterns, lines)]
-if any(m is None for m in matched):
-    raise SystemExit("Invalid budget file (no arbitrary shell parsing)")
-old_daily, old_account = map(lambda m: int(m.group(1)), matched)
+required = {"REFIT_APPLICATION_DAILY_BUDGET",
+            "REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET"}
+found = {}
+for index, line in enumerate(lines):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    prefix, sep, value = line.partition("=")
+    name = prefix.strip().removeprefix("export ").strip()
+    if name not in required:
+        # Preserve other root-authorized settings, rather than rewriting
+        # an unknown live host configuration or evaluating them here.
+        continue
+    value = value.split("#", 1)[0].strip().strip(chr(39) + chr(34))
+    if not sep or name in found or not re.fullmatch(r"[0-9]{1,4}", value):
+        raise SystemExit("Host budget assignment malformed or duplicated")
+    found[name] = (index, prefix, int(value))
+if set(found) != required:
+    raise SystemExit("Root host budget config is missing an expected numeric key")
+old_daily = found["REFIT_APPLICATION_DAILY_BUDGET"][2]
+old_account = found["REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET"][2]
 if not (1 <= old_daily <= 2048 and 1 <= old_account <= 512):
     raise SystemExit("Existing quota outside supported bounds")
 new_daily, new_account = max(192, old_daily), max(32, old_account)
@@ -49,8 +62,12 @@ if (old_daily, old_account) != (new_daily, new_account):
     fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
         with os.fdopen(fd, "w") as out:
-            out.write(f"REFIT_APPLICATION_DAILY_BUDGET={new_daily}\\n"
-                      f"REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET={new_account}\\n")
+            edits = {"REFIT_APPLICATION_DAILY_BUDGET": new_daily,
+                     "REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET": new_account}
+            for key, value in edits.items():
+                index, prefix, _ = found[key]
+                lines[index] = f"{prefix}={value}"
+            out.write("\n".join(lines) + ("\n" if raw.endswith("\n") else ""))
             out.flush()
             os.fsync(out.fileno())
         os.replace(dest, path)
@@ -64,8 +81,8 @@ print(f"Owner-authorized capacity adjustment: global {old_daily}->{new_daily}, "
 PY_QUOTA_REPAIR
 # The forced SSH handler loaded the previous root-only file before entering
 # the installer; this one release must use the just-validated new values.
-BUDGET="$(sed -nE 's/^REFIT_APPLICATION_DAILY_BUDGET=([0-9]+)$/\\1/p' /etc/refit/host-ssh/budgets.env)"
-ACCOUNT_BUDGET="$(sed -nE 's/^REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET=([0-9]+)$/\\1/p' /etc/refit/host-ssh/budgets.env)"
+BUDGET="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?REFIT_APPLICATION_DAILY_BUDGET[[:space:]]*=[[:space:]]*([0-9]+)$/\\2/p' /etc/refit/host-ssh/budgets.env)"
+ACCOUNT_BUDGET="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET[[:space:]]*=[[:space:]]*([0-9]+)$/\\2/p' /etc/refit/host-ssh/budgets.env)"
 [[ "$BUDGET" =~ ^[0-9]{1,4}$ && "$ACCOUNT_BUDGET" =~ ^[0-9]{1,3}$ ]] &&
   ((BUDGET >= 1 && BUDGET <= 2048 && ACCOUNT_BUDGET >= 1 && ACCOUNT_BUDGET <= 512))
 

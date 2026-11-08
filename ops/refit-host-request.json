@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Owner-authorized one-time capacity recovery for public migration testing (192 global, 32 per account)"
+  "reason": "Apply owner-approved quota adjustment with safe root-file format preservation"
 }
