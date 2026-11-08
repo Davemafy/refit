@@ -26,6 +26,9 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Record fifteen authentic synchronized browser scenes
         run: node scripts/audio_first_capture.mjs
+      - name: Install FFmpeg
+        run: |
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y ffmpeg; }
       - name: Encode high-quality 1080p timeline
         run: |
           ffmpeg -hide_banner -loglevel error -nostdin -y \
@@ -55,6 +58,7 @@ jobs:
           name: refit-audio-first-real-ui-160s
           path: |
             artifacts/audio-first-capture/refit-ui-synced-160s.mp4
+            artifacts/audio-first-capture/refit-ui-source.webm
             artifacts/audio-first-capture/scenes.json
             artifacts/audio-first-capture/final-ui.png
             artifacts/audio-first-capture/contact-sheet.jpg
