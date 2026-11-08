@@ -188,7 +188,7 @@ async function overview(){
    '<p>No account. No setup. Run a real, pinned Python agent with DeepSeek and GLM on Vultr, then inspect the tool calls, result and sandbox evidence.</p>'+
    '<div class="workspace-start-actions"><button class="btn primary" type="button" data-action="try-live">'+ico("pulse")+' Try a live migration '+ico("arrow")+'</button>'+
    '<a class="btn" data-nav href="/app/replay">Watch agent execution '+ico("arrow")+'</a>'+ 
-   '<a class="btn" href="/app/runs/demo-diagnostic-2026-11-08">Inspect recorded proof</a></div>'+
+   '</div>' +
    '<p class="small sub">One sample per visitor per day. The sample is predetermined; no arbitrary code is accepted.</p></div>'+
    illustratedAsset("programs")+'</section>'+
    '<section class="overview-recent" aria-label="Recorded migration">'+
