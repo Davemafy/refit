@@ -59,7 +59,7 @@ limit_req_zone \$binary_remote_addr zone=refit_guests:1m rate=12r/m;
 limit_conn_zone \$binary_remote_addr zone=refit_connections:1m;
 server {
     listen 443 ssl;
-    server_name $IP;
+    server_name $IP refit.davemafy.xyz;
     ssl_certificate /etc/letsencrypt/live/refit-platform-ip/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/refit-platform-ip/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
