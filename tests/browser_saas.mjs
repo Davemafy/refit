@@ -70,7 +70,7 @@ try{
  await page.locator("#repository").waitFor();
  const visitor=(await context.request.get(url+"/api/application/session"));
  assert.equal(visitor.status(),200);
- assert.equal((await visitor.json()).username,"Visitor","Guest import must not require a signup");
+ assert.equal((await visitor.json()).username,null,"Form must open before a visitor session is created");
  await page.getByRole("button",{name:/Inspect agent/}).waitFor();
  await page.goto(url+"/app/runs/demo-python-2026-11-07");
  await page.getByRole("heading",{name:"Review migration results"}).waitFor();
@@ -85,8 +85,8 @@ try{
  await page.getByRole("button",{name:/Export verified configuration/}).first().click();
  const exampleFile=await exampleDownload;
  assert.equal(exampleFile.suggestedFilename(),"demo-python-2026-11-07-artifact.json");
- assert.equal((await context.request.get(url+"/api/application/projects")).status(),200);
- assert.equal((await context.request.get(url+"/api/application/runs")).status(),200);
+ assert.equal((await context.request.get(url+"/api/application/projects")).status(),401);
+ assert.equal((await context.request.get(url+"/api/application/runs")).status(),401);
  await page.goto(url+"/signup");
  await page.getByRole("heading",{name:"Create your account"}).waitFor();
  await page.locator("#username").fill("qa-developer");
