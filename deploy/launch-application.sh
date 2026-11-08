@@ -19,6 +19,9 @@ ACCOUNT_BUDGET="${REFIT_APPLICATION_ACCOUNT_DAILY_BUDGET:-16}"
    "$BUDGET" =~ ^[0-9]{1,4}$ && "$ACCOUNT_BUDGET" =~ ^[0-9]{1,3}$ ]] &&
   ((BUDGET >= 1 && BUDGET <= 2048 &&
     ACCOUNT_BUDGET >= 1 && ACCOUNT_BUDGET <= 512))
+# The bounded generated-Python diagnostic runs in a separate approved image.
+# Pull on the trusted host at deploy time; the worker itself has no network.
+docker pull python:3.11-alpine >/dev/null
 docker build -f "$REPO/integrations/application/Dockerfile" -t "$IMAGE" "$REPO"
 IMAGE_ID="$(docker image inspect --format='{{.Id}}' "$IMAGE")"
 [[ "$IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]]
@@ -47,6 +50,8 @@ EnvironmentFile=/etc/refit/application.env
 EnvironmentFile=-/etc/refit/application-public.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=REFIT_DEPLOYED_REVISION=$REVISION
+Environment=REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1
+Environment=REFIT_SANDBOX_RUNTIME=runsc
 ExecStart=$APP_COMMAND
 UMask=0077
 Restart=on-failure

@@ -13,7 +13,8 @@
  const eventLabels={phase_started:"Evaluation phase started",phase_completed:"Evaluation phase finished",
   runtime_ready:"Runtime prepared",sandbox_starting:"Starting sandbox",sandbox_started:"Sandbox started",
   inference_requested:"Model request sent",inference_completed:"Model response received",
-  case_completed:"Case completed",sandbox_cleanup:"Sandbox cleanup recorded",
+  case_completed:"Case completed",sandbox_cleanup:"Sandbox cleanup recorded", diagnostic_requested:"Generated diagnostic requested",diagnostic_finished:"Diagnostic verification finished",
+  diagnostic_interrupted:"Diagnostic interrupted",
   run_queued:"Budget reserved and migration queued",run_started:"Migration started",terminal:"Run finished"};
  const eventLabel=value=>eventLabels[value]||String(value||"Unknown activity").replaceAll("_"," ");
  const caseEvents=events=>(Array.isArray(events)?events:[]).filter(e=>e?.type==="case_completed"&&e.details&&e.details.phase!=="fresh_export");

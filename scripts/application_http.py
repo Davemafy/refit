@@ -32,6 +32,8 @@ from .durable_store import RunStore
 from .migration_engine import fingerprint
 from .refit_http import RefitHandler
 from .refit_vultr_probe import VultrInference, load_key
+from .sandbox_diagnostics import diagnostics_input, generate_and_verify
+from .sandbox_runner import DockerSandbox
 
 ROOT = Path(__file__).resolve().parents[1]
 BODY_LIMIT = ((ARCHIVE_LIMIT + 2) // 3) * 4 + 8192
@@ -42,6 +44,7 @@ OWNER_QUEUE_LIMIT = 2
 REVIEW_BUDGET = 16
 REVIEW_PREFIX = "review-"
 DEFAULT_ACCOUNT_BUDGET = 16
+DIAGNOSTIC_MODEL = "deepseek-v4.1-flash-1017"
 COOKIE = "__Host-refit-session"
 
 
@@ -143,6 +146,7 @@ class ApplicationService:
         self.accounts = Accounts(directory) if public_origin else None
         self.review_passes = {REVIEW_PREFIX + key: expires for key, expires in (review_passes or {}).items()}
         self.account_slots = threading.BoundedSemaphore(2)
+        self.diagnostic_slot = threading.BoundedSemaphore(1)
         self.image = image
         self.daily_budget = daily_budget
         self.account_budget = account_budget
@@ -168,6 +172,17 @@ class ApplicationService:
             if any(e["type"] == "sandbox_cleanup" and not e["details"]["receipt"]["verified"]
                    for e in events):
                 self.quarantined = True
+            diagnostic = run.get("diagnostic")
+            if isinstance(diagnostic, dict):
+                if diagnostic.get("status") == "running":
+                    diagnostic.update(status="interrupted", completed_at=now(),
+                                      error="service_restarted_no_automatic_retry")
+                    self.emit(run["id"], "diagnostic_interrupted", {})
+                if any(isinstance(worker, dict) and
+                       worker.get("container_removed_verified") is not True
+                       for worker in (diagnostic.get("sandbox"),
+                                      (diagnostic.get("cross_check") or {}).get("sandbox"))):
+                    self.quarantined = True
 
         with self.lock:
             self.dispatch()
@@ -182,12 +197,20 @@ class ApplicationService:
         return self.accounts.review_session(owner, expires)
 
     def reserved(self, day, owner=None):
-        return sum(reserved_requests(run) for run, _ in self.runs.values()
-                   if (not run.get("owner", "").startswith(REVIEW_PREFIX) if owner is None
-                       else run.get("owner", "operator") == owner)
-                   and (run["started_at"][:10] == day
-                        or run["status"] in EXECUTING
-                        or run.get("finished_at", "")[:10] == day))
+        matching = [run for run, _ in self.runs.values()
+                    if (not run.get("owner", "").startswith(REVIEW_PREFIX) if owner is None
+                        else run.get("owner", "operator") == owner)]
+        migration = sum(reserved_requests(run) for run in matching
+                        if (run["started_at"][:10] == day
+                            or run["status"] in EXECUTING
+                            or run.get("finished_at", "")[:10] == day))
+        # Every attempted diagnostic reserves one paid call, even if a crash
+        # interrupts it. Never silently retry a potentially billed request.
+        diagnostics = sum(1 for run in matching
+                          if isinstance(run.get("diagnostic"), dict) and (
+                              run["diagnostic"].get("requested_at", "")[:10] == day or
+                              run["diagnostic"].get("status") == "running"))
+        return migration + diagnostics
 
     @staticmethod
     def broker(budget):
@@ -390,6 +413,113 @@ class ApplicationService:
             self.emit(ident, "terminal", {"status": run["status"], "model_requests": broker.requests})
             self.dispatch()
 
+    def diagnose(self, ident, owner="operator"):
+        """One account-authorized model-written diagnostic for a completed run.
+
+        Only a sanitized projection of measured training counts reaches the
+        coding model. Held-out cases, prompts, source and evaluator stay host-side.
+        """
+        if os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") != "1":
+            raise ApiProblem(503, "diagnostic_disabled", "Diagnostics are not enabled on this host.")
+        if os.getenv("REFIT_SANDBOX_RUNTIME", "runsc") != "runsc":
+            raise ApiProblem(503, "runsc_required", "Verified gVisor execution is required.")
+        with self.lock:
+            self.get(ident, owner)  # Enforce run ownership before any inference.
+            run = self.runs[ident][0]
+            if owner.startswith(REVIEW_PREFIX):
+                raise ApiProblem(403, "review_diagnostic_disabled",
+                                 "Review links can inspect evidence, not start additional code execution.")
+            if run["status"] in ACTIVE or run["status"] == "interrupted":
+                raise ApiProblem(409, "run_not_finished", "Finish the migration before diagnosing it.")
+            if "diagnostic" in run:
+                raise ApiProblem(409, "diagnostic_already_requested",
+                                 "This migration already has a diagnostic attempt.")
+            if self.quarantined:
+                raise ApiProblem(503, "operator_review_required",
+                                 "Sandbox cleanup needs operator review.")
+            try:
+                inputs = diagnostics_input({"domain": "application", "report": run.get("report")})
+            except (TypeError, ValueError) as exc:
+                raise ApiProblem(422, "insufficient_migration_evidence",
+                                 "This migration has no comparable measured training results.") from exc
+            day = now()[:10]
+            if owner != "operator" and self.reserved(day, owner) + 1 > self.account_budget:
+                raise ApiProblem(429, "account_budget_exhausted", "Your daily inference allowance is reserved.")
+            if self.reserved(day) + 1 > self.daily_budget:
+                raise ApiProblem(429, "daily_budget_exhausted", "The daily Vultr request budget is exhausted.")
+            if not self.diagnostic_slot.acquire(blocking=False):
+                raise ApiProblem(429, "diagnostic_busy", "Another diagnostic is using the sandbox.")
+            try:
+                broker = self.broker(1)
+            except (OSError, ValueError, RuntimeError) as exc:
+                self.diagnostic_slot.release()
+                raise ApiProblem(503, "inference_unavailable", "Vultr inference is unavailable.") from exc
+            run["diagnostic"] = {
+                "status": "running", "requested_at": now(),
+                "generator_model": DIAGNOSTIC_MODEL,
+                "kind": "vultr_model_generated_python_diagnostic",
+                "scope": "measured_training_only",
+                "migration_id": ident,
+            }
+            self.emit(ident, "diagnostic_requested", {
+                "model": DIAGNOSTIC_MODEL, "scope": "measured_training_only",
+                "input_phase_count": len(inputs["phases"]),
+            })
+            try:
+                threading.Thread(target=self._execute_diagnostic,
+                                 args=(ident, {"domain": "application", "report": run["report"]},
+                                       broker), daemon=True).start()
+            except RuntimeError:
+                run["diagnostic"].update(status="failed", error="worker_unavailable",
+                                         completed_at=now())
+                self.emit(ident, "diagnostic_finished", {"status": "failed"})
+                self.diagnostic_slot.release()
+            return dict(run["diagnostic"])
+
+    def _execute_diagnostic(self, ident, record, broker):
+        try:
+            result = generate_and_verify(
+                record, broker, DIAGNOSTIC_MODEL, DockerSandbox(runtime="runsc"))
+            sandbox = result["sandbox"]
+            challenge = (result.get("cross_check") or {}).get("sandbox") or {}
+            verified = (result["verified"] is True and
+                        all(worker.get("runtime") == "runsc" and
+                            worker.get("container_created") is True and
+                            worker.get("container_removed_verified") is True and
+                            worker.get("ledger_valid") is True and
+                            worker.get("status") == "passed"
+                            for worker in (sandbox, challenge)))
+            result.update(status="verified" if verified else "rejected",
+                          verified=bool(verified))
+        except Exception as exc:
+            # Public API must never reflect privileged file paths, credentials,
+            # upstream response bodies, or Docker CLI exception text.
+            result = {"status": "failed", "verified": False,
+                      "error": "diagnostic_execution_unavailable",
+                      "error_type": type(exc).__name__}
+        finally:
+            with self.lock:
+                run = self.runs[ident][0]
+                previous = run.get("diagnostic", {})
+                result.update(requested_at=previous.get("requested_at"),
+                              completed_at=now(), model_requests=broker.requests,
+                              migration_id=ident)
+                run["diagnostic"] = result
+                sandbox = result.get("sandbox")
+                second = (result.get("cross_check") or {}).get("sandbox")
+                if any(isinstance(worker, dict) and
+                       worker.get("container_removed_verified") is not True
+                       for worker in (sandbox, second)):
+                    self.quarantined = True
+                self.emit(ident, "diagnostic_finished", {
+                    "status": result["status"], "verified": result["verified"],
+                    "model_requests": broker.requests,
+                    "cleanup_verified": (
+                        (sandbox or {}).get("container_removed_verified") is True and
+                        (second or {}).get("container_removed_verified") is True),
+                })
+            self.diagnostic_slot.release()
+
     def get(self, ident, owner=None):
         with self.lock:
             if ident not in self.runs or (owner is not None and
@@ -537,6 +667,13 @@ class ApplicationHandler(RefitHandler):
                     self.service.import_slots.release()
             if path == "/api/application/runs":
                 return self._send(202, self.service.start(self.body(), owner))
+            diagnostic = re.fullmatch(r"/api/application/runs/(app-[0-9a-f]{16})/diagnose", path)
+            if diagnostic:
+                data = self.body(limit=64)
+                if data != {}:
+                    raise ApiProblem(422, "invalid_diagnostic_request",
+                                     "Diagnostics do not accept prompts or executable code.")
+                return self._send(202, self.service.diagnose(diagnostic[1], owner))
             match = re.fullmatch(r"/api/application/runs/(app-[0-9a-f]{16})/cancel", path)
             if match:
                 return self._send(200, self.service.cancel(match[1], owner))
@@ -675,7 +812,12 @@ class ApplicationHandler(RefitHandler):
                     raise ApiProblem(422, "invalid_cursor", "Use a nonnegative event cursor.")
                 return self.events(ident, int(value), owner)
             return self._send(200, {key: val for key, val in run.items() if key not in {"report", "export"}}
-                              | {"export_available": run["export"] is not None})
+                              | {"export_available": run["export"] is not None,
+                                 "diagnostics_available": (
+                                     os.getenv("REFIT_ENABLE_SANDBOX_DIAGNOSTICS") == "1"
+                                     and os.getenv("REFIT_SANDBOX_RUNTIME", "runsc") == "runsc"
+                                     and not owner.startswith(REVIEW_PREFIX)
+                                     and not self.service.quarantined)})
         except ApiProblem as exc:
             self._problem(exc)
         except (BrokenPipeError, ConnectionResetError, socket.timeout):

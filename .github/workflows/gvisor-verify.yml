@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'scripts/sandbox_runner.py'
+      - 'scripts/c1_acceptance.py'
+      - 'scripts/sandbox_diagnostics.py'
+      - 'tests/test_refit_application_diagnostics.py'
       - 'scripts/docker_cleanup.py'
       - 'tests/test_refit_docker_cleanup.py'
       - 'tests/test_refit_sandbox.py'
@@ -68,6 +71,25 @@ jobs:
                   for name_ in ('dns', 'outbound_connection', 'root_write'):
                       assert not probes[name_].startswith('unexpectedly'), probes
               print(name, 'verified:', r['runtime'], r['duration_ms'], 'ms')
+          PY
+
+      - name: Verify Challenge 1 controlled containment against real gVisor workers
+        run: |
+          set -euo pipefail
+          python -m scripts.c1_acceptance --output artifacts/gvisor-c1-containment.json
+          python - <<'PY'
+          import json
+          record = json.load(open('artifacts/gvisor-c1-containment.json'))
+          assert record['verified'] is True
+          assert record['prohibited_actions_observed'] is True
+          assert record['host_canary_unchanged'] is True
+          assert record['timeout_enforced'] is True
+          for name in ('forbidden', 'timeout'):
+              runner = record[name]
+              assert runner['runtime_identity']['docker_runtime'] == 'runsc'
+              assert runner['container_removed_verified']
+              assert runner['ledger_valid']
+          print('Real gVisor containment and cleanup verified on GitHub runner only.')
           PY
 
       - name: Verify complete agent migration through gVisor-isolated business tools

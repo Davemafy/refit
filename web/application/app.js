@@ -553,6 +553,10 @@ function evidenceEntries(run,events){
   subtitle:[event.details?.phase,"Cleanup receipt"].filter(Boolean).join(" · "),
   details:event.details||{}
  }));
+ if(run.diagnostic)entries.push({
+  key:"diagnostic",type:"diagnostic",title:"Generated diagnostic",
+  subtitle:"Vultr-generated Python · isolated execution",details:run.diagnostic
+ });
  entries.push({key:"provenance",type:"provenance",title:"Run provenance",
   subtitle:"Configuration and run identifiers",details:run});
  return entries;
@@ -563,12 +567,15 @@ function evidenceOutcome(item){
   return typeof d.passed==="boolean"?(d.passed?"Passed":"Failed"):"Not recorded";
  if(item.type==="cleanup")
   return d.receipt?.verified===true?"Verified":d.receipt?.verified===false?"Unverified":"Not recorded";
+ if(item.type==="diagnostic")
+  return d.status==="verified"?"Verified":d.status==="running"?"Executing":d.status==="rejected"?"Not verified":d.status||"Not recorded";
  return "Recorded";
 }
 function evidenceDetail(item){
  const d=item.details;
  const field=(label,value)=>'<div class="evidence-field"><dt>'+safe(label)+'</dt><dd>'+safe(value===undefined||value===null||value===""?"Not recorded":value)+'</dd></div>';
  const fields=[];
+ let supplemental="";
  if(item.type==="provenance"){
   fields.push(field("Run ID",d.id),field("Status",d.status),
    field("Source model",d.source),field("Replacement model",d.target),
@@ -581,13 +588,41 @@ function evidenceDetail(item){
    field("Receipt verified",d.receipt?.verified===true?"Yes":d.receipt?.verified===false?"No":"Not recorded"),
    field("Cleanup reason",d.receipt?.reason),field("Observed",d.receipt?.observed_at),
    field("Container",d.receipt?.container_name||d.container));
+ }else if(item.type==="diagnostic"){
+  const worker=d.sandbox||{},policy=worker.ledger?.[0]?.event?.policy||{};
+  const challenge=d.cross_check||{},second=challenge.sandbox||{};
+  fields.push(field("Migration run",d.migration_id),
+   field("Vultr model",d.generator_model),field("Model requests",d.model_requests),
+   field("Scope",d.scope||"Measured training only"),
+   field("Diagnostic verification",d.verified===true?"Passed":"Not verified"),
+   field("Execution",worker.status),field("Sandbox runtime",worker.runtime),
+   field("Container created",worker.container_created===true?"Yes":"No"),
+   field("Exit code",worker.exit_code),
+   field("Wall time (ms)",worker.duration_ms),
+   field("Code digest",worker.code_sha256),
+   field("Network",policy.network),field("Memory limit (MB)",policy.memory_mb),
+   field("CPU limit",policy.cpus),field("PID limit",policy.pids_limit),
+   field("Runtime binary",worker.runtime_identity?.registered_binary),
+   field("Primary cleanup",worker.container_removed_verified===true?"Verified":"Not verified"),
+   field("Independent test",second.status),
+   field("Independent cleanup",second.container_removed_verified===true?"Verified":"Not verified"),
+   field("Ledger",worker.ledger_valid===true?"Hash chain valid":"Not verified"));
+  supplemental='<p class="small sub">This diagnostic analyzes observed training scores; it does not determine business safety or unlock an export.</p>'+
+   (d.generated_code?'<h4>Vultr-generated Python</h4><pre class="log">'+safe(d.generated_code)+'</pre>':"")+
+   (worker.stdout?'<h4>Observed stdout</h4><pre class="log">'+safe(worker.stdout)+'</pre>':"")+
+   (worker.stderr?'<h4>Observed stderr</h4><pre class="log">'+safe(worker.stderr)+'</pre>':"")+
+   (d.expected?'<h4>Independent verifier expected</h4><pre class="log">'+safe(JSON.stringify(d.expected,null,2))+'</pre>':"")+
+   (d.observed?'<h4>Observed parsed output</h4><pre class="log">'+safe(JSON.stringify(d.observed,null,2))+'</pre>':"")+
+   (challenge.expected?'<h4>Hidden synthetic cross-check</h4><p class="small sub">The coding model did not see these values before execution.</p><pre class="log">'+
+    safe(JSON.stringify({expected:challenge.expected,observed:challenge.observed},null,2))+'</pre>':"")+
+   (second.stderr?'<h4>Cross-check stderr</h4><pre class="log">'+safe(second.stderr)+'</pre>':"")+
+   (d.validation_error||d.error?'<div class="notice">'+safe(d.validation_error||d.error)+'</div>':"");
  }else{
   fields.push(field("Case",d.case),field("Evaluation",item.type==="verification"?"Fresh export check":d.phase),
    field("Model",d.model),
    field("Outcome",evidenceOutcome(item)),field("Model requests",d.model_requests),
    field("Exit code",d.exit_code),field("Output SHA-256",d.stdout_sha256));
  }
- let supplemental="";
  if(item.type==="case"||item.type==="verification"){
   const verdict=Object.entries(d.verdict||{}).filter(([,value])=>typeof value==="boolean");
   supplemental+=(verdict.length?'<h4>Assertions</h4><div class="evidence-checks">'+verdict.map(([name,passed])=>
@@ -611,7 +646,7 @@ function evidenceExplorer(run,events){
  let group="";
  const navigation=entries.map(item=>{
   const section=item.type==="verification"?"Verification":item.type==="case"?"Evaluations":
-   item.type==="cleanup"?"Sandbox cleanup":"Provenance";
+   item.type==="cleanup"?"Sandbox cleanup":item.type==="diagnostic"?"Generated diagnostics":"Provenance";
   const heading=section===group?"":'<div class="evidence-group">'+safe(section)+'</div>';
   group=section;
   return heading+'<button type="button" class="evidence-entry'+(item.key===selected.key?" selected":"")+
@@ -848,6 +883,8 @@ async function showRun(id,refreshOnly=false){
  const previousView=refreshOnly?snapshotRunView():null;
  const events=evidence.events||[],cases=events.filter(e=>e.type==="case_completed");
  const active=!ended(run.status);
+ const diagnostic=evidence.run?.diagnostic||run.diagnostic;
+ const diagnosing=diagnostic?.status==="running";
  header(active?"Run migration":"Migration review",active?3:4,"Agents / "+(run.import?.repository||"Imported agent")+" / "+(active?"Run":"Review"));
  const report=evidence.run?.report;
  const tabs=["evaluation",...(report?.proposal?["repair"]:[]),"traces","evidence"];
@@ -861,6 +898,9 @@ async function showRun(id,refreshOnly=false){
   evidenceExplorer(run,events);
  page.innerHTML=(run.demo?guestNote:"")+'<div class="page-lead"><div><div class="row-wrap"><h1>'+safe(run.import?.repository||"Migration review")+'</h1>'+statusChip(run.status)+'</div><p>'+safe(run.source)+' → '+safe(run.target)+' · '+safe(run.id)+'</p></div><div class="button-row">'+
  (active?'<button data-action="cancel-run" data-id="'+safe(id)+'" class="btn">Cancel</button>':"")+
+ (!active&&!run.demo&&run.diagnostics_available&&!diagnostic?
+  '<button data-action="diagnose-run" data-id="'+safe(id)+'" class="btn">'+ico("code")+' Run diagnostic</button>':"")+
+ (diagnostic?'<button data-action="inspect-diagnostic" class="btn">'+ico("eye")+' '+(diagnosing?"Diagnostic running":"Inspect diagnostic")+'</button>':"")+
  '<button data-action="evidence-download" data-id="'+safe(id)+'" class="btn">'+ico("download")+' Download evidence</button>'+
  (run.export_available?'<button data-action="artifact-download" data-id="'+safe(id)+'" class="btn primary">'+ico("download")+' Export verified configuration</button>':"")+
  '</div></div>'+
@@ -876,7 +916,14 @@ async function showRun(id,refreshOnly=false){
  recentRunEvents(events,active)+ '<section class="card inner side-facts"><h3>Environment</h3><div class="pair-line"><span class="sub">Runtime</span><span>'+safe(run.import?.discovery?.runtime||"Imported application")+'</span></div><div class="pair-line"><span class="sub">Isolation</span><span>gVisor</span></div><div class="pair-line"><span class="sub">Network</span><span>Restricted</span></div></section></aside></div>'+
  '<div class="flow-footer"><button class="btn" data-action="show-runs">'+ico("back")+' Back to runs</button></div>';
  restoreRunView(previousView);
- if(active)subscribe(id);else stopStream();
+ if(active)subscribe(id);
+ else{
+  stopStream();
+  if(diagnosing)state.refreshHandle=setTimeout(()=>{
+   state.refreshHandle=null;
+   if(location.pathname==="/app/runs/"+id)showRun(id,true).catch(err=>notify(err.message));
+  },2000);
+ }
 }
 function subscribe(id){
  if(state.streamId===id&&state.stream)return;
@@ -997,6 +1044,18 @@ document.addEventListener("click",async event=>{
    el("sourceDirectory").focus();
   }
   else if(action==="run")navigate("/app/runs/"+id+(button.dataset.view==="evidence"?"?view=evidence":""));
+  else if(action==="diagnose-run"){
+   button.disabled=true;
+   try{
+    await req("/runs/"+id+"/diagnose",{});
+    state.tab="evidence";state.evidenceSelected="diagnostic";
+    await showRun(id,true);
+   }catch(error){button.disabled=false;throw error;}
+  }
+  else if(action==="inspect-diagnostic"){
+   state.tab="evidence";state.evidenceSelected="diagnostic";
+   await showRun(location.pathname.split("/").pop(),true);
+  }
   else if(action==="project")await chooseProject(id);
   else if(action==="remove"){
    if(!confirm("Delete this imported source snapshot from your workspace? Existing run evidence is retained."))return;

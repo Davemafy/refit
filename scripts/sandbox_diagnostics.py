@@ -9,20 +9,21 @@ import argparse
 import json
 from pathlib import Path
 import re
+import secrets
 
 from .refit_vultr_probe import VultrInference, load_key
 from .sandbox_runner import DockerSandbox
 
 
 def diagnostics_input(record: dict) -> dict:
-    if record.get("domain") not in ("refund", "deployment"):
+    if record.get("domain") not in ("refund", "deployment", "application"):
         raise ValueError("unsupported migration domain")
     report = record.get("report")
     if not isinstance(report, dict):
         raise ValueError("migration has no report")
     phases = {}
-    for name in ("source_training", "target_training",
-                 "original_holdout", "repaired_holdout"):
+    for name in (("source_training", "target_training") if record["domain"] == "application"
+                 else ("source_training", "target_training", "original_holdout", "repaired_holdout")):
         phase = report.get(name)
         if not isinstance(phase, dict):
             continue
@@ -65,7 +66,7 @@ training_regression_delta: max(0, source_training.passed - target_training.passe
 target_failed_cases: sorted unique target_training.failed strings;
 holdout_improvement: repaired_holdout.passed - original_holdout.passed,
 or null if either holdout phase is missing.
-Input JSON schema: {"domain":"refund|deployment","phases":{phase_name:
+Input JSON schema: {"domain":"refund|deployment|application","phases":{phase_name:
 {"passed":int,"total":int,"failed":[str]}}}.
 Use actual JSON input, never hardcode counts or case names. Standard-library
 imports only. No network, shell, filesystem mutations, credential access,
@@ -89,6 +90,32 @@ def extract_python(message: dict) -> str:
     return code
 
 
+def independent_challenge(inputs: dict) -> dict:
+    marker = secrets.token_hex(5)
+    phases = {
+        "source_training": {"passed": 9, "total": 10, "failed": []},
+        "target_training": {"passed": 4, "total": 10,
+                            "failed": ["delta_" + marker, "alpha_" + marker, "delta_" + marker]},
+    }
+    if "original_holdout" in inputs and "repaired_holdout" in inputs:
+        phases["original_holdout"] = {"passed": 2, "total": 5, "failed": []}
+        phases["repaired_holdout"] = {"passed": 4, "total": 5, "failed": []}
+    return {"domain": inputs["domain"], "phases": phases}
+
+
+def verified_output(execution: dict, expected: dict):
+    if not (execution.get("status") == "passed" and
+            execution.get("container_created") is True and
+            execution.get("ledger_valid") is True and
+            execution.get("container_removed_verified") is True):
+        return None, "container execution or cleanup was not verified"
+    try:
+        observed = json.loads(execution["stdout"].strip())
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None, "generated program emitted invalid JSON"
+    return observed, None if isinstance(observed, dict) and observed == expected else "protected oracle disagreed"
+
+
 def generate_and_verify(record: dict, client, model: str,
                         sandbox: DockerSandbox) -> dict:
     inputs = diagnostics_input(record)
@@ -98,18 +125,30 @@ def generate_and_verify(record: dict, client, model: str,
     ], max_tokens=1600)
     code = extract_python(response)
     execution = sandbox.run(code, inputs, label="model_generated_diagnostic")
-    observed = None
-    error = None
-    if (execution.get("status") == "passed" and execution.get("ledger_valid")
-            and execution.get("container_removed_verified")):
-        try:
-            observed = json.loads(execution["stdout"].strip())
-        except (TypeError, ValueError, json.JSONDecodeError):
-            error = "sandboxed program did not emit valid JSON"
     expected = expected_diagnostic(inputs)
-    verified = isinstance(observed, dict) and observed == expected
-    if observed is not None and not verified:
-        error = "model-generated diagnosis does not match protected verifier"
+    observed, error = verified_output(execution, expected)
+    cross_check = None
+    verified = error is None
+    if verified:
+        challenge = independent_challenge(inputs)
+        expected_challenge = expected_diagnostic(challenge)
+        try:
+            checked = sandbox.run(code, challenge, label="diagnostic_unseen_check")
+            actual_challenge, challenge_error = verified_output(checked, expected_challenge)
+            cross_check = {"input": challenge, "expected": expected_challenge,
+                           "observed": actual_challenge, "error": challenge_error,
+                           "sandbox": checked}
+            if challenge_error:
+                verified = False
+                error = "unseen-input verification failed"
+        except Exception as exc:
+            # Keep the first real execution and its cleanup receipt even
+            # when the second disposable worker could not be launched.
+            cross_check = {"expected": expected_challenge, "observed": None,
+                           "error": "independent_sandbox_unavailable",
+                           "error_type": type(exc).__name__, "sandbox": None}
+            verified = False
+            error = "unseen-input verification unavailable"
     return {
         "kind": "vultr_model_generated_python_diagnostic",
         "generator_model": model,
@@ -120,6 +159,7 @@ def generate_and_verify(record: dict, client, model: str,
         "verified": bool(verified),
         "validation_error": error,
         "sandbox": execution,
+        "cross_check": cross_check,
         "limitations": (
             "Supplementary migration diagnosis, not business acceptance. "
             "Existing business tests use synthetic state."

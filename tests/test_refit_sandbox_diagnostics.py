@@ -32,6 +32,7 @@ class FakeSandbox:
         return {
             "status": "passed", "ledger_valid": True,
             "container_removed_verified": self.cleanup,
+            "container_created": True,
             "stdout": json.dumps(result),
         }
 
@@ -63,7 +64,9 @@ class DiagnosticTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(client.calls[0][2]["max_tokens"], 1600)
-        self.assertEqual(len(sandbox.calls), 1)
+        self.assertEqual(len(sandbox.calls), 2)
+        self.assertNotEqual(sandbox.calls[0][1], sandbox.calls[1][1])
+        self.assertEqual(sandbox.calls[1][2], "diagnostic_unseen_check")
         self.assertEqual(sandbox.calls[0][2], "model_generated_diagnostic")
         self.assertEqual(result["observed"], result["expected"])
 

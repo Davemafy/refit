@@ -106,6 +106,29 @@ class DockerSandbox:
             self.image, "python", "-I", "-S", "-B", "/refit-input/program.py",
         ]
 
+    def _runtime_identity(self, env: dict) -> dict | None:
+        """Fail closed if runsc is only an unverified Docker runtime alias."""
+        if self.runtime != "runsc":
+            return None
+        try:
+            response = subprocess.run(
+                [self.docker, "info", "--format", "{{json .Runtimes}}"],
+                capture_output=True, text=True, timeout=5, check=True, env=env)
+            runtimes = json.loads(response.stdout)
+            registration = runtimes.get("runsc")
+            binary = registration.get("path") if isinstance(registration, dict) else None
+            if not isinstance(binary, str) or Path(binary).name != "runsc":
+                raise ValueError("runsc registration path does not identify gVisor")
+            version = subprocess.run(
+                [binary, "--version"], capture_output=True, text=True,
+                timeout=5, check=True, env=env)
+            if "runsc" not in version.stdout.lower() or not version.stdout.strip():
+                raise ValueError("runsc binary version unavailable")
+        except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+            raise SandboxUnavailable("gVisor runsc runtime identity could not be verified") from exc
+        return {"docker_runtime": "runsc", "registered_binary": binary,
+                "version": version.stdout.strip()[:320]}
+
     def run(self, code: str, inputs: dict | None = None,
             label: str = "generated_test") -> dict:
         if not isinstance(code, str) or not code.strip():
@@ -128,6 +151,7 @@ class DockerSandbox:
             raise SandboxUnavailable("prlimit is required to cap host-side output")
         name = "refit-" + secrets.token_hex(10)
         docker_env = os.environ.copy()
+        runtime_identity = self._runtime_identity(docker_env)
         started = time.monotonic()
         policy = {
             "runtime": self.runtime, "image": self.image,
@@ -140,7 +164,7 @@ class DockerSandbox:
         }
         events = [{"type": "launch_requested", "label": label,
                    "code_sha256": _sha(body), "input_sha256": _sha(data),
-                   "policy": policy}]
+                   "runtime_identity": runtime_identity, "policy": policy}]
         with tempfile.TemporaryDirectory(prefix="refit-sandbox-") as tmp:
             directory = Path(tmp) / "payload"
             directory.mkdir(mode=0o755)
@@ -212,6 +236,7 @@ class DockerSandbox:
         # Never infer "blocked" solely from a code's printed claim.
         return {
             "status": status, "label": label, "runtime": self.runtime,
+            "runtime_identity": runtime_identity,
             "image": self.image, "exit_code": exit_code,
             "timed_out": timed_out, "duration_ms": duration_ms,
             "stdout": out.decode("utf8", errors="replace"),

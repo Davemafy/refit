@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - 'scripts/application*.py'
+      - 'scripts/sandbox_diagnostics.py'
+      - 'scripts/sandbox_runner.py'
+      - 'tests/test_refit_diagnostic_http.py'
       - 'scripts/smoke_application.py'
       - 'integrations/application/**'
       - 'integrations/openai-compatible/**'
