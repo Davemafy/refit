@@ -107,13 +107,13 @@ def permitted(args, images):
             "--log-driver", "none", images["application"],
         ]
         return args == expected
-    if args[1] == "--rm" and len(args) == 34:
+    if args[1] == "--rm" and len(args) == 39:
         # Exact fixed diagnostic options; only the unpredictable container
         # name and staging paths may vary.
         try:
             name = args[3]
             cidfile = args[5]
-            mount = args[29]
+            mount = args[30]
             if not DIAG_NAME.fullmatch(name):
                 return False
             prefix, suffix = "type=bind,src=", ",dst=/refit-input,readonly"
