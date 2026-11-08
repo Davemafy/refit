@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Promote host-visible private staging fix and rerun on-Vultr Challenge 1 containment acceptance"
+  "reason": "Publish sanitized real production C1 diagnostic in guest Runs and Evidence"
 }
