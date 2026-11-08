@@ -1,4 +1,1 @@
-{
-  "action": "deploy",
-  "reason": "Deploy verified compact execution console and real-event investigation UI"
-}
+{"action":"deploy","reason":"Release the Firefox-verified Refit workbench and operational navigation"}
