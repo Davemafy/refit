@@ -11,6 +11,7 @@ try{
  b=await firefox.launch();
  const p=await b.newPage({ignoreHTTPSErrors:true,viewport:{width:360,height:780}});
  await p.addInitScript(()=>localStorage.setItem("refit-theme","dark"));
+ await p.emulateMedia({reducedMotion:"reduce"});
  await p.goto(base+"/app/agents");
  await p.getByRole("heading",{name:"Agents"}).waitFor();
  assert.equal(await p.getByText("No agents imported").count(),0);
