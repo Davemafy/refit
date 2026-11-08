@@ -301,7 +301,7 @@ function runFilters(action=""){
 async function agents(){
  header("Agents");
  await refreshWorkspace();
- page.innerHTML=(state.guest?guestNote:"")+lead("Agents",state.guest?"Inspect the existing example or bring your own agent.":"Your imported application source snapshots and detected runtimes.",importButton())+
+ page.innerHTML=lead("Agents",state.guest?"Inspect the existing example or bring your own agent.":"Your imported application source snapshots and detected runtimes.",importButton())+
  (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("code")+'</div><div class="agent-record-body"><button type="button" class="agent-record-title" data-action="example-agent">Recorded Python agent</button><p>Knowledge-base application · Verified on Vultr</p><div class="agent-record-meta"><span>Python</span><span>gVisor execution</span>'+compactStatus(state.demo.run.status)+'</div></div><div class="agent-record-actions"><button class="btn agent-record-review" data-action="run" data-id="demo-python-2026-11-07">Review run '+ico("arrow")+'</button></div></section>':"")+
  (state.guest?"":state.projects.length?
  '<label class="run-search agent-search">'+ico("search")+'<input type="search" id="agentQuery" aria-label="Search agents" placeholder="Search repositories or runtimes"></label>'+
