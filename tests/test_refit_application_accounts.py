@@ -2,6 +2,8 @@
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 import json
+import time
+from scripts.application_accounts import digest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Thread
@@ -88,6 +90,24 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(capability["account_remaining_today"], 16)
                     self.assertEqual(capability["global_reserved_today"], 0)
                     self.assertEqual(capability["global_remaining_today"], 48)
+                    # Cold reviewer URL: obtain an owner-scoped session and
+                    # load the capability endpoint before any migration exists.
+                    # This caught a production 502 from calling self.reserved()
+                    # on the handler instead of the service.
+                    review_code = "r" * 43
+                    service.review_passes["review-" + digest(review_code)] = int(time.time()) + 3600
+                    review_status, review_signed, review_cookie = request(
+                        "POST", "/review-session", {"code": review_code})
+                    self.assertEqual(review_status, 200)
+                    self.assertTrue(review_signed["signed_in"])
+                    self.assertEqual(request("GET", "/session", cookie=review_cookie.split(";", 1)[0])[1]["username"],
+                                     "Review workspace")
+                    reviewer_status, reviewer_capacity, _ = request(
+                        "GET", "", cookie=review_cookie.split(";", 1)[0])
+                    self.assertEqual(reviewer_status, 200)
+                    self.assertEqual(reviewer_capacity["max_requests"], 15)
+                    self.assertEqual(reviewer_capacity["account_daily_allowance"], 15)
+                    self.assertEqual(reviewer_capacity["global_remaining_today"], 48)
                     owner = service.accounts.resolve(alice.split("=", 1)[1])[0]
                     project = "import-1234567890abcdef"
                     service.accounts.save_project(owner, project, {"id": project},
