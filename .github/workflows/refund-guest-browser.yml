@@ -1,0 +1,32 @@
+name: Refit real refund browser path
+on:
+  push:
+    branches: [main]
+    paths:
+      - tests/browser_refund_guest.mjs
+      - tests/saas_fixture_server.py
+      - web/application/**
+      - scripts/refund_trial.py
+      - scripts/application_http.py
+      - .github/workflows/refund-guest-browser.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Chromium
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Run refund agent UI acceptance with no simulated result
+        run: node tests/browser_refund_guest.mjs
