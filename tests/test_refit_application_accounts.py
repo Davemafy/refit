@@ -81,6 +81,7 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertTrue(ready["can_start_complete_migration"])
                     self.assertEqual(ready["minimum_inference_requests"], 7)
                     self.assertEqual(ready["capacity_state"], "ready")
+                    self.assertFalse(ready["reviewer_migration_ready"])
                     self.assertRegex(ready["capacity_resets_at"], r"^\d{4}-\d{2}-\d{2}T00:00:00Z$")
                     status, capability, _ = request("GET", "", cookie=alice)
                     self.assertEqual(status, 200)
@@ -109,6 +110,7 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(reviewer_capacity["account_daily_allowance"], 15)
                     self.assertEqual(reviewer_capacity["global_remaining_today"], 48)
                     self.assertFalse(reviewer_capacity["review_run_used"])
+                    self.assertTrue(request("GET", "/readiness")[1]["reviewer_migration_ready"])
                     review_owner = service.accounts.resolve(
                         review_cookie.split(";", 1)[0].split("=", 1)[1])[0]
                     # One completed reviewer run makes migration creation
@@ -125,6 +127,7 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(used_status, 200)
                     self.assertTrue(used_capability["review_run_used"])
                     self.assertEqual(used_capability["max_requests"], 0)
+                    self.assertFalse(request("GET", "/readiness")[1]["reviewer_migration_ready"])
                     self.assertEqual(request("GET", f"/runs/{reviewer_run_id}",
                                              cookie=review_cookie.split(";", 1)[0])[0], 200)
                     self.assertEqual(request("GET", f"/runs/{reviewer_run_id}",
