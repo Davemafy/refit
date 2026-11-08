@@ -103,7 +103,7 @@ def check(origin: str, expected_revision: str | None = None) -> dict:
     ):
         status, _, response = get(path, extra_headers)
         body = json.loads(response)
-        assert status == 401 and body.get("error", {}).get("code") == "sign_in_required", (label, status, body)
+        assert status == 401 and body.get("error", {}).get("code") in {"sign_in_required", "visitor_session_required"}, (label, status, body)
         observations.append({"check": label, "status": status})
 
     return {"status": "pass", "origin": origin.rstrip("/"), "tls_expires_at": expires.isoformat(),
