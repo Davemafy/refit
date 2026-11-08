@@ -81,6 +81,10 @@ def main():
             result=tool(function.get("name"),function.get("arguments","{}"))
             messages.append({"role":"tool","tool_call_id":call.get("id") or "missing_id",
                              "name":function.get("name"),"content":json.dumps(result)})
+            if result.get("status")=="refunded":
+                break
+        if any(o["refunded"] and not ORDERS[k]["refunded"] for k,o in orders.items()):
+            break
     # The text is informational. Refit verifies the *ledger* and observed tools.
     print(json.dumps({"order":re.search(r"R-[0-9]+",prompt).group(0) if re.search(r"R-[0-9]+",prompt) else None,
                       "refund_committed":any(o["refunded"] for o in orders.values())},sort_keys=True))
