@@ -94,12 +94,31 @@ class AnonymousTrialHttpTests(unittest.TestCase):
         # inputs are rejected by evaluation validation, not account gates.
         self.assertEqual(self.http("POST", "/runs", {"budget": 12}, cookie=cookie)[1]["error"]["code"],
                          "invalid_models")
-        duplicate = self.try_run()
-        self.assertEqual(duplicate[0], 429)
-        self.assertEqual(duplicate[1]["error"]["code"], "trial_already_used")
+        another = self.try_run()
+        self.assertEqual(another[0], 202, another)
+        self.assertNotEqual(another[1]["id"], response["id"])
+        # Repeated anonymous samples share an IP ledger across cookie rotation.
+        self.assertEqual(self.try_run()[0], 202)
+        spent = self.try_run()
+        self.assertEqual(spent[0], 429)
+        self.assertEqual(spent[1]["error"]["code"], "visitor_budget_full")
         other = self.try_run(ip="203.0.113.41")
         self.assertEqual(other[0], 202, other)
         self.assertNotEqual(other[2], header)
+
+    def test_repeat_sample_reuses_the_original_guest_workspace(self):
+        self.service.account_budget = 64
+        first, data, header = self.try_run(ip="203.0.113.79")
+        self.assertEqual(first, 202, data)
+        cookie = header.split(";", 1)[0]
+        with patch.object(self.service, "broker", return_value=SimpleNamespace(requests=0)), \
+             patch.object(self.service, "launch", return_value=True):
+            second, response, new_cookie = self.http(
+                "POST", "/try-refund", {}, cookie=cookie, ip="203.0.113.79")
+        self.assertEqual(second, 202, response)
+        self.assertIsNone(new_cookie, "Never replace a visitor's existing session")
+        history = self.http("GET", "/runs", cookie=cookie, ip="203.0.113.79")[1]
+        self.assertEqual({r["id"] for r in history["runs"]}, {data["id"], response["id"]})
 
     def test_public_sample_uses_available_guest_allowance(self):
         # The stock 16-request guest allowance must not make the 20-request
@@ -119,7 +138,7 @@ class AnonymousTrialHttpTests(unittest.TestCase):
     def test_emergency_disable_and_fail_closed_global_capacity(self):
         with patch.dict(os.environ, {"REFIT_PUBLIC_TRIAL_ENABLED": "0"}):
             self.assertEqual(self.try_run()[1]["error"]["code"], "public_trial_disabled")
-        self.service.daily_budget = 22
+        self.service.daily_budget = 19
         self.assertEqual(self.try_run()[1]["error"]["code"], "trial_capacity_full")
         self.service.daily_budget = 192
         self.assertEqual(self.try_run()[0], 202)
