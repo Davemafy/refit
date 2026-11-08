@@ -2,7 +2,7 @@ name: Publish public Challenge 1 evidence film
 
 on:
   workflow_run:
-    workflows: ["Record Challenge 1 evidence on production"]
+    workflows: ["Record native 4K Challenge 1 evidence film"]
     types: [completed]
 
 permissions:
@@ -22,10 +22,10 @@ jobs:
           SOURCE_RUN: ${{ github.event.workflow_run.id }}
         run: |
           mkdir -p /tmp/c1-film
-          gh run download "$SOURCE_RUN" -n refit-challenge1-evidence-film -D /tmp/c1-film
-          test -s /tmp/c1-film/refit-vultr-containment-1080p.mp4
+          gh run download "$SOURCE_RUN" -n refit-challenge1-4k-evidence -D /tmp/c1-film
+          test -s /tmp/c1-film/refit-vultr-challenge1-4k.mp4
           test -s /tmp/c1-film/evidence.json
-          test -s /tmp/c1-film/proof-frame.png
+          test -s /tmp/c1-film/denial-frame.jpg
       - name: Validate production provenance before public release
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -39,10 +39,13 @@ jobs:
           assert proof['vultr_host_proof_revision']==os.environ['SOURCE_SHA']
           assert proof['host_containment_verified'] is True
           assert proof['primary_cleanup'] is True
+          assert proof['host_containment_verified'] is True
+          assert proof['native_render_resolution']=='3840x2160'
+          assert proof['total_duration']==160
           assert proof['crosscheck_cleanup'] is True
-          assert proof['inference_requests']==8
-          media=(root/'refit-vultr-containment-1080p.mp4').read_bytes()
-          assert len(media)>80000 and media[4:8]==b'ftyp'
+          assert proof['model_requests']==8
+          media=(root/'refit-vultr-challenge1-4k.mp4').read_bytes()
+          assert len(media)>1000000 and media[4:8]==b'ftyp'
           print('Authenticated recorded proof, immutable deployment and MP4 container verified')
           PY
       - name: Publish judge-accessible MP4 as a GitHub release asset
@@ -52,11 +55,11 @@ jobs:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
           SOURCE_RUN: ${{ github.event.workflow_run.id }}
         run: |
-          tag="c1-evidence-${SOURCE_SHA:0:12}"
+          tag="c1-4k-${SOURCE_SHA:0:12}"
           cat > /tmp/c1-notes.md <<EOF
           Refit — Vultr Agent Rush Challenge 1, Pattern A.
 
-          Recorded, authentic production evidence at revision \`$SOURCE_SHA\`.
+          Native 3840x2160, 2:40 editorial presentation of authentic production evidence at revision \`$SOURCE_SHA\`.
           This is a read-only replay of a real model-generated diagnostic and
           a separate, real Vultr host containment test—not an anonymous live execution.
 
@@ -66,10 +69,12 @@ jobs:
           Capture workflow: https://github.com/${GH_REPO}/actions/runs/${SOURCE_RUN}
           EOF
           gh release create "$tag" \
-            /tmp/c1-film/refit-vultr-containment-1080p.mp4 \
-            /tmp/c1-film/proof-frame.png \
+            /tmp/c1-film/refit-vultr-challenge1-4k.mp4 \
+            /tmp/c1-film/denial-frame.jpg \
+            /tmp/c1-film/cover-frame.jpg \
+            /tmp/c1-film/timeline.json \
             /tmp/c1-film/evidence.json \
-            --title "Refit · Verified Vultr containment film (${SOURCE_SHA:0:12})" \
+            --title "Refit · 4K Vultr containment film (${SOURCE_SHA:0:12})" \
             --notes-file /tmp/c1-notes.md \
             --latest=false
           echo "Public video release: https://github.com/${GH_REPO}/releases/tag/$tag"
