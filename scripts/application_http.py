@@ -820,8 +820,18 @@ class ApplicationHandler(RefitHandler):
                     remaining = max(0, self.service.daily_budget -
                                     self.service.reserved(now()[:10]))
                     quarantined = self.service.quarantined
+                    used_review_owners = {
+                        run.get("owner") for run, _ in self.service.runs.values()
+                        if run.get("owner", "").startswith(REVIEW_PREFIX)
+                    }
+                    valid_reviewers = {
+                        owner for owner, expires in self.service.review_passes.items()
+                        if expires > time.time()
+                    }
                 runnable = (not quarantined and remaining >= 7 and
                             self.service.account_budget >= 7)
+                reviewer_ready = (not quarantined and
+                                  bool(valid_reviewers - used_review_owners))
                 reason = ("operator_review_required" if quarantined else
                           "daily_capacity_below_one_complete_migration" if not runnable else None)
                 utc = datetime.now(timezone.utc)
@@ -830,6 +840,7 @@ class ApplicationHandler(RefitHandler):
                 return self._send(200 if not quarantined else 503, {
                     "online": True,
                     "can_start_complete_migration": runnable,
+                    "reviewer_migration_ready": reviewer_ready,
                     "minimum_inference_requests": 7,
                     "capacity_state": "ready" if runnable else "unavailable",
                     "reason": reason,
