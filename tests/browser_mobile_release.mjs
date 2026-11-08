@@ -52,14 +52,14 @@ try{
     assert.equal(await page.locator(".run-mobile-item").getByRole("button",{name:"demo-diagnostic-2026-11-08"}).count(),1);
    });
    await capture("overview","/app",size,async()=>{
-     assert.equal(await page.locator(".overview-recent").isVisible(),true);
+     assert.equal(await page.locator(".refund-start").isVisible(),true);
      assert.equal(await page.locator(".subheader").isVisible(),false,"The section title must not be duplicated");
-     assert.equal(await page.locator(".migration-route .model-mark").count(),2);
-     assert.ok(await page.locator(".verification-tick").count()>0);
      assert.equal(await page.locator("#mobileNavigation summary").isVisible(),true);
-     const trial=await page.getByRole("button",{name:/Import your agent/}).boundingBox();
-     assert.ok(trial&&trial.y<700,"Live trial action must be visible within the mobile first screen");
-     assert.ok(await page.locator(".overview-activity").count()===1,"Recorded activity remains accessible below the live trial");
+     const trial=await page.getByRole("button",{name:"Run refund agent"}).boundingBox();
+     assert.ok(trial&&trial.y<650,"Live refund action must be visible within the mobile first screen");
+     const source=await page.getByRole("button",{name:"Import your agent"}).boundingBox();
+     assert.ok(source&&source.y<730,"Original-agent import must remain reachable");
+     assert.equal(await page.locator('a[href="/app/replay"]').count(),0,"Do not revive the staged replay");
      assert.equal(await page.locator(".metrics").count(),0,"demo must not impersonate account metrics");
      assert.equal(await page.locator(".run-table-desktop").count(),0);
    });
