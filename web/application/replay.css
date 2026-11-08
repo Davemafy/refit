@@ -85,3 +85,36 @@ body[data-workspace-page="replay"] .main{max-width:1600px;width:100%;padding-top
  .replay-cta{width:100%;margin:0}
 }
 @media(prefers-reduced-motion:reduce){.replay-screen *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* Presentation framing is the identical, source-backed app: no mock UI or
+   generated verdicts. It simply removes navigation chrome for film recording. */
+body.replay-film{background:#0b0d0c}
+body.replay-film .shell{display:flex;flex-direction:column;margin:0;padding:0;max-width:none;width:100%;height:100dvh;min-height:0;background:#0b0d0c;border:0}
+body.replay-film .sidebar,body.replay-film .topbar,body.replay-film .workspace-footer,body.replay-film .content>.subheader{display:none!important}
+body.replay-film .content{flex:1;display:flex;min-height:0;width:100%;padding:0;border:0;border-radius:0;background:#0b0d0c}
+body.replay-film .main{flex:1;min-height:0;overflow:hidden;padding:0!important;max-width:none;width:100%}
+body.replay-film .replay-screen{height:100%;border:0;border-radius:0;display:flex;flex-direction:column}
+body.replay-film .replay-kicker{height:40px;flex:none}
+body.replay-film .replay-head{padding:17px 31px 16px;flex:none;align-items:center}
+body.replay-film .replay-head h1{font-size:35px;margin:0}
+body.replay-film .replay-head p{display:none}
+body.replay-film .replay-shell{flex:1;min-height:0;grid-template-columns:minmax(0,1.9fr) minmax(340px,.64fr)}
+body.replay-film .replay-stage{min-height:0;padding:30px 55px}
+body.replay-film .replay-stage-copy{padding:30px 0}
+body.replay-film .replay-stage h2{font-size:clamp(54px,4.4vw,84px)}
+body.replay-film .replay-rail{min-height:0}
+body.replay-film .replay-steps{height:auto;min-height:0;flex:1}
+body.replay-film .replay-transport{padding:10px 25px;flex:none}
+body.replay-film .replay-evidence-footer{padding:10px 28px;gap:30px;flex:none}
+body.replay-film .replay-fact strong{font-size:20px}
+body.replay-film .replay-provenance{display:none}
+@media(max-width:800px){
+ body.replay-film .replay-shell{grid-template-columns:minmax(0,1fr) minmax(220px,.6fr)}
+ body.replay-film .replay-stage{padding:20px}
+ body.replay-film .replay-stage h2{font-size:40px}
+ body.replay-film .replay-head{padding:12px 18px}
+ body.replay-film .replay-head h1{font-size:28px}
+ body.replay-film .replay-head-actions{margin:0}
+ body.replay-film .replay-evidence-footer{display:none}
+}
