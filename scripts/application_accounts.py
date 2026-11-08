@@ -207,6 +207,34 @@ class Accounts:
             with self.db() as db:
                 db.execute("DELETE FROM sessions WHERE hash=?", (digest(secret),))
 
+    def expired_guest_owners(self):
+        """List temporary principals with no active session; preserve rate ledgers."""
+        timestamp = int(time.time())
+        with self.db() as db:
+            db.execute("DELETE FROM sessions WHERE expires<=?", (timestamp,))
+            rows = db.execute(
+                "SELECT id FROM users WHERE id LIKE 'guest-%' AND "
+                "NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.owner=users.id)"
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def purge_guest_owner(self, owner):
+        """Delete only expired anonymous identity/source; never touch user accounts."""
+        if not isinstance(owner, str) or not owner.startswith("guest-"):
+            raise ValueError("Only expired temporary guest workspaces may be purged.")
+        timestamp = int(time.time())
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            live = db.execute(
+                "SELECT 1 FROM sessions WHERE owner=? AND expires>?",
+                (owner, timestamp)).fetchone()
+            if live:
+                return False
+            db.execute("DELETE FROM sessions WHERE owner=?", (owner,))
+            db.execute("DELETE FROM projects WHERE owner=?", (owner,))
+            db.execute("DELETE FROM users WHERE id=?", (owner,))
+        return True
+
     def save_project(self, owner, ident, summary, snapshot):
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
