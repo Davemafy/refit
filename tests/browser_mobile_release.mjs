@@ -12,7 +12,7 @@ try{
  assert.ok(fixture,err||"missing fixture");
  browser=await firefox.launch();
  const ctx=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:360,height:780}});
- const page=await ctx.newPage();page.setDefaultTimeout(8000);
+ const page=await ctx.newPage();page.setDefaultTimeout(8000);page.setDefaultNavigationTimeout(25000);
  page.on("pageerror",e=>jsErrors.push(e.message));
  await mkdir("artifacts/mobile-release",{recursive:true});
  async function capture(name,route,width=360,extra){
@@ -51,7 +51,13 @@ try{
     assert.equal(await page.locator(".run-mobile-item").getByRole("button",{name:"demo-diagnostic-2026-11-08"}).count(),1);
    });
    await capture("overview","/app",size,async()=>{
-     assert.equal(await page.locator(".guest-feature").isVisible(),true);
+     assert.equal(await page.locator(".overview-recent").isVisible(),true);
+     assert.equal(await page.locator(".subheader").isVisible(),false,"The section title must not be duplicated");
+     assert.equal(await page.locator(".overview-metric").count(),3);
+     const metrics=await page.locator(".overview-metrics").boundingBox();
+     const activity=await page.locator(".overview-activity").boundingBox();
+     assert.ok(metrics.height<100,"Metrics must use compact mobile density");
+     assert.ok(activity.y<700,"Event list should begin within the mobile first screen");
      assert.equal(await page.locator(".metrics").count(),0,"demo must not impersonate account metrics");
      assert.equal(await page.locator(".run-table-desktop").count(),0);
    });

@@ -533,18 +533,6 @@ h2{font-weight:580;letter-spacing:-.04em}
 .run-table-desktop .table td{overflow-wrap:anywhere}
 .run-table-desktop .chip{max-width:210px;white-space:normal}
 .run-list-mobile{display:none}
-.guest-feature{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(240px,.7fr);border:1px solid #32353b;border-radius:10px;background:#121416;overflow:hidden}
-.guest-feature-copy{padding:34px 38px;min-width:0}
-.guest-feature-caption{display:flex;align-items:center;gap:9px;font-size:12px;color:#a5b6ae;margin-bottom:22px}
-.guest-feature-caption svg{width:16px;height:16px}
-.guest-feature h2{font-size:clamp(24px,2.5vw,32px);line-height:1.22;max-width:560px}
-.guest-feature-copy>p{margin:14px 0 25px;max-width:490px;font-size:14px;line-height:1.65}
-.guest-feature-facts{border-left:1px solid #30343a;padding:20px 26px;display:grid;align-content:center}
-.guest-feature-facts>div{display:grid;gap:5px;min-width:0;padding:16px 0;border-bottom:1px solid #292e32}
-.guest-feature-facts>div:last-child{border:0}
-.guest-feature-facts>div>span:first-child{font-size:11px;color:#979ca3}
-.guest-feature-facts strong{font:500 12px/1.6 "Geist Mono",monospace;overflow-wrap:anywhere}
-.guest-feature-facts .chip{justify-self:start}
 .metrics{margin:0 0 24px;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid #2c3035;border-radius:8px;gap:0;overflow:hidden}
 .metrics .metric{border:0;border-radius:0;padding:17px 20px;min-width:0}
 .metrics .metric+.metric{border-left:1px solid #2c3035}
@@ -591,14 +579,6 @@ h2{font-weight:580;letter-spacing:-.04em}
  .metrics .metric{padding:12px 10px}
  .metrics .metric strong{font-size:21px}
  .metrics .metric span{font-size:10px}
- .guest-feature{grid-template-columns:1fr}
- .guest-feature-copy{padding:24px 22px}
- .guest-feature-copy>p{font-size:13px;margin:12px 0 21px}
- .guest-feature .button-row .btn{width:100%;white-space:normal;min-height:43px}
- .guest-feature-facts{border-left:0;border-top:1px solid #30343a;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 13px;padding:9px 22px}
- .guest-feature-facts>div{padding:12px 0}
- .guest-feature-facts>div:nth-child(2){border-left:1px solid #2c3035;padding-left:14px}
- .guest-feature-facts>div:last-child{grid-column:1/-1}
  .preview-strip{padding:11px 13px;gap:9px}
  .preview-strip a{margin:0;flex-basis:auto}
  .topbar .logo,.auth-aside .logo,.public-head .logo{display:none}
@@ -788,17 +768,6 @@ h3{font-family:"Geist",sans-serif;font-size:13px;font-weight:565;letter-spacing:
 .dashboard-runs>.between .btn{border:0;color:#a1b4c5;background:transparent;padding:4px}
 .dashboard-runs .run-history{margin:0!important}
 .workspace-start{padding:22px 0;border-bottom:1px solid #222a32}
-.guest-feature{grid-template-columns:minmax(0,1.32fr) minmax(230px,.68fr);background:#101419;border-color:#2b353e;border-radius:6px}
-.guest-feature-copy{padding:30px 31px;display:flex;flex-direction:column;justify-content:center}
-.guest-feature-caption{display:flex;align-items:center;gap:9px;margin:0 0 16px;color:#8ca29a;font-size:11px}
-.guest-feature h2{font:580 clamp(22px,2.4vw,29px)/1.2 "Geist",sans-serif;letter-spacing:-.05em;max-width:540px}
-.guest-feature-copy>p{font-size:12px;line-height:1.6;margin:11px 0 19px;max-width:510px}
-.guest-feature-copy>.btn{align-self:flex-start}
-.guest-feature-facts{padding:16px 21px;border-left:1px solid #283039;gap:0;background:#12171c}
-.guest-feature-facts>div{padding:12px 0;border-bottom:1px solid #283039}
-.guest-feature-facts>div>span:first-child{font-size:10px;color:#8b98a4}
-.guest-feature-facts strong{font:480 11.5px/1.5 "Geist Mono",monospace;color:#e0e8f0;overflow-wrap:anywhere}
-.guest-feature-facts .chip{border-radius:4px;padding:4px 7px;font-size:10px;max-width:100%;white-space:normal}
 .agent-record{display:flex;gap:16px;align-items:center;border:1px solid #2a3036;padding:16px 18px;background:#101419;border-radius:5px}
 .agent-record-icon{display:grid;place-items:center;flex:none;width:33px;height:33px;color:#a2c4d4;background:#1b252c;border-radius:5px}
 .agent-record-icon svg{height:17px;width:17px}
@@ -892,7 +861,6 @@ h3{font-family:"Geist",sans-serif;font-size:13px;font-weight:565;letter-spacing:
  .run-layout{grid-template-columns:minmax(0,1fr) 215px}
  .run-layout aside .card.inner{padding:13px!important}
  .metrics .metric{flex-wrap:wrap;gap:3px 8px}
- .guest-feature{grid-template-columns:minmax(0,1.15fr) minmax(210px,.85fr)}
 }
 @media (max-width:760px){
  .shell{display:flex;flex-direction:column;min-height:100vh;padding:0;gap:0}
@@ -951,17 +919,6 @@ h3{font-family:"Geist",sans-serif;font-size:13px;font-weight:565;letter-spacing:
  .run-filter{white-space:nowrap;min-height:34px;padding:6px 9px;font-size:10.5px}
  .run-search{width:100%;min-height:35px}
  .run-search input{height:34px}
- .guest-feature{grid-template-columns:1fr;border-radius:5px}
- .guest-feature-copy{padding:20px 18px}
- .guest-feature-caption{margin-bottom:12px;font-size:10px}
- .guest-feature h2{font-size:21px;line-height:1.25}
- .guest-feature-copy>p{font-size:11.5px;margin:10px 0 14px}
- .guest-feature-facts{padding:7px 18px;border-top:1px solid #2a3037;border-left:0;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
- .guest-feature-facts>div{padding:11px 0}
- .guest-feature-facts>div:nth-child(2){border-left:1px solid #29343d;padding-left:13px}
- .guest-feature-facts>div:last-child{grid-column:1/-1;border:0}
- .guest-feature-facts strong{font-size:10.5px}
- .guest-feature .btn{min-height:38px;white-space:normal}
  .metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
  .metrics .metric{display:grid;gap:3px;padding:10px 12px;min-height:63px;justify-content:start}
  .metrics .metric:nth-child(2){border-right:0}
@@ -1010,8 +967,6 @@ h3{font-family:"Geist",sans-serif;font-size:13px;font-weight:565;letter-spacing:
  .mobile-nav .nav-link{font-size:10.5px;padding-left:4px;padding-right:4px}
  .main{padding:16px 13px 42px}
  .run-filter{font-size:10px;padding:5px 8px}
- .guest-feature-copy{padding:17px 15px}
- .guest-feature-facts{padding-left:15px;padding-right:15px}
 }
 
 .overview-activity{border:1px solid #2a3037;border-radius:5px;margin-top:15px;background:#101317;overflow:hidden}

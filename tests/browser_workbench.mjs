@@ -25,7 +25,7 @@ try {
  const page = await browser.newPage({ignoreHTTPSErrors:!production, viewport:{width:1366,height:768}, acceptDownloads:true, reducedMotion:"reduce"});
  page.on("pageerror", error=>errors.push(error.message));
  await page.goto(origin+"/app");
- await page.getByRole("button",{name:"Inspect recorded run"}).waitFor();
+ await page.getByRole("button",{name:"Inspect run and evidence"}).waitFor();
  assert.equal(await page.locator(".topbar").evaluate(e=>e.getBoundingClientRect().height),48);
  assert.equal(await page.locator(".sidebar").evaluate(e=>e.getBoundingClientRect().width),220);
  async function theme(value) {
@@ -40,7 +40,7 @@ try {
  for (const mode of ["dark","light"]) {
   await theme(mode);
   await page.goto(origin+"/app");
-  const action=page.getByRole("button",{name:"Inspect recorded run"});
+  const action=page.getByRole("button",{name:"Inspect run and evidence"});
   await action.waitFor();
   const ratios=await action.evaluate(button=>{
    const value=color=>color.match(/[0-9.]+/g).slice(0,3).map(Number).map(n=>{
@@ -60,7 +60,7 @@ try {
    await page.screenshot({path:output+"/"+mode+"-"+name+".jpg",type:"jpeg",quality:66});
   }
   await page.goto(origin+"/app");
-  await page.getByRole("button",{name:"Inspect recorded run"}).click();
+  await page.getByRole("button",{name:"Inspect run and evidence"}).click();
   await page.getByRole("heading",{name:"Review migration results"}).waitFor();
   assert.ok(await page.getByRole("button",{name:"Export verified configuration"}).isVisible());
   await page.screenshot({path:output+"/"+mode+"-comparison.jpg",type:"jpeg",quality:66});
@@ -114,6 +114,16 @@ try {
  await page.keyboard.press("Escape");
  for (const width of widths) {
   await page.setViewportSize({width,height:844});
+  await page.goto(origin+"/app");
+  await page.locator(".overview-recent").waitFor();
+  assert.equal(await page.locator(".overview-metric").count(),3,"Recorded KPIs are one cohesive summary");
+  if(width<=760){
+   assert.equal(await page.locator(".subheader").isVisible(),false,"No redundant mobile breadcrumb");
+   const summary=await page.locator(".overview-recent").boundingBox();
+   const activity=await page.locator(".overview-activity").boundingBox();
+   assert.ok(summary.height<350,"Mobile migration summary must not dominate viewport");
+   assert.ok(activity.y<620,"Recorded activity must be reachable early without excessive scrolling");
+  }
   for (const [,path] of [...paths,["trace","/app/runs/demo-python-2026-11-07?view=traces"],
    ["comparison","/app/runs/demo-python-2026-11-07"]]) {
    await page.goto(origin+path);

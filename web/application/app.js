@@ -71,6 +71,7 @@ function header(label,step=0,crumb){
  document.body.dataset.workspacePage=label==="Runs"?"runs":"";
  const steps=el("steps");
  steps.hidden=!step;
+ el("contextBar").classList.toggle("has-steps",!!step);
  if(step){
   const labels=["Inspect","Configure","Run","Review"];
   steps.innerHTML=labels.map((name,i)=>
@@ -152,15 +153,17 @@ async function overview(){
   page.innerHTML=lead("Overview","Execution history and migration evidence.")+
    '<section class="overview-metrics" aria-label="Recorded migration totals">'+
    [[completed.length,"Case observations"],[modelCalls.length,"Model responses"],[cleanup.length,"Verified cleanups"]].map(([total,label])=>
-    '<div class="overview-metric"><span>'+safe(label)+'</span><strong>'+safe(total)+'</strong><small>Recorded example</small></div>').join("")+'</section>'+
-   '<section class="guest-feature"><div class="guest-feature-copy">'+
-   '<div class="guest-feature-caption"><span class="status-light"></span> Recorded execution</div>'+
-   '<h2>Python knowledge-base migration</h2>'+
-   '<p>Inspect case results, model requests and cleanup receipts from the isolated verification run.</p>'+
-   '<button class="btn primary" data-action="run" data-id="'+safe(r.id)+'">Inspect recorded run '+ico("arrow")+'</button></div>'+
-   '<div class="guest-feature-facts"><div><span>Original model</span><strong>'+safe(r.source||"—")+'</strong></div>'+
-   '<div><span>Replacement model</span><strong>'+safe(r.target||"—")+'</strong></div>'+
-   '<div><span>Result</span>'+statusChip(r.status)+'</div></div></section>'+
+    '<div class="overview-metric"><strong>'+safe(total)+'</strong><span>'+safe(label)+'</span></div>').join("")+'</section>'+
+   '<section class="overview-recent" aria-label="Recorded migration">'+
+   '<div class="overview-recent-heading"><span class="overview-recent-label"><span class="status-light" aria-hidden="true"></span> Recorded migration</span><span class="overview-recent-meta">Read-only sample</span></div>'+
+   '<div class="overview-recent-body"><h2>Python knowledge-base migration</h2>'+
+   '<p>Compare original and replacement execution, tool calls and cleanup evidence.</p></div>'+
+   '<dl class="overview-recent-facts">'+
+   '<div><dt>Original model</dt><dd><code>'+safe(r.source||"—")+'</code></dd></div>'+
+   '<div><dt>Replacement</dt><dd><code>'+safe(r.target||"—")+'</code></dd></div>'+
+   '<div><dt>Result</dt><dd>'+statusChip(r.status)+'</dd></div></dl>'+
+   '<div class="overview-recent-footer"><button class="btn" type="button" data-action="run" data-id="'+safe(r.id)+'">Inspect run and evidence '+ico("arrow")+'</button></div>'+
+   '</section>'+
    activity+
    '<div class="section-footnote">Public example. <a href="/signup">Import your own agent</a> to start an independent evaluation.</div>';
 
