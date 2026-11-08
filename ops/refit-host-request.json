@@ -1,1 +1,4 @@
-{"action":"deploy","reason":"Release the Firefox-verified Refit workbench and operational navigation"}
+{
+  "action": "deploy",
+  "reason": "Promote verified neutral-theme guest agent screen and remove duplicate empty state"
+}
