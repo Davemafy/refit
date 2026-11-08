@@ -88,7 +88,7 @@ try {
   assert.equal(published.recorded,true);
   assert.equal(published.run.diagnostic.status,"verified");
   await page.goto(origin+"/app/runs/demo-diagnostic-2026-11-08?view=evidence&observation=diagnostic");
-  await page.locator(".evidence-inspector").getByText("Vultr-generated Python").waitFor();
+  await page.locator(".evidence-inspector").getByRole("heading",{name:"Vultr-generated Python",exact:true}).waitFor();
   assert.ok(await page.locator(".evidence-inspector").getByText("Observed stdout").count()>0);
   await page.screenshot({path:output+"/production-challenge1-diagnostic.jpg",type:"jpeg",quality:82});
  }
