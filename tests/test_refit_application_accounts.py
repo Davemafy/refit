@@ -72,6 +72,14 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(status, 201)
                     bob = cookie.split(";", 1)[0]
                     self.assertEqual(request("GET", "/projects")[0], 401)
+                    # Unauthenticated operational readiness is intentionally
+                    # public, unlike owner-owned runs, exports and projects.
+                    ready_status, ready, _ = request("GET", "/readiness")
+                    self.assertEqual(ready_status, 200)
+                    self.assertTrue(ready["can_start_complete_migration"])
+                    self.assertEqual(ready["minimum_inference_requests"], 7)
+                    self.assertEqual(ready["capacity_state"], "ready")
+                    self.assertRegex(ready["capacity_resets_at"], r"^\\d{4}-\\d{2}-\\d{2}T00:00:00Z$")
                     status, capability, _ = request("GET", "", cookie=alice)
                     self.assertEqual(status, 200)
                     self.assertEqual(capability["max_requests"], 16)
@@ -94,6 +102,20 @@ class ApplicationAccountTests(unittest.TestCase):
                     self.assertEqual(limited["global_reserved_today"], 16)
                     self.assertEqual(limited["global_remaining_today"], 32)
                     self.assertEqual(limited["max_requests"], 0)
+                    # The global pool may still admit another user.
+                    self.assertTrue(request("GET", "/readiness")[1]["can_start_complete_migration"])
+                    # Exhaustion must not silently masquerade as availability.
+                    service.runs[run_id][0]["budget"] = 44
+                    degraded_status, degraded, _ = request("GET", "/readiness")
+                    self.assertEqual(degraded_status, 200)
+                    self.assertFalse(degraded["can_start_complete_migration"])
+                    self.assertEqual(degraded["reason"], "daily_capacity_below_one_complete_migration")
+                    service.runs[run_id][0]["budget"] = 16
+                    service.quarantined = True
+                    blocked_status, blocked, _ = request("GET", "/readiness")
+                    self.assertEqual(blocked_status, 503)
+                    self.assertEqual(blocked["reason"], "operator_review_required")
+                    service.quarantined = False
                     _, other, _ = request("GET", "", cookie=bob)
                     self.assertEqual(other["max_requests"], 16)
                     self.assertEqual(request("GET", "/projects", cookie=bob)[1]["projects"], [])
