@@ -22,7 +22,7 @@ The result is **not** claimed compatible until independent checks finish.
 
 A public trial is restricted to one invocation per client IP per UTC day,
 up to 32 admitted trials across anonymous visitors per UTC day (subject to shared global capacity), and a maximum
-of 12 reserved Vultr requests per trial. A further 16 requests are
+of 20 reserved Vultr requests per trial. A further 16 requests are
 reserved from the shared daily pool for other work, and the judge's
 separate single-use reviewer allowance remains untouched. Request limits
 are enforced by Nginx, a persistent SQLite ledger of HMAC-hashed client
