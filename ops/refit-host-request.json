@@ -1,4 +1,4 @@
 {
   "action": "deploy",
-  "reason": "Run real unprivileged gVisor acceptance through broker, then release 4K film"
+  "reason": "Inspect bounded gVisor broker receipt during live Vultr acceptance"
 }
