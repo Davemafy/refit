@@ -1,0 +1,79 @@
+name: Refit unattended production readiness
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: refit-unattended-availability
+  cancel-in-progress: false
+
+jobs:
+  external-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify HTTPS, public access, revision and complete-migration capacity
+        id: probe
+        continue-on-error: true
+        run: |
+          python -m scripts.smoke_unattended \
+            --origin https://80.240.30.92 \
+            --attempts 3 \
+            --delay 10 \
+            --output /tmp/refit-unattended-readiness.json
+      - name: Open incident once, or close it after independent recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        run: |
+          set -euo pipefail
+          title="Refit unattended production incident"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --json number,title --limit 100 \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
+          if [[ "$PROBE_OUTCOME" != success ]]; then
+            if [[ -z "$existing" ]]; then
+              cat > /tmp/refit-incident.md <<'EOF'
+          Refit's independent production-readiness check failed.
+
+          This check verifies public HTTPS, a valid deployed revision, anonymous
+          guest navigation, auth isolation, and enough authorized daily model
+          requests for one complete migration. No models are invoked.
+
+          The full observation is available in the check's GitHub Actions
+          artifact. A safety quarantine must never be cleared by an automated
+          restart. Capacity exhaustion resolves through the configured UTC
+          daily reset; do not bypass operator spending limits.
+
+          This issue will close automatically after a verified recovery.
+          EOF
+              gh issue create --repo "$GITHUB_REPOSITORY" \
+                --title "$title" --body-file /tmp/refit-incident.md
+            fi
+          elif [[ -n "$existing" ]]; then
+            gh issue close "$existing" --repo "$GITHUB_REPOSITORY" \
+              --comment "An independent, zero-inference production readiness check now passes."
+          fi
+      - name: Preserve small external readiness record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refit-unattended-readiness
+          path: /tmp/refit-unattended-readiness.json
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Keep the workflow red while production is not ready
+        if: steps.probe.outcome != 'success'
+        run: exit 1
