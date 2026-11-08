@@ -254,8 +254,8 @@ function runFilters(action=""){
 async function agents(){
  header("Agents");
  await refreshWorkspace();
- page.innerHTML=lead("Agents",state.guest?"Run the refund agent or bring your own source.":"Your imported application source snapshots and detected runtimes.",(state.guest?'<button class="btn" type="button" data-action="try-refund">Run refund agent</button> ':"")+importButton())+
- (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("code")+'</div><div class="agent-record-body"><button type="button" class="agent-record-title" data-action="example-agent">Recorded Python agent</button><p>Knowledge-base application · Verified on Vultr</p><div class="agent-record-meta"><span>Python</span><span>gVisor execution</span>'+compactStatus(state.demo.run.status)+'</div></div><div class="agent-record-actions"><button class="btn agent-record-review" data-action="run" data-id="demo-python-2026-11-07">Review run '+ico("arrow")+'</button></div></section>':"")+
+ page.innerHTML=lead("Agents",state.guest?"Run the refund agent or bring your own source.":"Your imported application source snapshots and detected runtimes.",importButton())+
+ (state.guest?'<section class="agent-record"><div class="agent-record-icon">'+ico("shield")+'</div><div class="agent-record-body"><strong class="agent-record-title">Refund agent</strong><p>A real Python agent using get_order and issue_refund. Synthetic order state; live Vultr inference and independent verification.</p><div class="agent-record-meta"><span>Python</span><span>Vultr models</span><span>gVisor workers</span></div></div><div class="agent-record-actions"><button class="btn primary" data-action="try-refund">Run refund agent '+ico("arrow")+'</button></div></section>':"")+
  (state.guest?"":state.projects.length?
  '<label class="run-search agent-search">'+ico("search")+'<input type="search" id="agentQuery" aria-label="Search agents" placeholder="Search repositories or runtimes"></label>'+
  '<div class="card agent-list"><table class="table"><thead><tr><th>Source</th><th>Runtime</th><th>Integration</th><th>Provider boundary</th><th></th></tr></thead><tbody>'+
