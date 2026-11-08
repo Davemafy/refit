@@ -29,7 +29,7 @@ from .application_import import (
     ARCHIVE_LIMIT, ZIP_UPLOAD_LIMIT, ImportProblem, github_snapshot, resolve_default_revision,
     source_snapshot, unpack_zip,
 )
-from .application_run import BUDGET_LIMIT, MODELS, RunStopped, configuration, run_migration
+from .application_run import BUDGET_LIMIT, DEFAULT_MODELS, MODELS, RunStopped, configuration, run_migration
 from .docker_cleanup import remove_and_verify
 from .durable_store import RunStore
 from .migration_engine import fingerprint
@@ -734,7 +734,7 @@ class ApplicationHandler(RefitHandler):
         if self.public():
             session = self.service.accounts.resolve(self.session_secret())
             if session is None:
-                raise ApiProblem(401, "sign_in_required", "Sign in to use your Refit workspace.")
+                raise ApiProblem(401, "visitor_session_required", "Open Refit to start a temporary visitor workspace; no account is required.")
             return session[0]
         token = self.headers.get("Authorization", "")
         if not secrets.compare_digest(token.encode(), ("Bearer " + self.service.token).encode()):
@@ -1065,7 +1065,8 @@ class ApplicationHandler(RefitHandler):
                     min(BUDGET_LIMIT, account_remaining,
                         BUDGET_LIMIT if is_review else global_remaining))
                 return self._send(200, {
-                    "models": MODELS, "max_requests": available,
+                    "models": MODELS, "experimental_models": [m for m in MODELS if m not in DEFAULT_MODELS],
+                    "max_requests": available,
                     "review_run_used": bool(review_used),
                     "review_pass_expired": bool(review_expired),
                     "minimum_complete_migration_requests": 7,
