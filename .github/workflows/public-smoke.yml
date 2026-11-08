@@ -37,7 +37,7 @@ jobs:
             --output /tmp/refit-public-smoke.json
       - name: Verify the deployed HTTPS application without inference
         env:
-          EXPECTED_APPLICATION_REVISION: ${{ inputs.expected_application_revision || '4ed1fb294b6d02f2600e0cab1bf6b22b1975c159' }}
+          EXPECTED_APPLICATION_REVISION: ${{ inputs.expected_application_revision || '20abcb10a2c2cab8d1f0cf1f57005de7598d107d' }}
         run: |
           python -m scripts.smoke_platform_https \
             --url https://80.240.30.92 \
@@ -53,3 +53,25 @@ jobs:
             /tmp/refit-https-smoke.json
           retention-days: 7
           if-no-files-found: ignore
+
+  external-workbench:
+    needs: external-http
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      REFIT_WORKBENCH_URL: https://80.240.30.92
+      REFIT_WORKBENCH_OUTPUT: artifacts/production-workbench
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Firefox for public browser acceptance
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps firefox
+      - name: Verify the deployed workspace and capture both themes
+        run: node tests/browser_workbench.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: refit-production-workbench
+          path: artifacts/production-workbench/
+          retention-days: 7
