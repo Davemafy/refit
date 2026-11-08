@@ -80,7 +80,7 @@ try{
  await page.getByRole("button",{name:"demo-python-2026-11-07",exact:true}).click();
  await page.getByRole("heading",{name:"Review migration results"}).waitFor();
  assert.equal(await page.locator("#pageError").count(),0,"The run review must not show an application error");
- await page.getByText(/Explore real evidence/).first().waitFor();
+ await page.getByText(/Recorded evidence/).first().waitFor();
  const exampleDownload=page.waitForEvent("download");
  await page.getByRole("button",{name:/Export verified configuration/}).first().click();
  const exampleFile=await exampleDownload;
