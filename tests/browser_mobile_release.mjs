@@ -35,14 +35,18 @@ try{
  }
  for(const size of [320,360,390]){
    await capture("landing","/",size,async()=>{
-    const link=page.getByRole("link",{name:"Open workspace",exact:true});
+    const link=page.getByRole("link",{name:/Explore Refit/});
     assert.equal(await link.isVisible(),true);
     const box=await link.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=size);
-    assert.equal(await page.locator(".m-nav").isVisible(),false,"Desktop navigation should collapse");
-    const preview=await page.locator(".m-product-preview").boundingBox();
+    assert.equal(await page.locator(".desktop-nav").isVisible(),false,"Desktop navigation should collapse");
+    const menu=page.locator(".mobile-nav summary");
+    assert.equal(await menu.isVisible(),true,"Small-screen navigation must remain reachable");
+    await menu.click();
+    assert.equal(await page.locator(".mobile-nav nav a[href=\"/app\"]").isVisible(),true,"Workspace link must be in mobile menu");
+    const preview=await page.locator(".hero-product").boundingBox();
     assert.ok(preview&&preview.width>=size-40,"Recorded evidence preview squeezed: "+JSON.stringify(preview));
     assert.ok(preview.x>=0&&preview.x+preview.width<=size,"Preview clips the mobile viewport");
-    assert.equal(await page.locator(".m-feature").count(),3,"All illustrated steps remain present");
+    assert.equal(await page.locator(".capability-row").count(),3,"Import, evaluation and verification must all be present");
    });
    await capture("runs","/app/runs",size,async()=>{
     assert.equal(await page.locator(".run-table-desktop").isVisible(),false);
