@@ -801,6 +801,31 @@ class ApplicationHandler(RefitHandler):
                 if self.deployed_revision:
                     return self._send(200, {"revision": self.deployed_revision})
                 raise ApiProblem(503, "revision_unavailable", "No deployed revision was configured.")
+            if page == "/api/application/readiness":
+                # Public read-only availability, with no account data, inference,
+                # Docker command, tokens, or privileged host probe.
+                # Seven requests is the minimum for three evaluation cases
+                # (source/target replay and independent export verification).
+                with self.service.lock:
+                    remaining = max(0, self.service.daily_budget -
+                                    self.service.reserved(now()[:10]))
+                    quarantined = self.service.quarantined
+                runnable = (not quarantined and remaining >= 7 and
+                            self.service.account_budget >= 7)
+                reason = ("operator_review_required" if quarantined else
+                          "daily_capacity_below_one_complete_migration" if not runnable else None)
+                utc = datetime.now(timezone.utc)
+                from datetime import timedelta
+                reset_at = (utc.date() + timedelta(days=1)).isoformat() + "T00:00:00Z"
+                return self._send(200 if not quarantined else 503, {
+                    "online": True,
+                    "can_start_complete_migration": runnable,
+                    "minimum_inference_requests": 7,
+                    "capacity_state": "ready" if runnable else "unavailable",
+                    "reason": reason,
+                    "capacity_resets_at": reset_at,
+                    "revision": self.deployed_revision,
+                })
             if url.path == "/api/application/demo" and self.public():
                 return self._send(200, public_example())
             if url.path == "/api/application/challenge1-demo" and self.public():
