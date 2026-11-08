@@ -46,13 +46,13 @@ let raw,terminal=false;
 try{
   const initial=await page.goto(origin+"/app",{waitUntil:"domcontentloaded",timeout:30000});
   assert.equal(initial?.status(),200,"Public Refit workspace inaccessible");
-  const start=page.getByRole("button",{name:/Try a live migration/i}).first();
+  const start=page.getByRole("button",{name:/Run refund agent/i}).first();
   await start.waitFor({state:"visible",timeout:30000});
   await sleep(2500);
   await page.screenshot({path:path.join(out,"01-live-start.png")});
   await moveTo(start);
   const responsePromise=page.waitForResponse(response=>
-    response.request().method()==="POST"&&new URL(response.url()).pathname==="/api/application/try",
+    response.request().method()==="POST"&&new URL(response.url()).pathname==="/api/application/try-refund",
     {timeout:25000});
   await start.click();
   const response=await responsePromise;
@@ -98,7 +98,7 @@ try{
   fs.writeFileSync(path.join(out,"live-run-manifest.json"),JSON.stringify({
     run_id:body.id,real_model_run:true,
     new_paid_trial_started_once:true,was_terminal:terminal,
-    source:"Real Refit guest trial with Vultr inference; never a simulated replay",
+    source:"Real Refit refund-agent migration on Vultr; recorded from the original executable code, not simulated",
     events:notes
   },null,2));
 }finally{
