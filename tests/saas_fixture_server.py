@@ -34,7 +34,7 @@ class FixtureHandler(ApplicationHandler):
         return True  # This isolated HTTPS fixture stands in for Nginx ingress.
 
     def do_POST(self):
-        if urlsplit(self.path).path == "/api/application/try":
+        if urlsplit(self.path).path in ("/api/application/try", "/api/application/try-refund"):
             # Zero-inference browser acceptance of the guest session and
             # navigation only. This fixture never performs a paid migration.
             with patch.dict(os.environ, {"REFIT_PUBLIC_TRIAL_ENABLED": "1"}), \
