@@ -1,0 +1,49 @@
+name: Capture authentic Refit agent execution
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/live_agent_film_capture.mjs
+      - .github/workflows/live-agent-film-capture.yml
+permissions:
+  contents: read
+concurrency:
+  group: refit-one-real-guest-film
+  cancel-in-progress: false
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install browser and FFmpeg
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+          command -v ffmpeg || { sudo apt-get update -qq; sudo apt-get install -y ffmpeg; }
+      - name: Record one real, bounded live guest trial (never simulate)
+        run: node scripts/live_agent_film_capture.mjs
+      - name: Encode 1080p execution take and contact sheet
+        run: |
+          ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -i artifacts/refit-live-trial-film/refit-real-agent-run.webm \
+            -vf "fps=30,scale=1920:1080:flags=lanczos,format=yuv420p" \
+            -c:v libx264 -preset veryfast -crf 17 -movflags +faststart \
+            -an artifacts/refit-live-trial-film/refit-real-agent-run-1080p.mp4
+          ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -i artifacts/refit-live-trial-film/refit-real-agent-run-1080p.mp4 \
+            -vf "fps=1/6,scale=480:-1,tile=4x4" -frames:v 1 \
+            artifacts/refit-live-trial-film/contact-sheet.jpg
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: refit-authentic-agent-film
+          path: artifacts/refit-live-trial-film/
+          retention-days: 14
+          if-no-files-found: warn
