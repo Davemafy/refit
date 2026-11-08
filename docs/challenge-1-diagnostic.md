@@ -12,7 +12,7 @@ The resulting `run.diagnostic` is persisted under the owning run in the existing
 
 ## Access and quotas
 
-- Only authenticated owners of completed migrations can request diagnostics. Valid origin and session checks apply. Temporary reviewer links cannot run diagnostics.
+- Only authenticated owners of completed migrations can request diagnostics. Valid origin and session checks apply. A separately provisioned, expiring reviewer pass is owner-scoped to exactly one migration and may run exactly one diagnostic within its fixed 16-request budget (at most 15 migration requests plus one reserved diagnostic request). Reviewer requests use an explicitly provisioned budget separate from ordinary signups; they cannot create arbitrary additional runs.
 - Requires `REFIT_ENABLE_SANDBOX_DIAGNOSTICS=1` and `REFIT_SANDBOX_RUNTIME=runsc`. No automatic fallback to runc.
 - At most one diagnostic attempt per migration, exactly one authorized Vultr request, one concurrent diagnostic, one reserved account/global request budget; interrupted attempts remain charged and are never retried automatically.
 - Runtime failure, a mismatched oracle, missing/false cleanup receipt or unverified gVisor identity **cannot** produce a verified diagnostic.
